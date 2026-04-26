@@ -57,10 +57,23 @@ If your change introduces a breaking surface change, bump the minor version and 
 
 ## Testing discipline
 
+Three layers, each with its own scope and speed budget:
+
+| Layer        | Command           | Scope                                                                                                                                              | When to run                                                              |
+|--------------|-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| Unit         | `make test`       | `go test -race ./...` against every package                                                                                                        | Every change                                                             |
+| E2E (stub)   | `make e2e`        | Spawns the built binary, drives MCP over stdio against the in-tree Go stub server (`test/e2e/stub-server`)                                         | Every change                                                             |
+| Integration  | `make integration`| Multi-instance soak against real upstream MCP servers (`memory`, `sequentialthinking`, `filesystem`) — full catalog UX + proxy spawn + aggregation | Touching `internal/sources/`, `internal/catalog/`, or release infra      |
+
+**Rules:**
+
 - **Every new tool, format, backend, or CLI subcommand ships with unit tests.**
-- **Every new MCP-visible behavior ships with at least one e2e assertion.**
-- `make test && make e2e` must pass before opening a PR.
-- The CI matrix runs on Linux + macOS. If a test relies on a binary the runner doesn't have, install it in the workflow rather than skipping the test.
+- **Every new MCP-visible behavior ships with at least one e2e assertion** under `test/e2e/run.sh`.
+- `make test && make e2e` must pass before opening a PR. Both are fast (<10 s combined) and have zero network dependencies.
+- `make integration` is the slow path — it pulls npm packages on first run and depends on the npm registry. Not required for most PRs; CI runs it nightly. Run locally only when your change touches source aggregation.
+- Want CI to run integration on your PR? Apply the **`integration`** label.
+
+The CI matrix runs unit + e2e on Linux + macOS. If a test relies on a binary the runner doesn't have (ripgrep, pandoc, …), install it in the workflow rather than skipping the test.
 
 ## Adding a new core tool
 
