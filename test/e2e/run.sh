@@ -58,7 +58,7 @@ echo "$list_response" | grep -q '"name":"Bash"' \
   || fail "tools/list: Bash tool missing"
 pass "tools/list: Bash tool registered (PascalCase per ADR-006)"
 
-for t in Glob ToolSearch WebFetch WebSearch Edit Write; do
+for t in Glob ToolSearch WebFetch WebSearch Edit Write SendMessage AgentList BridgeList BridgeAdd BridgeRemove BridgeUpgrade; do
   if ! echo "$list_response" | grep -q "\"name\":\"$t\""; then
     fail "tools/list: $t missing"
   fi
@@ -635,6 +635,62 @@ bad_resp=$(printf '%s\n%s\n%s\n' \
 echo "$bad_resp" | grep -qF "unknown recipe" \
   || fail "RecipeApply: unknown name should surface 'unknown recipe' message"
 pass "RecipeApply: unknown name yields actionable error"
+
+# ── 15. Bridge*/Agent* MCP tools (v0.10 surface, ADR-014 Phase 1) ────────
+echo ""
+echo "▶ test: Bridge* + Agent* MCP tools"
+
+# 15a. BridgeList enumerates the 3 bridge families with status.
+bridge_list_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"BridgeList","arguments":{}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
+
+bridge_payload=$(echo "$bridge_list_resp" | grep structuredContent)
+for fam in codex opencode gemini; do
+  echo "$bridge_payload" | grep -qF "\"family\":\"$fam\"" \
+    || fail "BridgeList: family $fam missing"
+done
+pass "BridgeList: codex+opencode+gemini families present"
+
+# 15b. BridgeAdd with an unknown family surfaces a structured error.
+bad_bridge=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"BridgeAdd","arguments":{"family":"ghost"}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
+
+echo "$bad_bridge" | grep -qF "unknown family" \
+  || fail "BridgeAdd: unknown family should surface 'unknown family' error"
+pass "BridgeAdd: unknown family yields actionable error"
+
+# 15c. AgentList returns a structured registry snapshot. The supervisor
+# synthesises one default per transport family even with no bridges
+# installed (status=bridge-missing for absent binaries), so the
+# response always carries a non-empty agents array.
+agent_list_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"AgentList","arguments":{}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
+
+echo "$agent_list_resp" | grep structuredContent | grep -qF '"agents":' \
+  || fail "AgentList: structuredContent should carry an agents array"
+pass "AgentList: structured snapshot returned"
+
+# 15d. SendMessage without an agent + no callable instances surfaces a
+# clean error rather than blocking. Validates the supervisor's
+# resolution path under MCP.
+send_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"SendMessage","arguments":{"prompt":"hello","agent":"ghost-instance"}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
+
+echo "$send_resp" | grep -qE "not found|no callable|not callable|bridge add" \
+  || fail "SendMessage: ghost instance should surface a resolution / bridge-missing error — got: $send_resp"
+pass "SendMessage: actionable error when target unreachable"
 
 # ── done ──────────────────────────────────────────────────────────────────
 

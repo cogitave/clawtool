@@ -107,6 +107,16 @@ func ServeStdio(ctx context.Context) error {
 	// trivial when the need shows up.
 	core.RegisterRecipeTools(s)
 
+	// Bridge* tools mirror `clawtool bridge add/list/remove/upgrade`
+	// so a model can install / inspect bridges to other coding-agent
+	// CLIs (codex / opencode / gemini) mid-conversation. Per ADR-014.
+	core.RegisterBridgeTools(s)
+
+	// SendMessage + AgentList expose the supervisor's dispatch +
+	// registry surface over MCP. Same call site as `clawtool send`
+	// CLI and the future HTTP gateway.
+	core.RegisterAgentTools(s)
+
 	// SkillNew lets a model scaffold an agentskills.io-standard
 	// skill from inside a conversation. Same template the
 	// `clawtool skill new` CLI emits — both go through the

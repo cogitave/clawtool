@@ -175,5 +175,41 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"create", "save", "overwrite", "tee", "echo", "new", "file"},
 		},
+		{
+			Name:        "SendMessage",
+			Description: "Forward a prompt to another AI coding-agent CLI (claude / codex / opencode / gemini) and stream its reply. clawtool wraps each upstream's published headless mode; the bridge plugin must be installed first via BridgeAdd.",
+			Type:        "core",
+			Keywords:    []string{"dispatch", "delegate", "forward", "prompt", "agent", "claude", "codex", "opencode", "gemini", "relay", "ask", "ai"},
+		},
+		{
+			Name:        "AgentList",
+			Description: "Snapshot of the supervisor's agent registry — every configured instance with family, bridge, callable status, and auth scope.",
+			Type:        "core",
+			Keywords:    []string{"list", "agents", "instances", "registry", "available", "callable"},
+		},
+		{
+			Name:        "BridgeList",
+			Description: "List installable bridges to other coding-agent CLIs (codex, opencode, gemini) with current install state.",
+			Type:        "core",
+			Keywords:    []string{"bridges", "plugins", "install", "available", "codex", "opencode", "gemini", "list"},
+		},
+		{
+			Name:        "BridgeAdd",
+			Description: "Install the canonical bridge for a family (codex / opencode / gemini). Wraps the upstream's Claude Code plugin or built-in subcommand. Idempotent.",
+			Type:        "core",
+			Keywords:    []string{"install", "bridge", "plugin", "add", "codex", "opencode", "gemini", "setup"},
+		},
+		{
+			Name:        "BridgeRemove",
+			Description: "Remove the bridge for a family. v0.10 ships as a manual hint; full uninstall lands in v0.10.x.",
+			Type:        "core",
+			Keywords:    []string{"uninstall", "remove", "bridge", "plugin"},
+		},
+		{
+			Name:        "BridgeUpgrade",
+			Description: "Re-run the bridge install (idempotent; pulls the latest plugin version).",
+			Type:        "core",
+			Keywords:    []string{"upgrade", "update", "bridge", "plugin", "refresh"},
+		},
 	}
 }

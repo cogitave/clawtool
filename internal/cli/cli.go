@@ -165,6 +165,12 @@ func (a *App) Run(argv []string) int {
 		return a.runSource(argv[1:])
 	case "agents":
 		return a.runAgents(argv[1:])
+	case "agent":
+		return a.runAgent(argv[1:])
+	case "bridge":
+		return a.runBridge(argv[1:])
+	case "send":
+		return a.runSend(argv[1:])
 	case "recipe":
 		return a.runRecipe(argv[1:])
 	case "doctor":
@@ -331,6 +337,28 @@ Usage:
   clawtool agents release <agent>
   clawtool agents status [<agent>]
   clawtool agents list      List known agent adapters.
+  clawtool bridge add <family>
+                            Install the canonical bridge for the family
+                            (codex / opencode / gemini). Per ADR-014:
+                            wraps the upstream's published Claude Code
+                            plugin or built-in subcommand — clawtool
+                            never re-implements the bridge.
+  clawtool bridge list      Show installed bridges + status.
+  clawtool bridge upgrade <family>
+                            Re-run the install (idempotent; pulls the
+                            latest plugin version).
+  clawtool send [--agent <i>] [--session <sid>] [--model <m>] [--format <f>] "<prompt>"
+                            Stream a prompt to the resolved agent's
+                            upstream CLI. Output streams to stdout
+                            verbatim. Resolution: --agent flag >
+                            CLAWTOOL_AGENT env > sticky default >
+                            single-instance fallback.
+  clawtool send --list      Print the supervisor's agent registry.
+  clawtool agent use <i>    Set the sticky default agent (singular
+                            'agent' = relay runtime; plural 'agents' =
+                            adapter ownership for native tool replacement).
+  clawtool agent which      Show the currently-resolved default agent.
+  clawtool agent unset      Clear the sticky default.
   clawtool recipe list [--category <c>]
                             List project-setup recipes (governance/commits/
                             release/ci/quality/supply-chain/knowledge/agents/
