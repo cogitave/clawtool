@@ -172,6 +172,8 @@ func (a *App) Run(argv []string) int {
 		return a.runSource(argv[1:])
 	case "agents":
 		return a.runAgents(argv[1:])
+	case "recipe":
+		return a.runRecipe(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -329,6 +331,18 @@ Usage:
   clawtool agents release <agent>
   clawtool agents status [<agent>]
   clawtool agents list      List known agent adapters.
+  clawtool recipe list [--category <c>]
+                            List project-setup recipes (governance/commits/
+                            release/ci/quality/supply-chain/knowledge/agents/
+                            runtime) and their state in the current repo.
+  clawtool recipe status [<name>]
+                            Detect output for one recipe or all of them.
+  clawtool recipe apply <name> [key=value ...]
+                            Inject the recipe into the current working
+                            directory. Examples:
+                              clawtool recipe apply license holder="Jane Doe"
+                              clawtool recipe apply codeowners owners=@me,@team
+                              clawtool recipe apply dependabot
   clawtool version          Print the build version.
   clawtool help             Show this help.
 
