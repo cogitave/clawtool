@@ -37,7 +37,7 @@ func (brainRecipe) Meta() setup.RecipeMeta {
 		Category:    setup.CategoryKnowledge,
 		Description: "Wire this repo to a claude-obsidian vault — drops .clawtool/brain.toml + verifies Obsidian app and the claude-obsidian Claude Code plugin are installed.",
 		Upstream:    "https://github.com/AgriciDaniel/claude-obsidian",
-		Stability:   setup.StabilityBeta,
+		Stability:   setup.StabilityStable,
 	}
 }
 

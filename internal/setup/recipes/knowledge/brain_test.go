@@ -21,9 +21,11 @@ func TestBrain_Registered(t *testing.T) {
 	if r.Meta().Upstream == "" {
 		t.Error("Upstream must be set (wrap-don't-reinvent enforcement)")
 	}
-	// Beta until we feel the install-prompt UX is polished.
-	if r.Meta().Stability != setup.StabilityBeta {
-		t.Errorf("expected Stability=Beta, got %q", r.Meta().Stability)
+	// Promoted to Stable once the wizard's interactive install-prompt
+	// path landed (v0.10) — Obsidian / claude-obsidian install offers
+	// now go through huh.Select + osCommandRunner.
+	if r.Meta().Stability != setup.StabilityStable {
+		t.Errorf("expected Stability=Stable, got %q", r.Meta().Stability)
 	}
 }
 

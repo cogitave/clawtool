@@ -214,12 +214,14 @@ func (a *App) runInitRepoInteractive(cwd string) int {
 		return 0
 	}
 
+	prompter, runner := newWizardPrompter(a.Stdout, a.Stderr)
 	fmt.Fprintf(a.Stdout, "\nApplying %d recipe(s):\n", len(picks))
 	for _, p := range picks {
 		res, err := setup.Apply(context.Background(), p.recipe, setup.ApplyOptions{
 			Repo:          cwd,
 			RecipeOptions: p.opts,
-			Prompter:      setup.AlwaysSkip{},
+			Prompter:      prompter,
+			Runner:        runner,
 		})
 		if err != nil {
 			if errors.Is(err, setup.ErrSkippedByUser) {
