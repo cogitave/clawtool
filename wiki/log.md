@@ -17,6 +17,26 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### DISCIPLINE — ADR-007: leverage best-in-class, don't reinvent
+
+- New ADR locks the engineering posture for core-tool work. Wrap mature engines (ripgrep, defuddle/Readability, OpenAI apply_patch, doublestar, bleve, …) and add the polish layer (timeout-safe, structured JSON, secret redaction, MCP correctness, uniform conventions across tools). Reimplement from scratch only when no upstream meets the bar.
+- Engineering profile: distribution maintainer, not compiler author.
+- License hygiene becomes load-bearing — clawtool is MIT; we shell out to GPL when needed (no linkage), avoid GPL Go imports, attribute every wrapped engine.
+- Per-tool baseline table: Bash → /bin/bash (already in use), Grep → ripgrep + system grep fallback, Read → stdlib + pdftotext, Edit → OpenAI apply_patch format, Glob → bmatcuk/doublestar, WebFetch → defuddle/Readability, ToolSearch → bleve (the one thing we genuinely build).
+- New running survey: [[Canonical Tool Implementations Survey 2026-04-26]] — grows with every core-tool deep-dive.
+- Updated [[Index]], [[Overview]], [[decisions _index]], [[sources _index]], [[Hot]], this log.
+
+### V0.2 PROTOTYPE — config + CLI + tests + standard project hygiene
+
+- **LICENSE** (MIT, root) + **README.md** (install/use/development sections + repo layout map).
+- **Makefile** with standard targets: `build`, `test`, `e2e`, `install` (atomic temp+rename — survives running binary), `lint`, `clean`, `dist` (cross-compile linux/darwin amd64/arm64).
+- **Bash unit tests** (5): success path, non-zero exit propagation, **timeout preserves output and reaps process group** (ADR-005 headline quality bar — verified at 300ms returning ~300ms even with `sleep 5` child), default cwd → home dir, override cwd.
+- **E2E MCP integration script** (`test/e2e/run.sh`, 13 assertions): initialize handshake, tools/list shows Bash + required:[command] schema, tools/call success/non-zero-exit/timeout paths each verified via grep on the escaped JSON wire form. Hooked into `make e2e`.
+- **Config package** (`internal/config`): TOML schema mirroring ADR-006 (core_tools, sources, tools, tags, groups, profile). Resolution: tool > server precedence (full tag/group precedence in v0.3). `LoadOrDefault` for first-run-without-init. Default writable `0600` (env may carry secrets). 11 unit tests covering save/load round-trip, precedence, selector charset, missing-file fallback.
+- **CLI package** (`internal/cli`): subcommands `init`, `tools list / enable / disable / status`. Selector validation enforces ADR-006 charsets up front; rejects `tag:` / `group:` selectors with explicit "v0.3" message. 8 unit tests + manual smoke run verified.
+- **Atomic install** in Makefile: `cp X.new && mv X.new X` — survives "Text file busy" when CC already has the binary running.
+- All 37 tests green (5 + 13 + 11 + 8). CC still `✓ Connected` after live binary swap.
+
 ### PROTOTYPE — v0.1 build, install, end-to-end verified
 
 - **Working binary**: `bin/clawtool` (7MB Go binary, Go 1.25.5).

@@ -27,6 +27,7 @@ Project-bound knowledge base for **clawtool**. Updated on every ingest.
 - [[004 clawtool initial architecture direction]] — initial spec direction (developing)
 - [[005 Positioning replace native agent tools]] — strategic positioning: canonical tool layer, not just aggregator (developing)
 - [[006 Instance scoping and tool naming]] — multi-instance support, naming convention, no-collision guarantees (developing)
+- [[007 Leverage best-in-class not reinvent]] — wrap mature engines + add polish layer; don't rewrite ripgrep / defuddle / apply_patch (developing)
 
 ## Comparisons
 

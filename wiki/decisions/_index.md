@@ -9,7 +9,7 @@ tags:
   - adr
 status: developing
 subdomain_of: ""
-page_count: 6
+page_count: 7
 ---
 
 # Decisions (ADRs)
@@ -27,6 +27,7 @@ Architecture Decision Records. Numbered sequentially. Each captures: context, de
 - [[004 clawtool initial architecture direction]] — initial spec direction. Locks in: MCP distribution, single binary, search-first as identity, manifest extension via annotations, CLI dot-notation, build-new-not-fork. Open: ranking model, catalog source.
 - [[005 Positioning replace native agent tools]] — strategic positioning: clawtool's core tools (bash, grep, read, edit, write, glob, webfetch) ship at quality higher than each agent's native built-in. Search-first is the prerequisite. Aggregation is solved; core-tool quality is the actual work.
 - [[006 Instance scoping and tool naming]] — multi-instance support via kebab-case instance names (`github-personal`, `github-work`); wire form `<instance>__<tool>`, CLI selector `<instance>.<tool>`. Core tools use PascalCase (`Bash`, `Read`, `Edit`) matching Claude's native convention. No collision possible: disjoint charsets for instance vs tool.
+- [[007 Leverage best-in-class not reinvent]] — clawtool wraps mature engines (ripgrep, defuddle, OpenAI apply_patch format, doublestar, etc.) and adds the polish layer (timeout-safe, structured output, secret redaction, MCP correctness). Reimplement from scratch only when no upstream meets the bar. Engineering profile: distribution maintainer, not compiler author.
 
 ## Convention
 

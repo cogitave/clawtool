@@ -19,6 +19,7 @@ Summary pages for documents and research outputs. Source documents themselves li
 
 - [[Research Scope 2026-04-26]] — selection criteria + universe surveyed for [[004 clawtool initial architecture direction]]
 - [[Prototype Bringup 2026-04-26]] — v0.1 prototype build/install/test bringup notes
+- [[Canonical Tool Implementations Survey 2026-04-26]] — running list of best-in-class engines per core tool (input to ADR-007)
 
 ## External sources (pending ingest)
 
