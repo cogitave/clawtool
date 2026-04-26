@@ -5,7 +5,18 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.8.2] - 2026-04-26
+## [0.8.4] - 2026-04-26
+
+### Features
+
+- **agents:** Add 'clawtool agents claim/release/status' for hard native-tool replacement (ADR-011) (468a082)## [0.8.3] - 2026-04-26
+
+### Features
+
+- **plugin:** Add Claude Code plugin packaging (ADR-010) (86dd403)
+### Other
+
+- Auto backup 2026-04-26 18:18:52 (d01990a)## [0.8.2] - 2026-04-26
 
 ### Build
 
@@ -18,7 +29,7 @@ ADR-009 for the policy details.
 - Add CONTRIBUTING + SECURITY + issue/PR templates (7770140)
 ### Fixes
 
-- **changelog:** Guard cliff.toml template against unreleased-commit null version (306eac8)## [0.8.1] - 2026-04-26
+- **changelog:** Guard cliff.toml template against unreleased-commit null version (e3df3cd)## [0.8.1] - 2026-04-26
 
 ### Documentation
 
