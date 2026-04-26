@@ -96,6 +96,34 @@ func TestLicense_RejectsUnsupportedSPDX(t *testing.T) {
 	}
 }
 
+func TestLicense_AGPL3SubstitutesAndKeepsCanonicalText(t *testing.T) {
+	r := setup.Lookup("license")
+	dir := t.TempDir()
+	if err := r.Apply(context.Background(), dir, setup.Options{
+		"holder": "Acme Inc.",
+		"spdx":   "AGPL-3.0",
+		"year":   2026,
+	}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	body, _ := os.ReadFile(filepath.Join(dir, "LICENSE"))
+	s := string(body)
+	if !strings.Contains(s, "Copyright (C) 2026 Acme Inc.") {
+		t.Errorf("AGPL-3.0 holder/year prefix missing or unsubstituted")
+	}
+	// Canonical body must round-trip — these phrases are unique to
+	// the official AGPL-3.0 text, so their presence is a fingerprint.
+	for _, marker := range []string{
+		"GNU AFFERO GENERAL PUBLIC LICENSE",
+		"Version 3, 19 November 2007",
+		"END OF TERMS AND CONDITIONS",
+	} {
+		if !strings.Contains(s, marker) {
+			t.Errorf("AGPL canonical phrase %q missing — embedded asset corrupted?", marker)
+		}
+	}
+}
+
 func TestLicense_RequiresHolder(t *testing.T) {
 	r := setup.Lookup("license")
 	err := r.Apply(context.Background(), t.TempDir(), setup.Options{})

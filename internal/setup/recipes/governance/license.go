@@ -16,7 +16,7 @@ import (
 	"github.com/cogitave/clawtool/internal/setup"
 )
 
-//go:embed assets/MIT.txt assets/Apache-2.0.txt assets/BSD-3-Clause.txt
+//go:embed assets/MIT.txt assets/Apache-2.0.txt assets/BSD-3-Clause.txt assets/AGPL-3.0.txt
 var licenseAssets embed.FS
 
 // licenseMarker is appended as a trailing HTML comment so a license
@@ -28,7 +28,7 @@ const licensePath = "LICENSE"
 
 // supportedSPDX is the closed set of SPDX IDs the recipe ships
 // canonical text for. Adding more is a one-line embed + this slice.
-var supportedSPDX = []string{"MIT", "Apache-2.0", "BSD-3-Clause"}
+var supportedSPDX = []string{"MIT", "Apache-2.0", "BSD-3-Clause", "AGPL-3.0"}
 
 type licenseRecipe struct{}
 
@@ -36,7 +36,7 @@ func (licenseRecipe) Meta() setup.RecipeMeta {
 	return setup.RecipeMeta{
 		Name:        "license",
 		Category:    setup.CategoryGovernance,
-		Description: "Drops a canonical SPDX license file (MIT default; Apache-2.0, BSD-3-Clause supported).",
+		Description: "Drops a canonical SPDX license file (MIT default; Apache-2.0, BSD-3-Clause, AGPL-3.0 supported).",
 		Upstream:    "spec:https://spdx.org/licenses/",
 		Stability:   setup.StabilityStable,
 	}

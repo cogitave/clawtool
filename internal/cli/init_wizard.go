@@ -532,6 +532,7 @@ func promptForOptions(name string) (setup.Options, bool) {
 					huh.NewOption("MIT", "MIT"),
 					huh.NewOption("Apache-2.0", "Apache-2.0"),
 					huh.NewOption("BSD-3-Clause", "BSD-3-Clause"),
+					huh.NewOption("AGPL-3.0", "AGPL-3.0"),
 				).
 				Value(&spdx),
 		))
