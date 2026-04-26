@@ -128,5 +128,17 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"search", "web", "google", "brave", "tavily", "duckduckgo", "results", "query", "engine"},
 		},
+		{
+			Name:        "Edit",
+			Description: "Replace a substring in an existing file. Atomic temp+rename, line-ending and BOM preserve, binary refusal. Refuses ambiguous matches unless replace_all=true.",
+			Type:        "core",
+			Keywords:    []string{"replace", "modify", "change", "patch", "substitute", "search-and-replace", "sed", "fix"},
+		},
+		{
+			Name:        "Write",
+			Description: "Create or replace a whole file. Atomic temp+rename, parent directory auto-create, line-ending and BOM preserve when overwriting.",
+			Type:        "core",
+			Keywords:    []string{"create", "save", "overwrite", "tee", "echo", "new", "file"},
+		},
 	}
 }

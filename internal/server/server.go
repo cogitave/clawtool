@@ -89,6 +89,12 @@ func ServeStdio(ctx context.Context) error {
 	if cfg.IsEnabled("WebSearch").Enabled {
 		core.RegisterWebSearch(s, sec)
 	}
+	if cfg.IsEnabled("Edit").Enabled {
+		core.RegisterEdit(s)
+	}
+	if cfg.IsEnabled("Write").Enabled {
+		core.RegisterWrite(s)
+	}
 
 	// Aggregated source tools — one entry per (running instance × tool),
 	// already named in wire form `<instance>__<tool>`.
@@ -110,12 +116,14 @@ func buildIndexDocs(cfg config.Config, mgr *sources.Manager) []search.Doc {
 
 	enabled := map[string]bool{
 		"Bash":       cfg.IsEnabled("Bash").Enabled,
+		"Edit":       cfg.IsEnabled("Edit").Enabled,
+		"Glob":       cfg.IsEnabled("Glob").Enabled,
 		"Grep":       cfg.IsEnabled("Grep").Enabled,
 		"Read":       cfg.IsEnabled("Read").Enabled,
-		"Glob":       cfg.IsEnabled("Glob").Enabled,
 		"ToolSearch": cfg.IsEnabled("ToolSearch").Enabled,
 		"WebFetch":   cfg.IsEnabled("WebFetch").Enabled,
 		"WebSearch":  cfg.IsEnabled("WebSearch").Enabled,
+		"Write":      cfg.IsEnabled("Write").Enabled,
 	}
 	for _, d := range core.CoreToolDocs() {
 		if enabled[d.Name] {

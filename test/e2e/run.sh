@@ -46,7 +46,7 @@ echo "$list_response" | grep -q '"name":"Bash"' \
   || fail "tools/list: Bash tool missing"
 pass "tools/list: Bash tool registered (PascalCase per ADR-006)"
 
-for t in Glob ToolSearch WebFetch WebSearch; do
+for t in Glob ToolSearch WebFetch WebSearch Edit Write; do
   if ! echo "$list_response" | grep -q "\"name\":\"$t\""; then
     fail "tools/list: $t missing"
   fi
@@ -476,6 +476,53 @@ websearch_noauth=$(env -u BRAVE_API_KEY printf '%s\n%s\n%s\n' \
 echo "$websearch_noauth" | grep -qF 'BRAVE_API_KEY' \
   || fail "WebSearch: missing-key error should mention BRAVE_API_KEY"
 pass "WebSearch: missing-key error guides user to BRAVE_API_KEY"
+
+# ── 13. Edit + Write end-to-end via real MCP stdio ──────────────────────
+echo ""
+echo "▶ test: Edit + Write end-to-end"
+
+WFILE="$TMPCFG/wtest.txt"
+write_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Write","arguments":{"path":"%s","content":"hello\\nworld\\n"}}}' "$WFILE")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$write_resp" | grep -qF '\"created\":true' \
+  || fail "Write: created flag missing/false on fresh file"
+pass "Write: created==true on fresh file"
+
+[[ -f "$WFILE" ]] || fail "Write: target file not created on disk"
+got_w=$(cat "$WFILE")
+[[ "$got_w" == $'hello\nworld' ]] || fail "Write: file content unexpected: $(printf '%q' "$got_w")"
+pass "Write: file content matches request"
+
+edit_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"hello","new_string":"HOWDY"}}}' "$WFILE")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$edit_resp" | grep -qF '\"replaced\":true' \
+  || fail "Edit: replaced flag missing/false"
+pass "Edit: replaced==true after substitution"
+
+got_e=$(cat "$WFILE")
+[[ "$got_e" == $'HOWDY\nworld' ]] || fail "Edit: file content unexpected: $(printf '%q' "$got_e")"
+pass "Edit: substitution applied to file content"
+
+# Ambiguous match must refuse without --replace_all-equivalent flag.
+echo "dup line" >> "$WFILE"
+echo "dup line" >> "$WFILE"
+ambig_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"dup line","new_string":"X"}}}' "$WFILE")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$ambig_resp" | grep -qF 'appears 2 times' \
+  || fail "Edit: should refuse ambiguous match — got: $ambig_resp"
+pass "Edit: refuses ambiguous match (suggests replace_all)"
 
 # ── done ──────────────────────────────────────────────────────────────────
 
