@@ -14,6 +14,7 @@ import (
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/commits"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/governance"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/knowledge"
+	_ "github.com/cogitave/clawtool/internal/setup/recipes/quality"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/release"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/supplychain"
 )
