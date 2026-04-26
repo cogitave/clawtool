@@ -1,0 +1,73 @@
+# clawtool relay — reference docker-compose for ADR-014 Phase 3.
+#
+# Two services:
+#   - clawtool      the gateway (HTTP on :8080, bearer-token auth)
+#   - caddy         optional reverse proxy that terminates TLS
+#                   via Caddy's automatic ACME flow. Drop the service
+#                   entirely if you front the gateway with another
+#                   proxy (nginx, Cloudflare Tunnel, …).
+#
+# Quick start:
+#   1. Generate a token:
+#        docker compose run --rm --entrypoint clawtool clawtool \
+#          serve init-token /etc/clawtool/listener-token > token.txt
+#      (or: openssl rand -hex 32 > listener-token && chmod 600 listener-token)
+#   2. docker compose up -d
+#   3. curl https://clawtool.example.com/v1/health \
+#         -H "Authorization: Bearer $(cat token.txt)"
+
+services:
+  clawtool:
+    image: clawtool-relay:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.relay
+    restart: unless-stopped
+    environment:
+      # Defaults match the Dockerfile's ENV; override here if you
+      # bound a non-:8080 port or use a non-canonical token path.
+      CLAWTOOL_LISTEN: ":8080"
+      CLAWTOOL_TOKEN_FILE: "/etc/clawtool/listener-token"
+      # Per-CLI auth. Operators replace these with the credentials
+      # for whichever upstreams they want callable. Empty values
+      # leave the family non-callable; the supervisor surfaces that
+      # via /v1/agents.
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY:    "${OPENAI_API_KEY:-}"
+      GOOGLE_API_KEY:    "${GOOGLE_API_KEY:-}"
+    volumes:
+      - ./listener-token:/etc/clawtool/listener-token:ro
+      # Optional: persist per-CLI session state across restarts so
+      # session IDs (codex thread/resume, claude --resume) keep
+      # working. Comment out for stateless deploys.
+      - clawtool_state:/root/.config
+    # Bind only to localhost when caddy fronts; otherwise expose
+    # :8080 for direct (already-proxied) access.
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - clawtool
+
+volumes:
+  clawtool_state:
+  caddy_data:
+  caddy_config:
+
+# Reference Caddyfile (drop alongside this file as ./Caddyfile):
+#
+#   clawtool.example.com {
+#       reverse_proxy clawtool:8080
+#   }
+#
+# Caddy handles ACME automatically. Hostname must resolve to this host.

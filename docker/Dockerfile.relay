@@ -1,0 +1,92 @@
+# clawtool relay — Phase 3 of ADR-014
+#
+# A single image that hosts clawtool plus the four upstream coding-agent
+# CLIs (claude / codex / opencode / gemini), exposes the HTTP gateway on
+# :8080, and authenticates every request via a bearer token mounted from
+# the operator's secret store.
+#
+# Build:    docker build -f docker/Dockerfile.relay -t clawtool-relay .
+# Run:      docker run -p 8080:8080 \
+#               -v $(pwd)/listener-token:/etc/clawtool/listener-token:ro \
+#               clawtool-relay
+#
+# TLS termination is the operator's job — front this with caddy / nginx
+# / Cloudflare Tunnel. We do not ship certs.
+
+# ── stage 1: build clawtool from source ────────────────────────────
+FROM golang:1.25-bookworm AS builder
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/clawtool ./cmd/clawtool
+
+# ── stage 2: runtime image ─────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+# System deps:
+#   - ca-certificates  for HTTPS calls (claude/codex/opencode/gemini all need this)
+#   - curl             for the upstream CLI install one-liners
+#   - npm + node       Codex CLI (`npm i -g @openai/codex`) + Gemini CLI
+#                      (`npm i -g @google/gemini-cli`) install via npm
+#   - git              project-setup recipes shell out to it
+#   - ripgrep+pandoc+poppler-utils  for clawtool's own Read / Grep tools
+#                      (so the image can also serve as a self-contained
+#                      MCP server when the relay isn't strictly needed)
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends \
+      ca-certificates curl git \
+      ripgrep pandoc poppler-utils \
+      nodejs npm \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# Upstream coding-agent CLIs. Each install command matches what their
+# own README documents — clawtool doesn't reinvent any of these.
+#   - codex / gemini are npm-distributed
+#   - opencode is a single-binary install via the upstream installer
+#   - claude (Claude Code) installs via npm too; users may also bring
+#     their own image with claude pre-installed
+RUN npm install -g @openai/codex @google/gemini-cli @anthropic-ai/claude-code \
+ && npm cache clean --force \
+ && curl -fsSL https://opencode.ai/install | bash \
+ && rm -rf /root/.npm /tmp/*
+
+# clawtool itself.
+COPY --from=builder /out/clawtool /usr/local/bin/clawtool
+
+# Default config + secrets locations. Operators bind-mount over these
+# to inject account-specific configs and credentials.
+RUN mkdir -p /etc/clawtool /root/.config/clawtool
+
+# Bridge-install step at image-build time. This runs every recipe via
+# clawtool's own setup framework — same code path the user invokes
+# locally with `clawtool bridge add codex`, no parallel install logic.
+# The recipes only verify the binaries (which we just installed); they
+# don't try to register Claude Code plugins (claude CLI on PATH is the
+# `@anthropic-ai/claude-code` package, but plugins live per-user; in
+# the container the relay path is what's exercised, not the in-Claude
+# slash commands).
+RUN clawtool bridge list || true
+
+# Default port + env var conventions. Operators override at run time:
+#   - CLAWTOOL_LISTEN  bind address (default :8080)
+#   - CLAWTOOL_TOKEN_FILE  path to the bearer token (default
+#                          /etc/clawtool/listener-token, mount it ro)
+ENV CLAWTOOL_LISTEN=:8080 \
+    CLAWTOOL_TOKEN_FILE=/etc/clawtool/listener-token
+
+EXPOSE 8080
+
+# Pre-flight: refuse to start if the token file is missing. The
+# operator must mount one or run `clawtool serve init-token …` against
+# a writable volume.
+ENTRYPOINT ["sh", "-c", "\
+  if [ ! -f \"$CLAWTOOL_TOKEN_FILE\" ]; then \
+    echo 'clawtool: token file '\"$CLAWTOOL_TOKEN_FILE\"' not present; mount one or run init-token first' >&2; \
+    exit 1; \
+  fi; \
+  exec clawtool serve --listen \"$CLAWTOOL_LISTEN\" --token-file \"$CLAWTOOL_TOKEN_FILE\"\
+"]

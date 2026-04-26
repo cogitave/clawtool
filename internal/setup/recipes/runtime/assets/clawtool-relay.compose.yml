@@ -1,0 +1,55 @@
+# managed-by: clawtool — ADR-014 Phase 3 (clawtool-relay recipe).
+# Edit freely; the recipe re-applies only when explicitly forced.
+#
+# clawtool-relay reference compose. Two services:
+#   - clawtool      the gateway (HTTP on :8080, bearer-token auth)
+#   - caddy         optional reverse proxy that terminates TLS via Caddy's
+#                   automatic ACME flow. Drop the service entirely if you
+#                   front the gateway with another proxy.
+#
+# Quick start:
+#   1. Generate a token:
+#        openssl rand -hex 32 > listener-token && chmod 600 listener-token
+#   2. docker compose -f compose.relay.yml up -d
+#   3. curl https://clawtool.example.com/v1/health \
+#         -H "Authorization: Bearer $(cat listener-token)"
+
+services:
+  clawtool:
+    image: ghcr.io/cogitave/clawtool-relay:latest
+    restart: unless-stopped
+    environment:
+      CLAWTOOL_LISTEN: ":8080"
+      CLAWTOOL_TOKEN_FILE: "/etc/clawtool/listener-token"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY:    "${OPENAI_API_KEY:-}"
+      GOOGLE_API_KEY:    "${GOOGLE_API_KEY:-}"
+    volumes:
+      - ./listener-token:/etc/clawtool/listener-token:ro
+      - clawtool_state:/root/.config
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - clawtool
+
+volumes:
+  clawtool_state:
+  caddy_data:
+  caddy_config:
+
+# Reference Caddyfile (drop alongside this file as ./Caddyfile):
+#
+#   clawtool.example.com {
+#       reverse_proxy clawtool:8080
+#   }
