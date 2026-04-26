@@ -46,6 +46,13 @@ echo "$list_response" | grep -q '"name":"Bash"' \
   || fail "tools/list: Bash tool missing"
 pass "tools/list: Bash tool registered (PascalCase per ADR-006)"
 
+for t in Glob ToolSearch; do
+  if ! echo "$list_response" | grep -q "\"name\":\"$t\""; then
+    fail "tools/list: $t missing"
+  fi
+  pass "tools/list: $t registered"
+done
+
 echo "$list_response" | grep -q '"required":\["command"\]' \
   || fail "tools/list: Bash inputSchema missing required:[command]"
 pass "tools/list: Bash inputSchema enforces required:[command]"
@@ -286,6 +293,93 @@ pass "proxy: disabled core tool correctly absent from tools/list"
 echo "$list_no_bash" | grep -q '"name":"stub__echo"' \
   || fail "proxy: stub__echo missing when Bash disabled"
 pass "proxy: source tool unaffected by core-tool disable"
+
+# ── 9. ToolSearch ranks the right tool for a semantic query ─────────────
+echo ""
+echo "▶ test: ToolSearch semantic ranking"
+
+# Restore full config for the search test.
+cat > "$TMPCFG/clawtool/config.toml" <<EOF
+[core_tools]
+[core_tools.Bash]
+enabled = true
+[core_tools.Grep]
+enabled = true
+[core_tools.Read]
+enabled = true
+[core_tools.Glob]
+enabled = true
+[core_tools.ToolSearch]
+enabled = true
+
+[sources.stub]
+type = "mcp"
+command = ["$STUB"]
+EOF
+
+# 9a. Query for grep-shaped intent → Grep should rank first.
+search_grep=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"search file contents regex","limit":3}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+
+echo "$search_grep" | grep -qF '\"engine\":\"bleve-bm25\"' \
+  || fail "ToolSearch: engine != bleve-bm25"
+pass "ToolSearch: engine == bleve-bm25"
+
+# Top hit must be Grep — its name appears first inside the results array.
+top_name=$(echo "$search_grep" | grep -oE '\\"name\\":\\"[A-Za-z_]+\\"' | head -1 | grep -oE '[A-Za-z_]+' | tail -1)
+if [[ "$top_name" != "Grep" ]]; then
+  fail "ToolSearch: top hit for 'search file contents regex' = $top_name, want Grep"
+fi
+pass "ToolSearch: top hit for grep-shaped query is Grep"
+
+# 9b. Query semantically matching the stub source → stub__echo should top.
+search_stub=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"echo back input text","limit":3}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+
+top_name=$(echo "$search_stub" | grep -oE '\\"name\\":\\"[A-Za-z_]+\\"' | head -1 | grep -oE '[A-Za-z_]+' | tail -1)
+if [[ "$top_name" != "stub__echo" ]]; then
+  fail "ToolSearch: top hit for 'echo back input' = $top_name, want stub__echo (sourced)"
+fi
+pass "ToolSearch: top hit for echo-shaped query is stub__echo (sourced tool)"
+
+# 9c. type=core filter excludes sourced tools.
+search_core=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"echo","type":"core","limit":5}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+
+if echo "$search_core" | grep -qF '\"name\":\"stub__echo\"' ; then
+  fail "ToolSearch type=core: leaked sourced tool stub__echo"
+fi
+pass "ToolSearch: type=core filter excludes sourced tools"
+
+# ── 10. Glob returns the repo's Markdown files ──────────────────────────
+echo ""
+echo "▶ test: Glob"
+glob_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Glob","arguments":{"pattern":"**/*.md","cwd":"%s","limit":50}}}' "$REPO_ROOT")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+
+echo "$glob_resp" | grep -qF '\"engine\":\"doublestar\"' \
+  || fail "Glob: engine != doublestar"
+pass "Glob: engine == doublestar"
+
+echo "$glob_resp" | grep -qF 'README.md' \
+  || fail "Glob: README.md not in matches"
+pass "Glob: README.md found via **/*.md"
+
+echo "$glob_resp" | grep -qF '\"matches_count\":' \
+  || fail "Glob: matches_count missing"
+pass "Glob: matches_count present"
 
 # ── done ──────────────────────────────────────────────────────────────────
 echo ""

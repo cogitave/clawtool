@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/blevesearch/bleve/v2 v2.5.7
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/mark3labs/mcp-go v0.49.0
 	github.com/pelletier/go-toml/v2 v2.3.0
 )

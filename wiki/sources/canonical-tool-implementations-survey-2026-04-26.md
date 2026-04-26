@@ -90,11 +90,13 @@ Same primitive as Edit. The interesting concerns are:
 
 | Engine | Notes |
 |---|---|
-| **`github.com/bmatcuk/doublestar/v4`** | Go-native, double-star (`**`) glob, fast, MIT. **Default choice.** |
+| **`github.com/bmatcuk/doublestar/v4`** | Go-native, double-star (`**`) glob, fast, MIT. **Adopted v0.5.** |
 | `fd` (binary) | Excellent UX but binary dependency. Optional acceleration when present. |
 | stdlib `path/filepath.Glob` | No double-star; not enough. |
 
-**Polish**: `.gitignore` + `.clawtoolignore` honored by default; opt-out flag for full traversal.
+**Status (v0.5)**: Wired at `internal/tools/core/glob.go`. `doublestar.GlobWalk` for streaming match (memory-bounded for huge dirs). Forward-slash output paths (platform-stable). Hard cap (default 1000, max 10000) protects agent context. Engine field exposes which backend ran.
+
+**Polish (v0.6)**: `.gitignore` + `.clawtoolignore` honored by default — `github.com/sabhiram/go-gitignore` library candidate. Tracked as a v0.6 add.
 
 ## WebFetch
 
@@ -124,9 +126,13 @@ This one we **do** build, because nothing equivalent exists.
 
 | Component | Engine | Notes |
 |---|---|---|
-| BM25 index | `github.com/blevesearch/bleve` | Mature, Go-native, BM25 + faceting. |
-| Embedding rerank (v0.3+) | local sentence-transformers via ONNX Runtime, OR remote OpenAI/Anthropic embeddings | TBD by usage benchmarks. |
-| Query language | clawtool-specific | Tags + free-text + selectors. |
+| BM25 index | **`github.com/blevesearch/bleve/v2`** | Adopted v0.5. Mature, Go-native, in-memory variant (`NewMemOnly`), BM25 by default, supports phrase + boosted-field queries via `NewQueryStringQuery`. |
+| Embedding rerank (v0.7+) | local sentence-transformers via ONNX Runtime, OR remote OpenAI/Anthropic embeddings | TBD by usage benchmarks. |
+| Query language | clawtool-specific | Free-text input rewritten with field boosts: `name^3`, `keywords^2`, `description^1`. |
+
+**Status (v0.5)**: Wired at `internal/search/index.go` + `internal/tools/core/toolsearch.go`. Built once at `clawtool serve` startup from the union of (enabled core tools, aggregated source tools, ToolSearch itself). Query→ranked hits via bleve BM25; hits hydrate name/description/type/instance from a side `docs` map. Validated: "search file contents regex" → Grep top (score ≈ 0.94); "echo back input" with stub source registered → stub__echo top (score ≈ 1.24); type=core filter excludes sourced tools.
+
+**Polish (v0.6+)**: hot-reload index on config change; embedding rerank for top-K candidates; faceted result presentation by tag.
 
 [[Universal Toolset Projects Comparison]] confirmed nobody ships this; we are first.
 

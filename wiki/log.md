@@ -17,6 +17,28 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### V0.5 SHIPPED — ToolSearch (bleve BM25) + Glob (doublestar)
+
+User-prioritised: ToolSearch first, because without a search-first brain the deferred-loading story across a 50+ tool catalog falls apart.
+
+- **`internal/search/`**: bleve-BM25 index. `Build([]Doc) → *Index` is constructed once at `clawtool serve` boot from every tool we plan to register (enabled core tools + aggregated source tools). Per ADR-007 we wrap `github.com/blevesearch/bleve/v2` (in-memory variant `NewMemOnly`); we do not invent a search engine. Query rewrite applies `name^3`, `keywords^2`, `description^1` boosts so literal-name lookups still beat semantic neighbors. Hits hydrate name/description/type/instance from a side `docs` map. 11 unit tests, including:
+  - "bash" → top hit Bash (literal-name boost works)
+  - "search file contents regular expression" → top hit Grep (semantic match)
+  - "create issue github" → top hit github__create_issue (sourced tool ranks)
+  - type filter (core/sourced/any), limit cap (default 8, hard 50), empty-query rejection, score monotonicity.
+- **`internal/tools/core/toolsearch.go`**: tool surface. `query` (required), `limit` (default 8, max 50), `type` filter. Output: `{query, results[{name,score,description,type,instance}], total_indexed, engine:"bleve-bm25", duration_ms}`. `CoreToolDocs()` is the single source of truth for core-tool descriptions/keywords used both in tools/list and the search corpus.
+- **`internal/tools/core/glob.go`**: doublestar wrap. `pattern` (required), `cwd`, `limit`. Streaming match via `doublestar.GlobWalk` so memory stays bounded for huge dirs. Forward-slash paths regardless of OS. 5 unit tests covering double-star recursion, single-level patterns, limit cap + truncation flag, no-match path, extension filter.
+- **`internal/server/server.go`** refactored: load config+secrets → start sources.Manager → build search.Index from descriptors → register cores filtered by `config.IsEnabled` → register source tools with manager-routed handlers. `buildIndexDocs` is the single function that picks what gets indexed.
+- **`KnownCoreTools`** = `[Bash, Glob, Grep, Read, ToolSearch]`. `clawtool tools list` now shows all five.
+- **E2E**: 9 new assertions (37 total). tools/list registers Glob + ToolSearch; ToolSearch query for "search file contents regex" returns Grep on top via bleve-bm25; ToolSearch for "echo back input text" with stub source returns stub__echo on top (sourced tool); type=core filter excludes sourced tools; Glob `**/*.md` finds README.md, engine=doublestar, matches_count present.
+- **Smoke (live binary)**:
+  - `tools/list` → `Bash, Glob, Grep, Read, ToolSearch` ✓
+  - `ToolSearch{query:"search file contents regex"}` → `Grep` (score 0.94) → `Read` (0.05) → `ToolSearch` (0.01)
+  - `ToolSearch{query:"echo back input"}` with stub source live → `stub__echo` (score 1.24, type:sourced, instance:stub)
+- **Test totals**: 81 Go unit + 38 e2e = **119 green**. New since v0.4 turn 2: search 11, tools/core +5 (Glob), e2e +8 (Glob 3 + ToolSearch 4 + tools/list 1 missed previously? actually +9: Glob and ToolSearch each 3-4 each).
+- New deps: `github.com/blevesearch/bleve/v2`, `github.com/bmatcuk/doublestar/v4`. Both Apache-2.0 / MIT — license-compatible with clawtool MIT.
+- Updated [[Hot]], [[Canonical Tool Implementations Survey 2026-04-26]] (Glob + ToolSearch rows now show "Adopted v0.5"), this log.
+
 ### V0.4 TURN 2 SHIPPED — MCP client/server proxy
 
 ADR-008's runtime substance lives now: clawtool spawns configured sources as child MCP servers, aggregates their tools under wire-form `<instance>__<tool>` names per ADR-006, and routes tools/call to the right child.

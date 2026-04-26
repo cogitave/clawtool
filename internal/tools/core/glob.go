@@ -15,7 +15,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -114,6 +113,3 @@ func executeGlob(pattern, cwd string, limit int) GlobResult {
 	return res
 }
 
-// Sanity export — silence unused-import linter for filepath when callers
-// strip down the file. Removable later.
-var _ = strings.HasPrefix
