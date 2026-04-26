@@ -13,11 +13,11 @@ import (
 	// Blank imports trigger each recipe package's init() so the
 	// global registry is populated before any subcommand runs.
 	// New recipe packages are added here.
-	_ "github.com/cogitave/clawtool/internal/setup/recipes/agentclaim"
-	_ "github.com/cogitave/clawtool/internal/setup/recipes/commits"
-	_ "github.com/cogitave/clawtool/internal/setup/recipes/governance"
-	_ "github.com/cogitave/clawtool/internal/setup/recipes/release"
-	_ "github.com/cogitave/clawtool/internal/setup/recipes/supplychain"
+	// One blank import that pulls every recipe subpackage in via
+	// internal/setup/recipes/all.go — kept in one place so the
+	// registry stays consistent across `clawtool recipe …`,
+	// `clawtool init`, and the MCP server's Recipe* tools.
+	_ "github.com/cogitave/clawtool/internal/setup/recipes"
 )
 
 const recipeUsage = `Usage:

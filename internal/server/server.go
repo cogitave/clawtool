@@ -30,6 +30,10 @@ import (
 	"github.com/cogitave/clawtool/internal/tools/core"
 	"github.com/cogitave/clawtool/internal/version"
 	"github.com/mark3labs/mcp-go/server"
+
+	// Pull every recipe subpackage's init() so the setup registry
+	// is populated before RegisterRecipeTools wires the MCP surface.
+	_ "github.com/cogitave/clawtool/internal/setup/recipes"
 )
 
 // ServeStdio runs clawtool as an MCP server speaking over stdio. It blocks
@@ -95,6 +99,13 @@ func ServeStdio(ctx context.Context) error {
 	if cfg.IsEnabled("Write").Enabled {
 		core.RegisterWrite(s)
 	}
+
+	// Recipe* tools mirror `clawtool recipe …` so a model can list,
+	// detect, and apply project-setup recipes from inside a chat.
+	// Always registered — there's no per-tool gate for the recipe
+	// surface yet (cfg.IsEnabled is core-tool scoped). Adding one is
+	// trivial when the need shows up.
+	core.RegisterRecipeTools(s)
 
 	// Aggregated source tools — one entry per (running instance × tool),
 	// already named in wire form `<instance>__<tool>`.
