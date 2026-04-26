@@ -14,7 +14,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,12 +25,11 @@ import (
 
 // WriteResult is the uniform shape returned to the agent.
 type WriteResult struct {
+	BaseResult
 	Path         string `json:"path"`
 	BytesWritten int64  `json:"bytes_written"`
 	Created      bool   `json:"created"`
 	LineEndings  string `json:"line_endings"`
-	DurationMs   int64  `json:"duration_ms"`
-	ErrorReason  string `json:"error_reason,omitempty"`
 }
 
 // RegisterWrite adds the Write tool to the given MCP server.
@@ -75,13 +73,26 @@ func runWrite(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, 
 	cwd := req.GetString("cwd", "")
 
 	res := executeWrite(resolvePath(path, cwd), content, createParents, preserveEndings, LineEndings(forced))
-	body, _ := json.Marshal(res)
-	return mcp.NewToolResultText(string(body)), nil
+	return resultOf(res), nil
+}
+
+// Render satisfies the Renderer contract. The Operation field
+// switches between "Write" and "Create" based on whether the file
+// existed beforehand — agents glance-read whether something was
+// clobbered.
+func (r WriteResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Path)
+	}
+	return r.SuccessLine(r.Path, humanBytes(r.BytesWritten), r.LineEndings)
 }
 
 func executeWrite(path, content string, createParents, preserveEndings bool, forced LineEndings) WriteResult {
 	start := time.Now()
-	res := WriteResult{Path: path}
+	res := WriteResult{
+		BaseResult: BaseResult{Operation: "Write"},
+		Path:       path,
+	}
 
 	// Pre-flight: parent dir.
 	dir := filepath.Dir(path)

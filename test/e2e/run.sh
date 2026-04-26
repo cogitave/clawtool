@@ -6,7 +6,7 @@
 # expected structured-output JSON for Bash). Exits non-zero on any failure.
 #
 # MCP wraps tools/call results as text content where the inner structured JSON
-# is escaped — `\"stdout\":\"value\"` shows up literally in the wire bytes.
+# is escaped — `"stdout":"value"` shows up literally in the wire bytes.
 # All assertions on call results use `grep -F` against that escaped form.
 
 set -euo pipefail
@@ -66,15 +66,15 @@ call_response=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Bash","arguments":{"command":"printf clawtool"}}}' \
   | mcp_session)
 
-echo "$call_response" | grep -qF '\"stdout\":\"clawtool\"' \
+echo "$call_response" | grep -qF '"stdout":"clawtool"' \
   || fail "Bash success: stdout != 'clawtool' — got: $call_response"
 pass "Bash success: stdout captured exactly"
 
-echo "$call_response" | grep -qF '\"exit_code\":0' \
+echo "$call_response" | grep -qF '"exit_code":0' \
   || fail "Bash success: exit_code != 0"
 pass "Bash success: exit_code == 0"
 
-echo "$call_response" | grep -qF '\"timed_out\":false' \
+echo "$call_response" | grep -qF '"timed_out":false' \
   || fail "Bash success: timed_out != false"
 pass "Bash success: timed_out == false"
 
@@ -87,15 +87,15 @@ fail_response=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Bash","arguments":{"command":"echo first; echo bad >&2; exit 7"}}}' \
   | mcp_session)
 
-echo "$fail_response" | grep -qF '\"exit_code\":7' \
+echo "$fail_response" | grep -qF '"exit_code":7' \
   || fail "Bash non-zero: exit_code != 7"
 pass "Bash non-zero: exit_code propagated"
 
-echo "$fail_response" | grep -qF '\"stdout\":\"first' \
+echo "$fail_response" | grep -qF '"stdout":"first' \
   || fail "Bash non-zero: stdout dropped"
 pass "Bash non-zero: stdout preserved before failure"
 
-echo "$fail_response" | grep -qF '\"stderr\":\"bad' \
+echo "$fail_response" | grep -qF '"stderr":"bad' \
   || fail "Bash non-zero: stderr missing"
 pass "Bash non-zero: stderr preserved"
 
@@ -108,21 +108,21 @@ to_response=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Bash","arguments":{"command":"echo before; sleep 5; echo never","timeout_ms":300}}}' \
   | mcp_session)
 
-echo "$to_response" | grep -qF '\"timed_out\":true' \
+echo "$to_response" | grep -qF '"timed_out":true' \
   || fail "Bash timeout: timed_out != true"
 pass "Bash timeout: timed_out == true"
 
-echo "$to_response" | grep -qF '\"stdout\":\"before' \
+echo "$to_response" | grep -qF '"stdout":"before' \
   || fail "Bash timeout: pre-timeout stdout dropped"
 pass "Bash timeout: stdout preserved up to the deadline"
 
-if echo "$to_response" | grep -qF '\"never\"'; then
+if echo "$to_response" | grep -qF '"never"'; then
   fail "Bash timeout: post-timeout output leaked into stdout"
 fi
 pass "Bash timeout: post-timeout output correctly suppressed"
 
-# Pull duration_ms out of the escaped JSON. The pattern is `\"duration_ms\":NNN`.
-duration=$(echo "$to_response" | grep -oE '\\"duration_ms\\":[0-9]+' | head -1 | grep -oE '[0-9]+')
+# Pull duration_ms out of structuredContent. The pattern is `"duration_ms":NNN`.
+duration=$(echo "$to_response" | grep -oE '"duration_ms":[0-9]+' | head -1 | grep -oE '[0-9]+')
 if [[ -z "$duration" ]]; then
   fail "Bash timeout: duration_ms not present in response"
 fi
@@ -157,16 +157,16 @@ grep_response=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Grep","arguments":{"pattern":"clawtool","path":"README.md","cwd":"%s"}}}' "$REPO_ROOT")" \
   | mcp_session)
 
-echo "$grep_response" | grep -qF '\"engine\":\"ripgrep\"' \
+echo "$grep_response" | grep -qF '"engine":"ripgrep"' \
   || fail "Grep: engine != ripgrep — got: $grep_response"
 pass "Grep: engine == ripgrep (preferred when present)"
 
-echo "$grep_response" | grep -qF '\"matches_count\":' \
+echo "$grep_response" | grep -qF '"matches_count":' \
   || fail "Grep: matches_count missing"
 pass "Grep: matches_count present in response"
 
 # At least one match for 'clawtool' in README must be reported.
-if ! echo "$grep_response" | grep -qF '\"text\":\"' ; then
+if ! echo "$grep_response" | grep -qF '"text":"' ; then
   fail "Grep: no matches text in response — got: $grep_response"
 fi
 pass "Grep: at least one match returned"
@@ -180,19 +180,19 @@ read_response=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"README.md","line_start":1,"line_end":3,"cwd":"%s"}}}' "$REPO_ROOT")" \
   | mcp_session)
 
-echo "$read_response" | grep -qF '\"format\":\"text\"' \
+echo "$read_response" | grep -qF '"format":"text"' \
   || fail "Read: format != text"
 pass "Read: format == text"
 
-echo "$read_response" | grep -qF '\"engine\":\"stdlib\"' \
+echo "$read_response" | grep -qF '"engine":"stdlib"' \
   || fail "Read: engine != stdlib"
 pass "Read: engine == stdlib"
 
-echo "$read_response" | grep -qF '\"line_end\":3' \
+echo "$read_response" | grep -qF '"line_end":3' \
   || fail "Read: line_end != 3 (range honored)"
 pass "Read: line range honored (line_end=3)"
 
-echo "$read_response" | grep -qF '\"total_lines\":' \
+echo "$read_response" | grep -qF '"total_lines":' \
   || fail "Read: total_lines missing"
 pass "Read: total_lines reported"
 
@@ -324,12 +324,15 @@ search_grep=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"search file contents regex","limit":3}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
 
-echo "$search_grep" | grep -qF '\"engine\":\"bleve-bm25\"' \
+echo "$search_grep" | grep -qF '"engine":"bleve-bm25"' \
   || fail "ToolSearch: engine != bleve-bm25"
 pass "ToolSearch: engine == bleve-bm25"
 
 # Top hit must be Grep — its name appears first inside the results array.
-top_name=$(echo "$search_grep" | grep -oE '\\"name\\":\\"[A-Za-z_]+\\"' | head -1 | grep -oE '[A-Za-z_]+' | tail -1)
+# structuredContent is JSON in the tools/call response only — drop
+# the initialize response so its serverInfo.name doesn't shadow the
+# real top hit.
+top_name=$(echo "$search_grep" | grep structuredContent | grep -oE '"name":"[A-Za-z_]+"' | head -1 | grep -oE '[A-Za-z_]+' | tail -1)
 if [[ "$top_name" != "Grep" ]]; then
   fail "ToolSearch: top hit for 'search file contents regex' = $top_name, want Grep"
 fi
@@ -342,7 +345,7 @@ search_stub=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"echo back input text","limit":3}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
 
-top_name=$(echo "$search_stub" | grep -oE '\\"name\\":\\"[A-Za-z_]+\\"' | head -1 | grep -oE '[A-Za-z_]+' | tail -1)
+top_name=$(echo "$search_stub" | grep structuredContent | grep -oE '"name":"[A-Za-z_]+"' | head -1 | grep -oE '[A-Za-z_]+' | tail -1)
 if [[ "$top_name" != "stub__echo" ]]; then
   fail "ToolSearch: top hit for 'echo back input' = $top_name, want stub__echo (sourced)"
 fi
@@ -355,7 +358,7 @@ search_core=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"echo","type":"core","limit":5}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
 
-if echo "$search_core" | grep -qF '\"name\":\"stub__echo\"' ; then
+if echo "$search_core" | grep -qF '"name":"stub__echo"' ; then
   fail "ToolSearch type=core: leaked sourced tool stub__echo"
 fi
 pass "ToolSearch: type=core filter excludes sourced tools"
@@ -369,7 +372,7 @@ glob_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Glob","arguments":{"pattern":"**/*.md","cwd":"%s","limit":50}}}' "$REPO_ROOT")" \
   | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
 
-echo "$glob_resp" | grep -qF '\"engine\":\"doublestar\"' \
+echo "$glob_resp" | grep -qF '"engine":"doublestar"' \
   || fail "Glob: engine != doublestar"
 pass "Glob: engine == doublestar"
 
@@ -377,7 +380,7 @@ echo "$glob_resp" | grep -qF 'README.md' \
   || fail "Glob: README.md not in matches"
 pass "Glob: README.md found via **/*.md"
 
-echo "$glob_resp" | grep -qF '\"matches_count\":' \
+echo "$glob_resp" | grep -qF '"matches_count":' \
   || fail "Glob: matches_count missing"
 pass "Glob: matches_count present"
 
@@ -409,11 +412,11 @@ html_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$HTMLFX")" \
   | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
 
-echo "$html_resp" | grep -qF '\"format\":\"html\"' \
+echo "$html_resp" | grep -qF '"format":"html"' \
   || fail "Read HTML: format != html — got: $html_resp"
 pass "Read HTML: format == html"
 
-echo "$html_resp" | grep -qF '\"engine\":\"go-readability\"' \
+echo "$html_resp" | grep -qF '"engine":"go-readability"' \
   || fail "Read HTML: engine != go-readability"
 pass "Read HTML: engine == go-readability"
 
@@ -436,11 +439,11 @@ csv_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$CSVFX")" \
   | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
 
-echo "$csv_resp" | grep -qF '\"format\":\"csv\"' \
+echo "$csv_resp" | grep -qF '"format":"csv"' \
   || fail "Read CSV: format != csv"
 pass "Read CSV: format == csv"
 
-echo "$csv_resp" | grep -qF '\"engine\":\"csv-stdlib\"' \
+echo "$csv_resp" | grep -qF '"engine":"csv-stdlib"' \
   || fail "Read CSV: engine != csv-stdlib"
 pass "Read CSV: engine == csv-stdlib"
 
@@ -488,7 +491,7 @@ write_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Write","arguments":{"path":"%s","content":"hello\\nworld\\n"}}}' "$WFILE")" \
   | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
 
-echo "$write_resp" | grep -qF '\"created\":true' \
+echo "$write_resp" | grep -qF '"created":true' \
   || fail "Write: created flag missing/false on fresh file"
 pass "Write: created==true on fresh file"
 
@@ -503,7 +506,7 @@ edit_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"hello","new_string":"HOWDY"}}}' "$WFILE")" \
   | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
 
-echo "$edit_resp" | grep -qF '\"replaced\":true' \
+echo "$edit_resp" | grep -qF '"replaced":true' \
   || fail "Edit: replaced flag missing/false"
 pass "Edit: replaced==true after substitution"
 

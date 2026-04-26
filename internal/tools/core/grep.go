@@ -31,13 +31,12 @@ const (
 
 // GrepResult is the uniform shape returned regardless of engine.
 type GrepResult struct {
-	Matches       []GrepMatch `json:"matches"`
-	MatchesCount  int         `json:"matches_count"`
-	Truncated     bool        `json:"truncated"`
-	Engine        string      `json:"engine"`
-	DurationMs    int64       `json:"duration_ms"`
-	Cwd           string      `json:"cwd"`
-	Pattern       string      `json:"pattern"`
+	BaseResult
+	Matches      []GrepMatch `json:"matches"`
+	MatchesCount int         `json:"matches_count"`
+	Truncated    bool        `json:"truncated"`
+	Cwd          string      `json:"cwd"`
+	Pattern      string      `json:"pattern"`
 }
 
 // GrepMatch is a single hit. Line and column are 1-indexed for human
@@ -109,8 +108,33 @@ func runGrep(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 		IgnoreCase: caseI,
 		MaxMatches: maxMatches,
 	})
-	body, _ := json.Marshal(res)
-	return mcp.NewToolResultText(string(body)), nil
+	return resultOf(res), nil
+}
+
+// Render satisfies the Renderer contract. Output mirrors ripgrep's
+// standard `path:line:col: text` so a developer reading the chat
+// sees the same shape they'd see in a terminal.
+func (r GrepResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Pattern)
+	}
+	var b strings.Builder
+	b.WriteString(r.HeaderLine(fmt.Sprintf("rg %q", r.Pattern)))
+	b.WriteByte('\n')
+	if len(r.Matches) == 0 {
+		b.WriteString("(no matches)\n")
+	} else {
+		for _, m := range r.Matches {
+			fmt.Fprintf(&b, "%s:%d:%d: %s\n", m.Path, m.Line, m.Column, m.Text)
+		}
+	}
+	extras := []string{fmt.Sprintf("%d match(es)", r.MatchesCount)}
+	if r.Truncated {
+		extras = append(extras, "truncated")
+	}
+	b.WriteByte('\n')
+	b.WriteString(r.FooterLine(extras...))
+	return b.String()
 }
 
 type grepArgs struct {
@@ -129,8 +153,9 @@ type grepArgs struct {
 func executeGrep(ctx context.Context, a grepArgs) GrepResult {
 	start := time.Now()
 	res := GrepResult{
-		Cwd:     a.Cwd,
-		Pattern: a.Pattern,
+		BaseResult: BaseResult{Operation: "Grep"},
+		Cwd:        a.Cwd,
+		Pattern:    a.Pattern,
 	}
 
 	if rg := LookupEngine("rg"); rg.Bin != "" {

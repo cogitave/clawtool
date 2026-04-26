@@ -21,7 +21,6 @@ package core
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -38,19 +37,19 @@ const (
 	readSizeCapBytes = 5 * 1024 * 1024 // 5 MB cap on returned content
 )
 
-// ReadResult is the uniform shape across all formats.
+// ReadResult is the uniform shape across all formats. Embeds
+// BaseResult so common fields (engine, duration, error) and their
+// rendering helpers are inherited.
 type ReadResult struct {
-	Path        string `json:"path"`
-	Content     string `json:"content"`
-	LineStart   int    `json:"line_start"`
-	LineEnd     int    `json:"line_end"`
-	TotalLines  int    `json:"total_lines"`
-	SizeBytes   int64  `json:"size_bytes"`
-	Format      string `json:"format"`
-	Engine      string `json:"engine"`
-	Truncated   bool   `json:"truncated"`
-	DurationMs  int64  `json:"duration_ms"`
-	ErrorReason string `json:"error_reason,omitempty"`
+	BaseResult
+	Path       string `json:"path"`
+	Content    string `json:"content"`
+	LineStart  int    `json:"line_start"`
+	LineEnd    int    `json:"line_end"`
+	TotalLines int    `json:"total_lines"`
+	SizeBytes  int64  `json:"size_bytes"`
+	Format     string `json:"format"`
+	Truncated  bool   `json:"truncated"`
 
 	// Sheets is populated only for spreadsheet formats; lets the agent
 	// page through workbook structure without re-reading the file.
@@ -102,13 +101,45 @@ func runRead(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	sheet := req.GetString("sheet", "")
 
 	res := executeRead(ctx, path, lineStart, lineEnd, sheet)
-	body, _ := json.Marshal(res)
-	return mcp.NewToolResultText(string(body)), nil
+	return resultOf(res), nil
 }
+
+// Render satisfies the Renderer contract. The body is the file
+// content framed by horizontal rules; header carries path and
+// engine, footer carries cursor + size.
+func (r ReadResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Path)
+	}
+	var b strings.Builder
+	b.WriteString(r.HeaderLine(fmt.Sprintf("%s · %s · %s", r.Path, r.Format, humanBytes(r.SizeBytes))))
+	b.WriteByte('\n')
+	if len(r.Sheets) > 0 {
+		fmt.Fprintf(&b, "sheets: %s\n", strings.Join(r.Sheets, ", "))
+	}
+	b.WriteString("───\n")
+	b.WriteString(r.Content)
+	if !strings.HasSuffix(r.Content, "\n") {
+		b.WriteByte('\n')
+	}
+	b.WriteString("───\n")
+	extras := []string{fmt.Sprintf("lines %d–%d of %d", r.LineStart, r.LineEnd, r.TotalLines)}
+	if r.Truncated {
+		extras = append(extras, "truncated")
+	}
+	b.WriteString(r.FooterLine(extras...))
+	return b.String()
+}
+
 
 func executeRead(ctx context.Context, path string, lineStart, lineEnd int, sheet string) ReadResult {
 	start := time.Now()
-	res := ReadResult{Path: path, LineStart: lineStart, LineEnd: lineEnd}
+	res := ReadResult{
+		BaseResult: BaseResult{Operation: "Read"},
+		Path:       path,
+		LineStart:  lineStart,
+		LineEnd:    lineEnd,
+	}
 
 	info, err := os.Stat(path)
 	if err != nil {

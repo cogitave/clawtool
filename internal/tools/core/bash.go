@@ -13,9 +13,10 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -28,12 +29,13 @@ const (
 )
 
 type bashResult struct {
-	Stdout     string `json:"stdout"`
-	Stderr     string `json:"stderr"`
-	ExitCode   int    `json:"exit_code"`
-	DurationMs int64  `json:"duration_ms"`
-	TimedOut   bool   `json:"timed_out"`
-	Cwd        string `json:"cwd"`
+	BaseResult
+	Command  string `json:"command"`
+	Stdout   string `json:"stdout"`
+	Stderr   string `json:"stderr"`
+	ExitCode int    `json:"exit_code"`
+	TimedOut bool   `json:"timed_out"`
+	Cwd      string `json:"cwd"`
 }
 
 // RegisterBash adds the Bash tool to the given MCP server.
@@ -76,8 +78,40 @@ func runBash(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	}
 
 	res := executeBash(ctx, command, cwd, time.Duration(timeoutMs)*time.Millisecond)
-	body, _ := json.Marshal(res)
-	return mcp.NewToolResultText(string(body)), nil
+	return resultOf(res), nil
+}
+
+// Render satisfies the Renderer contract. Reads like a terminal
+// session: prompt+command, body, then a footer with the standard
+// "exit · ms · cwd" tail.
+func (r bashResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Command)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "$ %s\n", r.Command)
+	if r.Stdout != "" {
+		b.WriteString(strings.TrimRight(r.Stdout, "\n"))
+		b.WriteByte('\n')
+	}
+	if r.Stderr != "" {
+		b.WriteString("\n--- stderr ---\n")
+		b.WriteString(strings.TrimRight(r.Stderr, "\n"))
+		b.WriteByte('\n')
+	}
+	if r.Stdout == "" && r.Stderr == "" {
+		b.WriteString("(no output)\n")
+	}
+	extras := []string{
+		fmt.Sprintf("exit %d", r.ExitCode),
+		fmt.Sprintf("cwd: %s", r.Cwd),
+	}
+	if r.TimedOut {
+		extras = append(extras, "TIMED OUT")
+	}
+	b.WriteByte('\n')
+	b.WriteString(r.FooterLine(extras...))
+	return b.String()
 }
 
 // executeBash runs `bash -c command` with a hard timeout. Output captured
@@ -101,11 +135,15 @@ func executeBash(ctx context.Context, command, cwd string, timeout time.Duration
 	timedOut := errors.Is(runCtx.Err(), context.DeadlineExceeded)
 
 	return bashResult{
-		Stdout:     stdout,
-		Stderr:     stderr,
-		ExitCode:   exitCode,
-		DurationMs: dur.Milliseconds(),
-		TimedOut:   timedOut,
-		Cwd:        cwd,
+		BaseResult: BaseResult{
+			Operation:  "Bash",
+			DurationMs: dur.Milliseconds(),
+		},
+		Command:  command,
+		Stdout:   stdout,
+		Stderr:   stderr,
+		ExitCode: exitCode,
+		TimedOut: timedOut,
+		Cwd:      cwd,
 	}
 }

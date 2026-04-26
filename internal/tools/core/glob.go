@@ -10,11 +10,12 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -29,11 +30,10 @@ const (
 
 // GlobResult is the uniform shape returned to the agent.
 type GlobResult struct {
+	BaseResult
 	Matches      []string `json:"matches"`
 	MatchesCount int      `json:"matches_count"`
 	Truncated    bool     `json:"truncated"`
-	Engine       string   `json:"engine"`
-	DurationMs   int64    `json:"duration_ms"`
 	Cwd          string   `json:"cwd"`
 	Pattern      string   `json:"pattern"`
 }
@@ -76,16 +76,41 @@ func runGlob(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, e
 	}
 
 	res := executeGlob(pattern, cwd, limit)
-	body, _ := json.Marshal(res)
-	return mcp.NewToolResultText(string(body)), nil
+	return resultOf(res), nil
+}
+
+// Render satisfies the Renderer contract. One match per line so the
+// chat looks like running `find` or `fd` in a terminal.
+func (r GlobResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Pattern)
+	}
+	var b strings.Builder
+	b.WriteString(r.HeaderLine(fmt.Sprintf("glob %q", r.Pattern)))
+	b.WriteByte('\n')
+	if len(r.Matches) == 0 {
+		b.WriteString("(no matches)\n")
+	} else {
+		for _, m := range r.Matches {
+			b.WriteString(m)
+			b.WriteByte('\n')
+		}
+	}
+	extras := []string{fmt.Sprintf("%d match(es)", r.MatchesCount)}
+	if r.Truncated {
+		extras = append(extras, "truncated")
+	}
+	b.WriteByte('\n')
+	b.WriteString(r.FooterLine(extras...))
+	return b.String()
 }
 
 func executeGlob(pattern, cwd string, limit int) GlobResult {
 	start := time.Now()
 	res := GlobResult{
-		Engine:  "doublestar",
-		Cwd:     cwd,
-		Pattern: pattern,
+		BaseResult: BaseResult{Operation: "Glob", Engine: "doublestar"},
+		Cwd:        cwd,
+		Pattern:    pattern,
 	}
 
 	fsys := os.DirFS(cwd)

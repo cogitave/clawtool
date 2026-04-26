@@ -6,7 +6,8 @@ package core
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cogitave/clawtool/internal/search"
@@ -21,12 +22,11 @@ const (
 
 // ToolSearchResult is the JSON envelope returned to the agent.
 type ToolSearchResult struct {
-	Query         string        `json:"query"`
-	Results       []search.Hit  `json:"results"`
-	TotalIndexed  int           `json:"total_indexed"`
-	TypeFilter    string        `json:"type_filter,omitempty"`
-	Engine        string        `json:"engine"`
-	DurationMs    int64         `json:"duration_ms"`
+	BaseResult
+	Query        string       `json:"query"`
+	Results      []search.Hit `json:"results"`
+	TotalIndexed int          `json:"total_indexed"`
+	TypeFilter   string       `json:"type_filter,omitempty"`
 }
 
 // RegisterToolSearch adds the ToolSearch tool to the given MCP server,
@@ -68,16 +68,51 @@ func RegisterToolSearch(s *server.MCPServer, idx *search.Index) {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		body, _ := json.Marshal(ToolSearchResult{
+		out := ToolSearchResult{
+			BaseResult: BaseResult{
+				Operation:  "ToolSearch",
+				Engine:     "bleve-bm25",
+				DurationMs: time.Since(start).Milliseconds(),
+			},
 			Query:        query,
 			Results:      hits,
 			TotalIndexed: idx.Total(),
 			TypeFilter:   typeFilter,
-			Engine:       "bleve-bm25",
-			DurationMs:   time.Since(start).Milliseconds(),
-		})
-		return mcp.NewToolResultText(string(body)), nil
+		}
+		return resultOf(out), nil
 	})
+}
+
+// Render satisfies the Renderer contract. Each hit is rendered as
+// "[score] name (type) — description" so the agent and the user
+// see a plausible top-N list rather than raw JSON.
+func (r ToolSearchResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Query)
+	}
+	var b strings.Builder
+	header := fmt.Sprintf("query %q", r.Query)
+	if r.TypeFilter != "" {
+		header += fmt.Sprintf(" · type=%s", r.TypeFilter)
+	}
+	b.WriteString(r.HeaderLine(header))
+	b.WriteByte('\n')
+	if len(r.Results) == 0 {
+		b.WriteString("(no matches)\n")
+	} else {
+		for _, h := range r.Results {
+			fmt.Fprintf(&b, "  %.2f  %s (%s)\n", h.Score, h.Name, h.Type)
+			if h.Description != "" {
+				fmt.Fprintf(&b, "        %s\n", h.Description)
+			}
+		}
+	}
+	extras := []string{
+		fmt.Sprintf("%d/%d", len(r.Results), r.TotalIndexed),
+	}
+	b.WriteByte('\n')
+	b.WriteString(r.FooterLine(extras...))
+	return b.String()
 }
 
 // CoreToolDocs returns search.Doc descriptors for every clawtool core tool.

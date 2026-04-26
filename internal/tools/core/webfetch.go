@@ -15,7 +15,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -38,21 +37,19 @@ const (
 
 // WebFetchResult is the uniform shape returned to the agent.
 type WebFetchResult struct {
+	BaseResult
 	URL         string `json:"url"`
 	FinalURL    string `json:"final_url"`
 	Status      int    `json:"status"`
 	ContentType string `json:"content_type"`
 	Format      string `json:"format"` // "html" | "text" | "binary-rejected"
-	Engine      string `json:"engine"` // "go-readability" | "stdlib"
 	Title       string `json:"title,omitempty"`
 	Byline      string `json:"byline,omitempty"`
 	SiteName    string `json:"site_name,omitempty"`
 	Content     string `json:"content"`
 	SizeBytes   int    `json:"size_bytes"`
 	FetchedAt   string `json:"fetched_at"`
-	DurationMs  int64  `json:"duration_ms"`
 	Truncated   bool   `json:"truncated"`
-	ErrorReason string `json:"error_reason,omitempty"`
 }
 
 // RegisterWebFetch adds the WebFetch tool to the given MCP server.
@@ -87,8 +84,31 @@ func runWebFetch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRes
 		timeoutMs = webFetchMaxTimeoutMs
 	}
 	res := executeWebFetch(ctx, target, time.Duration(timeoutMs)*time.Millisecond)
-	body, _ := json.Marshal(res)
-	return mcp.NewToolResultText(string(body)), nil
+	return resultOf(res), nil
+}
+
+// Render satisfies the Renderer contract. Header carries the URL +
+// status + format; body is the extracted article (or raw text);
+// footer notes truncation when applicable.
+func (r WebFetchResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.URL)
+	}
+	var b strings.Builder
+	b.WriteString(r.HeaderLine(fmt.Sprintf("GET %s · %d · %s", r.FinalURL, r.Status, r.Format)))
+	b.WriteByte('\n')
+	b.WriteString("───\n")
+	b.WriteString(r.Content)
+	if !strings.HasSuffix(r.Content, "\n") {
+		b.WriteByte('\n')
+	}
+	b.WriteString("───\n")
+	extras := []string{humanBytes(int64(r.SizeBytes))}
+	if r.Truncated {
+		extras = append(extras, "truncated")
+	}
+	b.WriteString(r.FooterLine(extras...))
+	return b.String()
 }
 
 // httpClient is a package-level client so tests can inject a transport.
@@ -104,8 +124,9 @@ var httpClient = &http.Client{
 func executeWebFetch(ctx context.Context, rawURL string, timeout time.Duration) WebFetchResult {
 	start := time.Now()
 	res := WebFetchResult{
-		URL:       rawURL,
-		FetchedAt: start.UTC().Format(time.RFC3339),
+		BaseResult: BaseResult{Operation: "WebFetch"},
+		URL:        rawURL,
+		FetchedAt:  start.UTC().Format(time.RFC3339),
 	}
 
 	parsed, err := url.Parse(rawURL)

@@ -15,7 +15,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -27,14 +26,13 @@ import (
 
 // EditResult is the uniform shape returned to the agent.
 type EditResult struct {
+	BaseResult
 	Path                string `json:"path"`
 	Replaced            bool   `json:"replaced"`
 	OccurrencesReplaced int    `json:"occurrences_replaced"`
 	SizeBytesBefore     int64  `json:"size_bytes_before"`
 	SizeBytesAfter      int64  `json:"size_bytes_after"`
 	LineEndings         string `json:"line_endings"`
-	DurationMs          int64  `json:"duration_ms"`
-	ErrorReason         string `json:"error_reason,omitempty"`
 }
 
 // RegisterEdit adds the Edit tool to the given MCP server.
@@ -76,15 +74,36 @@ func runEdit(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, e
 	cwd := req.GetString("cwd", "")
 
 	res := executeEdit(resolvePath(path, cwd), oldStr, newStr, replaceAll)
-	body, _ := json.Marshal(res)
-	return mcp.NewToolResultText(string(body)), nil
+	return resultOf(res), nil
+}
+
+// Render satisfies the Renderer contract. Single-line success/failure;
+// stateless tools don't need a multi-line body.
+func (r EditResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Path)
+	}
+	delta := r.SizeBytesAfter - r.SizeBytesBefore
+	sign := "+"
+	if delta < 0 {
+		sign = "-"
+		delta = -delta
+	}
+	return r.SuccessLine(r.Path,
+		fmt.Sprintf("%d replacement(s)", r.OccurrencesReplaced),
+		fmt.Sprintf("%s%dB", sign, delta),
+		r.LineEndings,
+	)
 }
 
 // executeEdit is the testable core. Returns a populated EditResult; never
 // panics; surfaces every failure via ErrorReason.
 func executeEdit(path, oldStr, newStr string, replaceAll bool) EditResult {
 	start := time.Now()
-	res := EditResult{Path: path}
+	res := EditResult{
+		BaseResult: BaseResult{Operation: "Edit"},
+		Path:       path,
+	}
 
 	if oldStr == "" {
 		res.ErrorReason = "old_string is empty; nothing to find"

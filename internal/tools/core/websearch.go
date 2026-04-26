@@ -10,7 +10,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -30,14 +29,16 @@ const (
 )
 
 // WebSearchResult is the uniform result envelope the agent receives.
+// Backend lives in BaseResult.Engine because the engine concept is the
+// same — which backend ran this query — and consolidating in the
+// embedded struct keeps every tool's "who did the work" field in one
+// place across the catalog.
 type WebSearchResult struct {
+	BaseResult
 	Query        string         `json:"query"`
 	Results      []WebSearchHit `json:"results"`
 	ResultsCount int            `json:"results_count"`
-	Backend      string         `json:"backend"`
-	DurationMs   int64          `json:"duration_ms"`
 	Truncated    bool           `json:"truncated"`
-	ErrorReason  string         `json:"error_reason,omitempty"`
 }
 
 // WebSearchHit is one ranked result from any backend.
@@ -113,16 +114,18 @@ func RegisterWebSearch(s *server.MCPServer, store *secrets.Store) {
 			limit = webSearchMaxLimit
 		}
 
-		out := WebSearchResult{Query: query}
+		out := WebSearchResult{
+			BaseResult: BaseResult{Operation: "WebSearch"},
+			Query:      query,
+		}
 		start := time.Now()
 		backend, err := resolveBackend(store)
 		if err != nil {
 			out.ErrorReason = err.Error()
 			out.DurationMs = time.Since(start).Milliseconds()
-			body, _ := json.Marshal(out)
-			return mcp.NewToolResultText(string(body)), nil
+			return resultOf(out), nil
 		}
-		out.Backend = backend.Name()
+		out.Engine = backend.Name()
 
 		searchCtx, cancel := context.WithTimeout(ctx, webSearchTimeoutMs*time.Millisecond)
 		defer cancel()
@@ -130,8 +133,7 @@ func RegisterWebSearch(s *server.MCPServer, store *secrets.Store) {
 		if err != nil {
 			out.ErrorReason = err.Error()
 			out.DurationMs = time.Since(start).Milliseconds()
-			body, _ := json.Marshal(out)
-			return mcp.NewToolResultText(string(body)), nil
+			return resultOf(out), nil
 		}
 		if len(hits) > limit {
 			hits = hits[:limit]
@@ -140,9 +142,37 @@ func RegisterWebSearch(s *server.MCPServer, store *secrets.Store) {
 		out.Results = hits
 		out.ResultsCount = len(hits)
 		out.DurationMs = time.Since(start).Milliseconds()
-		body, _ := json.Marshal(out)
-		return mcp.NewToolResultText(string(body)), nil
+		return resultOf(out), nil
 	})
+}
+
+// Render satisfies the Renderer contract. Header carries query +
+// backend; body lists `[N] title — url` rows so a developer scans
+// results the same way they would in a browser results page.
+func (r WebSearchResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Query)
+	}
+	var b strings.Builder
+	b.WriteString(r.HeaderLine(fmt.Sprintf("search %q", r.Query)))
+	b.WriteByte('\n')
+	if len(r.Results) == 0 {
+		b.WriteString("(no results)\n")
+	} else {
+		for i, h := range r.Results {
+			fmt.Fprintf(&b, "[%d] %s\n    %s\n", i+1, h.Title, h.URL)
+			if h.Snippet != "" {
+				fmt.Fprintf(&b, "    %s\n", h.Snippet)
+			}
+		}
+	}
+	extras := []string{fmt.Sprintf("%d result(s)", r.ResultsCount)}
+	if r.Truncated {
+		extras = append(extras, "truncated")
+	}
+	b.WriteByte('\n')
+	b.WriteString(r.FooterLine(extras...))
+	return b.String()
 }
 
 // ErrMissingAPIKey is returned by backends when their required API key
