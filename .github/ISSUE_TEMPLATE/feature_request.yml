@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a new tool, format, source backend, or behavior.
+title: "feat: <one-line summary>"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening, scan [the wiki ADRs](https://github.com/bahadirarda/clawtool/tree/main/wiki/decisions). If your idea touches a locked decision, propose a superseding ADR rather than a feature.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user-facing pain are we solving? Be concrete.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: |
+        Wrap-don't-reinvent (ADR-007) is the discipline. If your proposal involves writing a parser or an algorithm, please name an existing engine we should wrap instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What did you reject, and why?
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - New core tool
+        - New format for an existing tool
+        - New source catalog entry
+        - New WebSearch backend
+        - New CLI subcommand
+        - Polish / DX
+        - Other
+    validations:
+      required: true
