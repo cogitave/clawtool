@@ -32,6 +32,11 @@ test: ## Run unit tests (race detector enabled).
 e2e: build stub-server ## Run end-to-end MCP integration tests against the built binary.
 	@bash test/e2e/run.sh
 
+.PHONY: integration
+integration: build ## Multi-instance soak against real upstream MCP servers (npx required).
+	@command -v npx >/dev/null 2>&1 || { echo "npx required (install Node.js 18+)"; exit 1; }
+	@bash test/e2e/integration.sh
+
 .PHONY: stub-server
 stub-server: ## Build the stub MCP server used as a test fixture.
 	$(GO) build -o test/e2e/stub-server/stub-server ./test/e2e/stub-server
