@@ -17,6 +17,15 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### REFINE — ADR-004 Configuration UX: multi-level tool selectors
+
+- Added selector hierarchy to ADR-004: server (`github`), tool (`github.delete_repo`), tag (`tag:destructive`), group (`group:review-set`), profile (orthogonal).
+- Precedence: tool > group > tag > server, with later layers overriding. Same-level conflict: **deny wins** (safety default).
+- New CLI surface: `clawtool group create`, `clawtool tools status <selector>` for resolution debugging.
+- Open: selector grammar finalization (negation `!`, wildcards `*`).
+- Reasoning: enumerating tools one-by-one (docker-gateway weakness) and server-only toggling (1mcp-agent weakness) both hurt real workflows. Multi-level selectors cover the gap; tags exploit the manifest annotations already spec'd in ADR-004 decision 3.
+- Updated [[004 clawtool initial architecture direction]], [[Hot]], this log.
+
 ### RESEARCH PHASE — universal-toolset landscape survey + initial architecture ADR
 
 - Defined research scope: [[Research Scope 2026-04-26]] — selection criteria, universe of 11 projects surveyed, top 4 picked for deep-dive.

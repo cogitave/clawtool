@@ -78,22 +78,54 @@ After surveying the universal-toolset / MCP-aggregator landscape ([[Universal To
 
 **Consequence**: clawtool's added value lives in the annotations layer (search ranking, default-enable, stability tier), not in incompatible schema changes.
 
-### 4. Configuration UX: CLI-first, declarative file fallback, hot-reload
+### 4. Configuration UX: CLI-first, declarative file fallback, hot-reload, multi-level selectors
 
 **Decision**:
-- Primary: CLI with dot-notation, modeled on `docker mcp profile tools`. Examples:
+- Primary: CLI with dot-notation, modeled on `docker mcp profile tools` but extended with **multi-level tool selectors** (server, tool, tag, group):
   ```bash
+  # Tool-level (most specific) — operates on one tool
   clawtool tools enable ripgrep.search
   clawtool tools disable github.delete_repo
+
+  # Server-level — operates on every tool of a server
+  clawtool tools disable github                    # all github.* off
+  clawtool tools enable ripgrep                    # all ripgrep.* on
+
+  # Tag-level — operates on every tool with a tag (annotation-driven)
+  clawtool tools disable tag:destructive           # cuts across servers
+  clawtool tools enable tag:read-only
+
+  # Group-level — operates on a user-defined named set
+  clawtool group create review-set ripgrep github.create_issue github.list_pulls
+  clawtool tools enable group:review-set
+
+  # Profile (orthogonal) — bundles a complete enable/disable state
   clawtool profile create personal
   clawtool profile use personal
   ```
 - Secondary: declarative TOML or JSON file (`~/.config/clawtool/config.toml`), discoverable per-directory via `.clawtoolrc` or via a `[clawtool]` section in `.envrc`-style env. Hot-reload supported (1mcp-agent precedent).
 - Tertiary: GUI — out of scope for v1. Anyone who wants GUI uses mcp-router on top.
 
-**Rationale**: Terminal-driven AI coding workflows want CLI. docker-mcp-gateway's dot-notation is the gold standard for ergonomics. Declarative file ensures reproducibility (commit `.clawtoolrc` to a project = teammates get same toolset). Hot-reload is table stakes.
+#### Selector resolution & precedence
 
-**Consequence**: GUI users are explicitly redirected to mcp-router as a complement, not a competitor. clawtool ≠ mcp-router replacement.
+Selectors compose. When a tool's effective state is computed, layers are evaluated in this order, with **later layers overriding earlier ones**:
+
+1. **Server-level rule** (`github`)
+2. **Tag-level rule** (`tag:destructive`)
+3. **Group-level rule** (`group:review-set`)
+4. **Tool-level rule** (`github.delete_repo`) — most specific, wins last
+
+So: `tools disable github` then `tools enable github.create_issue` leaves only `create_issue` enabled, the rest of `github.*` disabled. Mental model: each level is an override of the previous.
+
+**Conflict tie-breaker** at the same level (e.g., two tag rules covering the same tool): **deny wins** — explicit `disable` overrides explicit `enable`. Safety default; prevents accidental re-enable of destructive tools via tag overlap.
+
+The `clawtool tools status <selector>` command resolves and prints the effective state plus which rule won, for inspection.
+
+**Rationale**: Real config workflows mix scopes. "Disable everything destructive across all servers" (tag), "enable a curated PR-review set for this project" (group), "turn this one tool off" (tool), "give me everything from this server" (server) — all common. Forcing users to enumerate one-tool-at-a-time is the docker-gateway weakness; forcing server-only enable is the 1mcp-agent weakness. Tags + groups + clear precedence cover the gap.
+
+**Consequence**: clawtool's tool manifest must carry tag information (already specified — `annotations.clawtool.tags` in decision 3). Group definitions are clawtool-state, stored in profile config. The status/inspect command becomes essential for users to debug "why is this tool enabled?".
+
+GUI users redirected to mcp-router as complement, not competitor. clawtool ≠ mcp-router replacement.
 
 ### 5. Build new vs extend 1mcp-agent: build new, but borrow shamelessly
 
@@ -135,6 +167,7 @@ After surveying the universal-toolset / MCP-aggregator landscape ([[Universal To
 - Catalog format ownership — should clawtool define a clawtool-native catalog, or read others (Docker MCP Catalog, MCP Registry, Smithery)?
 - License choice — Apache 2.0 vs MIT vs something else.
 - Implementation language — Go (single static binary, easy cross-compile), Rust (best for the same), TypeScript (fastest dev iteration but heavier dist).
+- Selector grammar finalization — current draft (`server`, `server.tool`, `tag:X`, `group:Y`, `profile use`) needs validation against real workflows. Possible additions: `negation` (`!github.delete_repo`), `wildcards` (`github.list_*`).
 
 ## Consequences
 
