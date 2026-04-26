@@ -32,12 +32,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: gofmt -d (no diff allowed)
+      - name: gofmt (no diff allowed)
+        # gofmt does not understand the "./..." pattern; pass the
+        # repo root so it walks recursively. Capture stdout (the
+        # offending file list); fail when non-empty.
         run: |
-          out=$(gofmt -d -l ./...)
+          out=$(gofmt -l .)
           if [ -n "$out" ]; then
-            echo "::error::gofmt produced diff; run 'gofmt -w ./...'"
+            echo "::error::gofmt drift; run 'gofmt -w .'"
             echo "$out"
+            gofmt -d $out
             exit 1
           fi
       - name: go vet
