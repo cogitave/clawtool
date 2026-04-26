@@ -40,27 +40,44 @@ import (
 // until stdin closes (the conventional MCP shutdown signal) or an
 // unrecoverable error occurs.
 func ServeStdio(ctx context.Context) error {
+	s, mgr, _, _, err := buildMCPServer(ctx)
+	if err != nil {
+		return err
+	}
+	defer mgr.Stop()
+	if err := server.ServeStdio(s); err != nil {
+		return fmt.Errorf("stdio serve: %w", err)
+	}
+	return nil
+}
+
+// buildMCPServer wires the full MCP server (config, secrets, sources,
+// search index, every tool registration). Returned to the caller so a
+// transport other than stdio (e.g. the Phase 2 HTTP gateway) can run
+// the same server. The Manager is returned alongside so callers can
+// Stop() it on shutdown.
+func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, config.Config, *secrets.Store, error) {
 	cfg, err := config.LoadOrDefault(config.DefaultPath())
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return nil, nil, config.Config{}, nil, fmt.Errorf("load config: %w", err)
 	}
 	sec, err := secrets.LoadOrEmpty(secrets.DefaultPath())
 	if err != nil {
-		return fmt.Errorf("load secrets: %w", err)
+		return nil, nil, cfg, nil, fmt.Errorf("load secrets: %w", err)
 	}
 
 	mgr := sources.NewManager(cfg, sec)
 	if err := mgr.Start(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "clawtool: some sources failed to start: %v\n", err)
 	}
-	defer mgr.Stop()
 
 	// Build the search-index descriptors before any registration so the
 	// final corpus reflects what we're actually about to serve.
 	docs := buildIndexDocs(cfg, mgr)
 	idx, err := search.Build(docs)
 	if err != nil {
-		return fmt.Errorf("build search index: %w", err)
+		mgr.Stop()
+		return nil, nil, cfg, sec, fmt.Errorf("build search index: %w", err)
 	}
 
 	s := server.NewMCPServer(
@@ -128,11 +145,7 @@ func ServeStdio(ctx context.Context) error {
 	for _, st := range mgr.AggregatedTools() {
 		s.AddTool(st.Tool, st.Handler)
 	}
-
-	if err := server.ServeStdio(s); err != nil {
-		return fmt.Errorf("stdio serve: %w", err)
-	}
-	return nil
+	return s, mgr, cfg, sec, nil
 }
 
 // buildIndexDocs assembles search descriptors from every tool clawtool will

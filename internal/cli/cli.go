@@ -313,7 +313,13 @@ func quoteIfDot(s string) string {
 const topUsage = `clawtool — canonical tool layer for AI coding agents
 
 Usage:
-  clawtool serve            Run as an MCP server over stdio.
+  clawtool serve            Run as an MCP server over stdio (default).
+  clawtool serve --listen :8080 [--token-file <path>]
+                            Run the HTTP gateway. Bearer-token auth at the
+                            edge. Endpoints: /v1/health, /v1/agents,
+                            /v1/send_message. TLS via reverse proxy.
+  clawtool serve init-token [<path>]
+                            Generate + write a fresh listener token.
   clawtool init [--yes]     Interactive wizard: pick recipes per category
                             (license, dependabot, release-please, etc.) and
                             inject them into the current repo. --yes / non-TTY:

@@ -692,6 +692,83 @@ echo "$send_resp" | grep -qE "not found|no callable|not callable|bridge add" \
   || fail "SendMessage: ghost instance should surface a resolution / bridge-missing error — got: $send_resp"
 pass "SendMessage: actionable error when target unreachable"
 
+# ── 16. HTTP gateway (ADR-014 Phase 2, v0.11) ────────────────────────────
+echo ""
+echo "▶ test: clawtool serve --listen HTTP gateway"
+
+# Pick a random high port to avoid conflicts.
+HTTP_PORT=$(awk 'BEGIN{srand(); print int(40000+rand()*20000)}')
+HTTP_TOKEN_FILE="$TMPCFG/listener-token"
+
+# 16a. init-token writes a 0600 file with a 64-char hex token.
+"$BIN" serve init-token "$HTTP_TOKEN_FILE" >/dev/null
+[[ -f "$HTTP_TOKEN_FILE" ]] || fail "init-token: file not created"
+HTTP_TOKEN=$(cat "$HTTP_TOKEN_FILE" | tr -d '\n')
+[[ ${#HTTP_TOKEN} -eq 64 ]] || fail "init-token: token should be 64 hex chars, got ${#HTTP_TOKEN}"
+pass "init-token: writes 64-char hex token"
+
+# Some shells / Linux distros leave the file group-readable by umask;
+# our InitTokenFile forces 0600 — verify the bit landed.
+mode=$(stat -c '%a' "$HTTP_TOKEN_FILE" 2>/dev/null || stat -f '%Lp' "$HTTP_TOKEN_FILE")
+[[ "$mode" == "600" ]] || fail "init-token: file mode is $mode, expected 600"
+pass "init-token: file mode is 0600"
+
+# 16b. Boot the gateway in the background, wait for it to start.
+XDG_CONFIG_HOME="$TMPCFG" "$BIN" serve --listen ":$HTTP_PORT" --token-file "$HTTP_TOKEN_FILE" >/dev/null 2>&1 &
+HTTP_PID=$!
+trap 'kill $HTTP_PID 2>/dev/null; rm -rf "$TMPCFG" "$RECIPE_TMP"' EXIT
+
+# Wait up to 5s for the listener to come up.
+for _ in $(seq 1 50); do
+  if curl -sS -o /dev/null "http://127.0.0.1:$HTTP_PORT/v1/health" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+
+# 16c. Unauthenticated request rejected.
+status=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$HTTP_PORT/v1/health")
+[[ "$status" == "401" ]] || fail "unauth /v1/health: expected 401, got $status"
+pass "/v1/health: rejects requests without bearer token"
+
+# 16d. Authenticated /v1/health returns 200 + JSON.
+health=$(curl -sS -H "Authorization: Bearer $HTTP_TOKEN" "http://127.0.0.1:$HTTP_PORT/v1/health")
+echo "$health" | grep -qF '"status":"ok"' || fail "/v1/health body: $health"
+pass "/v1/health: 200 with status=ok"
+
+# 16e. /v1/agents returns the registry snapshot with count + agents.
+agents=$(curl -sS -H "Authorization: Bearer $HTTP_TOKEN" "http://127.0.0.1:$HTTP_PORT/v1/agents")
+echo "$agents" | grep -qF '"agents":' || fail "/v1/agents body: $agents"
+echo "$agents" | grep -qF '"count":' || fail "/v1/agents missing count: $agents"
+pass "/v1/agents: registry snapshot returned"
+
+# 16f. /v1/send_message rejects empty prompt with 400.
+bad=$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer $HTTP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"instance":"claude"}' \
+  "http://127.0.0.1:$HTTP_PORT/v1/send_message")
+[[ "$bad" == "400" ]] || fail "/v1/send_message empty prompt: expected 400, got $bad"
+pass "/v1/send_message: 400 on missing prompt"
+
+# 16g. Wrong token rejected.
+status=$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer wrong-token" \
+  "http://127.0.0.1:$HTTP_PORT/v1/health")
+[[ "$status" == "401" ]] || fail "wrong token /v1/health: expected 401, got $status"
+pass "/v1/health: rejects wrong token"
+
+# 16h. Unknown path 404.
+status=$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer $HTTP_TOKEN" \
+  "http://127.0.0.1:$HTTP_PORT/v1/no-such-endpoint")
+[[ "$status" == "404" ]] || fail "unknown path: expected 404, got $status"
+pass "unknown path: 404"
+
+# Clean shutdown.
+kill $HTTP_PID 2>/dev/null
+wait $HTTP_PID 2>/dev/null || true
+
 # ── done ──────────────────────────────────────────────────────────────────
 
 echo ""
