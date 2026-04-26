@@ -1,0 +1,30 @@
+{
+  "name": "clawtool",
+  "version": "0.8.3",
+  "description": "The canonical tool layer for AI coding agents — install once, use everywhere. Replaces native Bash/Read/Edit/Write/Grep/Glob with timeout-safe, structured-output equivalents; adds WebFetch + WebSearch + a bleve-backed ToolSearch primitive for deferred tool discovery; aggregates configurable MCP source servers (github, slack, postgres, …) under the same surface.",
+  "author": {
+    "name": "Bahadır Arda",
+    "url": "https://github.com/bahadirarda"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/bahadirarda/clawtool",
+  "repository": "https://github.com/bahadirarda/clawtool",
+  "keywords": [
+    "mcp",
+    "tools",
+    "canonical",
+    "bash",
+    "search-first",
+    "multi-agent",
+    "claude-code",
+    "codex",
+    "opencode",
+    "toolset"
+  ],
+  "mcpServers": {
+    "clawtool": {
+      "command": "clawtool",
+      "args": ["serve"]
+    }
+  }
+}
