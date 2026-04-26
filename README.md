@@ -86,8 +86,7 @@ Wrapped at a higher quality bar than every agent's built-in equivalent.
 | `WebSearch`   | pluggable backend (Brave today, Tavily/SearXNG planned) | API key via secrets store · HTML markup stripped     |
 | `ToolSearch`  | `bleve` (BM25)                                       | name^3 · keywords^2 · description^1 boosts; type/limit filters |
 
-Per [ADR-007](https://github.com/cogitave/clawtool/blob/main/CHANGELOG.md)
-every engine is **wrapped, never reinvented**. The polish layer
+Every engine is **wrapped, never reinvented**. The polish layer
 (uniform structured output, timeout-safety, BOM preserve, atomic
 writes, secret redaction) is what clawtool brings.
 
@@ -242,9 +241,8 @@ Until all are green, every increment is a patch (`v0.8.x`).
 ## Contributing
 
 PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow
-(Conventional Commits required, test discipline, ADR cross-link
-expectations) and [SECURITY.md](SECURITY.md) for vulnerability
-disclosure.
+(Conventional Commits required, test discipline) and
+[SECURITY.md](SECURITY.md) for vulnerability disclosure.
 
 ## License
 

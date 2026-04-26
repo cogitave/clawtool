@@ -333,13 +333,13 @@ Usage:
   clawtool help             Show this help.
 
 Selector forms:
-  Bash                      A core tool (PascalCase, ADR-006).
+  Bash                      A core tool (PascalCase).
   github-personal.create_issue
                             A sourced tool: <instance>.<tool>. Instance is
                             kebab-case, tool is snake_case.
 
-Future (v0.3+):
-  tag:destructive           Tag-level selector (ADR-004 §4).
+Future:
+  tag:destructive           Tag-level selector.
   group:review-set          Group-level selector.
   clawtool source add <name> -- <command...>
   clawtool profile use <name>
