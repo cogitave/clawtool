@@ -70,15 +70,36 @@ func TestParseSendArgs_AllFlags(t *testing.T) {
 		"--session", "abc-123",
 		"--model", "gpt-5.2",
 		"--format", "stream-json",
+		"--tag", "long-context",
 		"investigate the regression",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if args.agent != "codex1" || args.session != "abc-123" || args.model != "gpt-5.2" || args.format != "stream-json" {
+	if args.agent != "codex1" || args.session != "abc-123" || args.model != "gpt-5.2" || args.format != "stream-json" || args.tag != "long-context" {
 		t.Errorf("flags not parsed: %+v", args)
 	}
 	if args.prompt != "investigate the regression" {
 		t.Errorf("prompt: got %q", args.prompt)
+	}
+}
+
+func TestParseSendArgs_TagAlone(t *testing.T) {
+	args, err := parseSendArgs([]string{"--tag", "fast", "summarise"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args.tag != "fast" {
+		t.Errorf("tag: got %q", args.tag)
+	}
+	if args.prompt != "summarise" {
+		t.Errorf("prompt: got %q", args.prompt)
+	}
+}
+
+func TestParseSendArgs_TagWithoutValueErrors(t *testing.T) {
+	_, err := parseSendArgs([]string{"--tag"})
+	if err == nil {
+		t.Error("--tag without value should error")
 	}
 }

@@ -26,14 +26,17 @@ import (
 )
 
 // Agent is one row in the supervisor's registry. Same shape across
-// CLI `--list`, MCP `AgentList`, and HTTP `GET /v1/agents`.
+// CLI `--list`, MCP `AgentList`, and HTTP `GET /v1/agents`. Tags and
+// FailoverTo drive Phase 4's dispatch policies.
 type Agent struct {
-	Instance  string `json:"instance"`             // user-chosen kebab-case name (claude-personal, claude-work, codex1, …)
-	Family    string `json:"family"`               // upstream CLI family (claude / codex / opencode / gemini)
-	Bridge    string `json:"bridge,omitempty"`     // installed bridge name ("codex-bridge", "opencode-bridge", "gemini-bridge"); empty when family lacks a bridge concept (claude self)
-	Status    string `json:"status"`               // "callable", "bridge-missing", "binary-missing", "disabled"
-	Callable  bool   `json:"callable"`             // derived: status == "callable"
-	AuthScope string `json:"auth_scope,omitempty"` // [secrets.X] section to resolve env from
+	Instance   string   `json:"instance"`              // user-chosen kebab-case name (claude-personal, claude-work, codex1, …)
+	Family     string   `json:"family"`                // upstream CLI family (claude / codex / opencode / gemini)
+	Bridge     string   `json:"bridge,omitempty"`      // installed bridge name ("codex-bridge", "opencode-bridge", "gemini-bridge"); empty when family lacks a bridge concept (claude self)
+	Status     string   `json:"status"`                // "callable", "bridge-missing", "binary-missing", "disabled"
+	Callable   bool     `json:"callable"`              // derived: status == "callable"
+	AuthScope  string   `json:"auth_scope,omitempty"`  // [secrets.X] section to resolve env from
+	Tags       []string `json:"tags,omitempty"`        // labels for tag-routed dispatch (Phase 4)
+	FailoverTo []string `json:"failover_to,omitempty"` // ordered fallback chain of instance names (Phase 4)
 }
 
 // Supervisor is the single dispatch entry point for prompt routing.
@@ -51,7 +54,8 @@ type Supervisor interface {
 type supervisor struct {
 	loadConfig func() (config.Config, error)
 	transports map[string]Transport
-	stickyPath string // override for tests; default is computed
+	stickyPath string           // override for tests; default is computed
+	rrState    *roundRobinState // round-robin counters; one supervisor = one rotation state
 }
 
 // NewSupervisor wires the default supervisor. Tests inject custom
@@ -65,6 +69,7 @@ func NewSupervisor() Supervisor {
 			"opencode": OpencodeTransport(),
 			"gemini":   GeminiTransport(),
 		},
+		rrState: &roundRobinState{},
 	}
 }
 
@@ -87,7 +92,10 @@ func (s *supervisor) Agents(_ context.Context) ([]Agent, error) {
 		if !validFamily(ac.Family) {
 			continue
 		}
-		out = append(out, s.composeAgent(instance, ac.Family, ac.SecretsScope))
+		a := s.composeAgent(instance, ac.Family, ac.SecretsScope)
+		a.Tags = append([]string(nil), ac.Tags...)
+		a.FailoverTo = append([]string(nil), ac.FailoverTo...)
+		out = append(out, a)
 		configuredFamilies[ac.Family] = true
 	}
 
@@ -153,23 +161,92 @@ func (s *supervisor) familyHasBackend(family string) bool {
 	return ok
 }
 
-// Send routes the prompt to the resolved instance's transport.
+// Send routes the prompt through the configured dispatch policy and
+// returns the streamed reply. Phase 4: the policy seam picks the
+// primary instance + (optional) failover chain; the cascade only
+// kicks in when the primary's Transport.Send returns an error before
+// any byte was streamed (we don't retry mid-stream — that'd duplicate
+// partial output to the caller).
 func (s *supervisor) Send(ctx context.Context, instance, prompt string, opts map[string]any) (io.ReadCloser, error) {
-	a, err := s.Resolve(ctx, instance)
+	all, err := s.Agents(ctx)
 	if err != nil {
 		return nil, err
 	}
-	tr, ok := s.transports[a.Family]
-	if !ok {
-		return nil, fmt.Errorf("no transport registered for family %q", a.Family)
+	if len(all) == 0 {
+		return nil, fmt.Errorf("no agents registered — run `clawtool bridge add <family>` first")
 	}
-	if !a.Callable {
-		return nil, fmt.Errorf("agent %q is not callable: status=%s (run `clawtool bridge add %s`)", a.Instance, a.Status, a.Family)
+
+	cfg, _ := s.loadConfig()
+	tag, _ := opts["tag"].(string)
+	tag = strings.TrimSpace(tag)
+
+	// Tag-only dispatch: no --agent, but a tag was supplied. Goes
+	// straight to tagRoutedPolicy regardless of dispatch.mode.
+	if strings.TrimSpace(instance) == "" && tag != "" {
+		primary, fallback, err := tagRoutedPolicy{}.Pick("", tag, all)
+		if err != nil {
+			return nil, err
+		}
+		return s.dispatch(ctx, primary, fallback, prompt, opts)
 	}
-	// TODO(v0.10.x): apply [secrets.<a.AuthScope>] resolution to set
-	// per-instance env (ANTHROPIC_API_KEY, OPENAI_API_KEY, …). For Phase
-	// 1 the upstream CLI inherits the parent process env unchanged.
-	return tr.Send(ctx, prompt, opts)
+
+	// Empty `instance` AND empty tag falls back to the Phase 1
+	// precedence chain (env / sticky / single-callable). Keeps the
+	// pre-Phase-4 UX unchanged for callers that don't configure a
+	// dispatch mode.
+	if strings.TrimSpace(instance) == "" {
+		a, err := s.Resolve(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		return s.dispatch(ctx, a, nil, prompt, opts)
+	}
+
+	// Explicit instance: route through the configured policy.
+	// `tag != ""` overrides the configured mode (per-call wins).
+	policy := pickPolicy(cfg.Dispatch.Mode, s.rrState)
+	if tag != "" {
+		policy = tagRoutedPolicy{}
+	}
+
+	primary, fallback, err := policy.Pick(instance, tag, all)
+	if err != nil {
+		return nil, err
+	}
+	return s.dispatch(ctx, primary, fallback, prompt, opts)
+}
+
+// dispatch invokes Transport.Send on `primary`; if that errors, it
+// walks `fallback` in order. The first successful Send "wins" and its
+// io.ReadCloser is returned — failover never runs once bytes have
+// started streaming.
+func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Agent, prompt string, opts map[string]any) (io.ReadCloser, error) {
+	chain := append([]Agent{primary}, fallback...)
+	var lastErr error
+	for _, a := range chain {
+		tr, ok := s.transports[a.Family]
+		if !ok {
+			lastErr = fmt.Errorf("no transport registered for family %q", a.Family)
+			continue
+		}
+		if !a.Callable {
+			lastErr = fmt.Errorf("agent %q is not callable: status=%s (run `clawtool bridge add %s`)", a.Instance, a.Status, a.Family)
+			continue
+		}
+		// TODO(v0.10.x): apply [secrets.<a.AuthScope>] resolution to set
+		// per-instance env (ANTHROPIC_API_KEY, OPENAI_API_KEY, …). For
+		// Phase 1 the upstream CLI inherits the parent process env
+		// unchanged.
+		rc, err := tr.Send(ctx, prompt, opts)
+		if err == nil {
+			return rc, nil
+		}
+		lastErr = fmt.Errorf("send to %q (%s): %w", a.Instance, a.Family, err)
+	}
+	if lastErr == nil {
+		lastErr = errors.New("dispatch failed: no callable agent")
+	}
+	return nil, lastErr
 }
 
 // Resolve applies the ADR-014 precedence chain to pick an Agent for

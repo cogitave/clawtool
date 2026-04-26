@@ -9,7 +9,7 @@ import (
 )
 
 const sendUsage = `Usage:
-  clawtool send [--agent <instance>] [--session <sid>] [--model <m>] [--format <f>] "<prompt>"
+  clawtool send [--agent <instance>] [--tag <label>] [--session <sid>] [--model <m>] [--format <f>] "<prompt>"
                                 Stream a prompt to the resolved agent's
                                 upstream CLI. Output streams to stdout
                                 verbatim — wire format depends on the
@@ -19,6 +19,15 @@ const sendUsage = `Usage:
 Resolution precedence: --agent flag > CLAWTOOL_AGENT env > sticky default
 (set via 'clawtool agent use <i>') > single-instance fallback. Bare
 '--agent claude' resolves if exactly one instance of that family exists.
+
+Phase 4 dispatch policies (configured via [dispatch].mode in config.toml):
+  explicit (default) — pin an instance via --agent.
+  round-robin        — '--agent <family>' rotates across same-family
+                       callable instances.
+  failover           — primary errors cascade through AgentConfig.failover_to.
+  tag-routed         — '--tag <label>' picks any callable instance whose
+                       tags include the label (per-call --tag overrides
+                       the configured mode).
 `
 
 // runSend is the dispatcher hooked into Run().
@@ -51,6 +60,7 @@ type sendArgs struct {
 	session string
 	model   string
 	format  string
+	tag     string
 	prompt  string
 	list    bool
 }
@@ -86,6 +96,12 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 			}
 			out.format = argv[i+1]
 			i++
+		case "--tag":
+			if i+1 >= len(argv) {
+				return out, fmt.Errorf("--tag requires a value")
+			}
+			out.tag = argv[i+1]
+			i++
 		case "--help", "-h":
 			out.list = false
 			out.prompt = ""
@@ -116,6 +132,9 @@ func (a *App) Send(args sendArgs) error {
 	}
 	if args.format != "" {
 		opts["format"] = args.format
+	}
+	if args.tag != "" {
+		opts["tag"] = args.tag
 	}
 	rc, err := sup.Send(context.Background(), args.agent, args.prompt, opts)
 	if err != nil {

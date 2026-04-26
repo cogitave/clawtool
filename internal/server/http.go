@@ -206,9 +206,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 // sendMessageRequest is the inbound shape. Mirrors the MCP tool's
 // arguments exactly (ADR-014 promises the same shape across surfaces).
+// Phase 4: top-level `tag` field is sugar for `opts.tag` so callers
+// don't have to nest a single value under opts.
 type sendMessageRequest struct {
 	Instance string         `json:"instance"`
 	Prompt   string         `json:"prompt"`
+	Tag      string         `json:"tag,omitempty"`
 	Opts     map[string]any `json:"opts,omitempty"`
 }
 
@@ -225,6 +228,12 @@ func handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.Prompt) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "prompt is required"})
 		return
+	}
+	if req.Tag != "" {
+		if req.Opts == nil {
+			req.Opts = map[string]any{}
+		}
+		req.Opts["tag"] = req.Tag
 	}
 	sup := agents.NewSupervisor()
 	rc, err := sup.Send(r.Context(), req.Instance, req.Prompt, req.Opts)
