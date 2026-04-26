@@ -30,9 +30,17 @@ func (c claudeTransport) Send(ctx context.Context, prompt string, opts map[strin
 		return nil, ErrSelfDispatch
 	}
 	o := ParseOptions(opts)
-	args := []string{"-p", prompt, "--bare"}
+
+	// Claude CLI's `-p` (print) headless mode is the canonical
+	// non-interactive surface. We deliberately do NOT pass `--bare`:
+	// older drafts of this transport added it expecting "no chrome"
+	// behaviour, but on the current Claude Code build that flag puts
+	// the CLI into a path that ignores the existing auth session and
+	// reports "Not logged in" — the opposite of what's wanted in a
+	// headless dispatch. Plain `-p` honours the session.
+	args := []string{"-p", prompt}
 	if o.SessionID != "" {
-		args = []string{"--resume", o.SessionID, "-p", prompt, "--bare"}
+		args = []string{"--resume", o.SessionID, "-p", prompt}
 	}
 	args = append(args, joinModel(o.Model, "--model")...)
 	if o.Format != "" {

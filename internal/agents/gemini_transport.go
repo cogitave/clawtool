@@ -18,11 +18,28 @@ func (geminiTransport) Family() string { return "gemini" }
 
 func (geminiTransport) Send(ctx context.Context, prompt string, opts map[string]any) (io.ReadCloser, error) {
 	o := ParseOptions(opts)
-	args := []string{"-p", prompt}
+
+	// --skip-trust: Gemini CLI refuses to run in directories it hasn't
+	// marked as trusted (exit 55 + a stderr hint pointing at
+	// geminicli.com/docs/cli/trusted-folders). The trust check is an
+	// IDE-style safeguard against accidentally executing untrusted
+	// project config; in clawtool's relay path the operator has
+	// explicitly chosen to dispatch via `clawtool send`, so the
+	// safeguard is redundant and we suppress it. Operators who'd
+	// rather opt back in can pass `extra_args = ["--no-skip-trust"]`
+	// per call (Gemini accepts that flag — verified via `gemini --help`).
+	args := []string{"-p", prompt, "--skip-trust"}
 	args = append(args, joinModel(o.Model, "--model")...)
-	if o.Format != "" {
-		args = append(args, "--output-format", o.Format)
+
+	// Gemini CLI silently swallows output in non-TTY contexts unless
+	// --output-format is explicit. Default to "text" so the bare
+	// `clawtool send --agent gemini "<prompt>"` flow returns
+	// something. Caller can still override with --format.
+	format := o.Format
+	if format == "" {
+		format = "text"
 	}
+	args = append(args, "--output-format", format)
 	args = append(args, o.ExtraArgs...)
 
 	// Gemini has no native session-resume; SessionID is ignored at

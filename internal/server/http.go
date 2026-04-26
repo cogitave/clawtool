@@ -28,7 +28,15 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/agents"
+	"github.com/cogitave/clawtool/internal/setup"
 	"github.com/cogitave/clawtool/internal/version"
+
+	// Blank import: ensures every recipe package's init() runs before
+	// runRecipeApply touches the registry. Mirrors the same trick
+	// recipes_tool.go uses for the MCP path.
+	_ "github.com/cogitave/clawtool/internal/setup/recipes"
+
+	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 // HTTPOptions configures the listener.
@@ -56,7 +64,7 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 		return err
 	}
 
-	_, mgr, _, _, err := buildMCPServer(ctx)
+	mcpSrv, mgr, _, _, err := buildMCPServer(ctx)
 	if err != nil {
 		return err
 	}
@@ -68,6 +76,18 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 	mux.Handle("/v1/health", authed(http.HandlerFunc(handleHealth)))
 	mux.Handle("/v1/agents", authed(http.HandlerFunc(handleAgents)))
 	mux.Handle("/v1/send_message", authed(http.HandlerFunc(handleSendMessage)))
+	mux.Handle("/v1/recipes", authed(http.HandlerFunc(handleRecipes)))
+	mux.Handle("/v1/recipe/apply", authed(http.HandlerFunc(handleRecipeApply)))
+
+	// Optional MCP-over-HTTP transport. Mounts the full clawtool MCP
+	// toolset (Bash, Read, Edit, SendMessage, BridgeAdd, …) at /mcp via
+	// mark3labs/mcp-go's StreamableHTTPServer. Bearer auth still
+	// applies — the streamable handler is wrapped by authed.
+	if opts.MCPHTTP {
+		streamable := mcpserver.NewStreamableHTTPServer(mcpSrv)
+		mux.Handle("/mcp", authed(streamable))
+		mux.Handle("/mcp/", authed(http.StripPrefix("/mcp", streamable)))
+	}
 
 	// Catch-all for unknown paths — return 404 with a JSON body
 	// mentioning the supported endpoints (mirrors ADR-014's
@@ -79,6 +99,8 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 				"GET  /v1/health",
 				"GET  /v1/agents",
 				"POST /v1/send_message",
+				"GET  /v1/recipes [?category=<c>]",
+				"POST /v1/recipe/apply",
 			},
 		})
 	})
@@ -266,6 +288,131 @@ func handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// ── recipes ────────────────────────────────────────────────────────
+
+// recipeInfo is the JSON shape /v1/recipes returns. Mirrors the MCP
+// `RecipeList` tool's row shape so HTTP and MCP callers see the same
+// fields. Body fields are populated read-only — Apply is the mutator.
+type recipeInfoJSON struct {
+	Name        string `json:"name"`
+	Category    string `json:"category"`
+	Description string `json:"description"`
+	Upstream    string `json:"upstream"`
+	Stability   string `json:"stability"`
+	Status      string `json:"status,omitempty"`
+	Detail      string `json:"detail,omitempty"`
+}
+
+func handleRecipes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET only"})
+		return
+	}
+	category := strings.TrimSpace(r.URL.Query().Get("category"))
+	repo := strings.TrimSpace(r.URL.Query().Get("repo"))
+
+	var recipes []setup.Recipe
+	if category != "" {
+		cat := setup.Category(category)
+		if !cat.Valid() {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error": fmt.Sprintf("unknown category %q", category),
+			})
+			return
+		}
+		recipes = setup.InCategory(cat)
+	} else {
+		for _, c := range setup.Categories() {
+			recipes = append(recipes, setup.InCategory(c)...)
+		}
+	}
+	out := make([]recipeInfoJSON, 0, len(recipes))
+	for _, rc := range recipes {
+		m := rc.Meta()
+		row := recipeInfoJSON{
+			Name:        m.Name,
+			Category:    string(m.Category),
+			Description: m.Description,
+			Upstream:    m.Upstream,
+			Stability:   string(m.Stability),
+		}
+		if repo != "" {
+			st, detail, _ := rc.Detect(r.Context(), repo)
+			row.Status = string(st)
+			row.Detail = detail
+		}
+		out = append(out, row)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"recipes": out,
+		"count":   len(out),
+	})
+}
+
+// recipeApplyRequest is the inbound body shape. Repo and Options
+// mirror the MCP tool's parameters.
+type recipeApplyRequest struct {
+	Name    string         `json:"name"`
+	Repo    string         `json:"repo,omitempty"`
+	Options map[string]any `json:"options,omitempty"`
+}
+
+func handleRecipeApply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST only"})
+		return
+	}
+	var req recipeApplyRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("decode body: %v", err)})
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name is required"})
+		return
+	}
+	rc := setup.Lookup(req.Name)
+	if rc == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": fmt.Sprintf("unknown recipe %q", req.Name),
+		})
+		return
+	}
+	repo := strings.TrimSpace(req.Repo)
+	if repo == "" {
+		// HTTP callers (orchestrators / CI hooks) won't have a
+		// terminal cwd; refuse rather than silently mutating $HOME.
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "repo is required when applying via HTTP (no implicit cwd)",
+		})
+		return
+	}
+	res, applyErr := setup.Apply(r.Context(), rc, setup.ApplyOptions{
+		Repo:          repo,
+		RecipeOptions: setup.Options(req.Options),
+		Prompter:      setup.AlwaysSkip{},
+	})
+	body := map[string]any{
+		"recipe":            res.Recipe,
+		"category":          string(res.Category),
+		"repo":              repo,
+		"skipped":           res.Skipped,
+		"skip_reason":       res.SkipReason,
+		"installed_prereqs": res.Installed,
+		"manual_prereqs":    res.ManualHints,
+		"verify_ok":         res.VerifyErr == nil && !res.Skipped,
+	}
+	if res.VerifyErr != nil {
+		body["verify_error"] = res.VerifyErr.Error()
+	}
+	if applyErr != nil {
+		body["error"] = applyErr.Error()
+		writeJSON(w, http.StatusBadRequest, body)
+		return
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 // ── helpers ────────────────────────────────────────────────────────
