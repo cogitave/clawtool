@@ -236,10 +236,10 @@ func runRipgrep(ctx context.Context, bin string, a grepArgs, out *GrepResult) {
 type rgEvent struct {
 	Type string `json:"type"`
 	Data struct {
-		Path       rgPath        `json:"path"`
-		LineNumber int           `json:"line_number"`
-		Lines      rgPath        `json:"lines"`
-		Submatches []rgSubmatch  `json:"submatches"`
+		Path       rgPath       `json:"path"`
+		LineNumber int          `json:"line_number"`
+		Lines      rgPath       `json:"lines"`
+		Submatches []rgSubmatch `json:"submatches"`
 	} `json:"data"`
 }
 type rgPath struct {

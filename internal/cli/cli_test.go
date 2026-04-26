@@ -122,10 +122,10 @@ func TestSelectorValidation_RejectsBadShapes(t *testing.T) {
 		errSubstr string
 	}{
 		{[]string{"tools", "enable", ""}, true, "selector"},
-		{[]string{"tools", "enable", "bash"}, true, "shape"},                          // lowercase, no dot
-		{[]string{"tools", "enable", "Github_Personal.create_issue"}, true, "kebab"},  // uppercase letters in instance
-		{[]string{"tools", "enable", "github-personal.CreateIssue"}, true, "snake"},   // PascalCase tool
-		{[]string{"tools", "enable", "tag:destructive"}, true, "v0.3"},                // not yet wired
+		{[]string{"tools", "enable", "bash"}, true, "shape"},                         // lowercase, no dot
+		{[]string{"tools", "enable", "Github_Personal.create_issue"}, true, "kebab"}, // uppercase letters in instance
+		{[]string{"tools", "enable", "github-personal.CreateIssue"}, true, "snake"},  // PascalCase tool
+		{[]string{"tools", "enable", "tag:destructive"}, true, "v0.3"},               // not yet wired
 		{[]string{"tools", "enable", "group:review-set"}, true, "v0.3"},
 		// valid:
 		{[]string{"tools", "enable", "Bash"}, false, ""},

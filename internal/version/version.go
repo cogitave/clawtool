@@ -6,6 +6,7 @@ const (
 	Name    = "clawtool"
 	Version = "0.9.0" // x-release-please-version
 )
+
 // x-release-please-end
 
 func String() string {

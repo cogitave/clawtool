@@ -11,11 +11,13 @@ type fakeRecipe struct {
 	meta RecipeMeta
 }
 
-func (f fakeRecipe) Meta() RecipeMeta                                       { return f.meta }
-func (f fakeRecipe) Detect(context.Context, string) (Status, string, error) { return StatusAbsent, "", nil }
-func (f fakeRecipe) Prereqs() []Prereq                                      { return nil }
-func (f fakeRecipe) Apply(context.Context, string, Options) error           { return nil }
-func (f fakeRecipe) Verify(context.Context, string) error                   { return nil }
+func (f fakeRecipe) Meta() RecipeMeta { return f.meta }
+func (f fakeRecipe) Detect(context.Context, string) (Status, string, error) {
+	return StatusAbsent, "", nil
+}
+func (f fakeRecipe) Prereqs() []Prereq                            { return nil }
+func (f fakeRecipe) Apply(context.Context, string, Options) error { return nil }
+func (f fakeRecipe) Verify(context.Context, string) error         { return nil }
 
 func newFake(name string, cat Category) fakeRecipe {
 	return fakeRecipe{meta: RecipeMeta{

@@ -182,7 +182,6 @@ func (a *App) Run(argv []string) int {
 		fmt.Fprintf(a.Stderr, "clawtool: unknown command %q\n\n%s", argv[0], topUsage)
 		return 2
 	}
-	return 0
 }
 
 func (a *App) runTools(argv []string) int {

@@ -28,8 +28,8 @@ type doctorReport struct {
 	critical int
 }
 
-func (r *doctorReport) ok(w io.Writer, msg string)      { fmt.Fprintf(w, "  ✓ %s\n", msg) }
-func (r *doctorReport) info(w io.Writer, msg string)    { fmt.Fprintf(w, "  · %s\n", msg) }
+func (r *doctorReport) ok(w io.Writer, msg string)   { fmt.Fprintf(w, "  ✓ %s\n", msg) }
+func (r *doctorReport) info(w io.Writer, msg string) { fmt.Fprintf(w, "  · %s\n", msg) }
 func (r *doctorReport) warn(w io.Writer, msg, fix string) {
 	r.warnings++
 	fmt.Fprintf(w, "  ⚠ %s\n", msg)

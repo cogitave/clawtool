@@ -215,7 +215,7 @@ func (a *App) runInitRepoInteractive(cwd string) int {
 				confirm := huh.NewForm(huh.NewGroup(
 					huh.NewConfirm().
 						Title(fmt.Sprintf("[%s] file exists but isn't clawtool-managed", name)).
-						Description(detail+"\n\nOverwrite with the recipe's canonical version?").
+						Description(detail + "\n\nOverwrite with the recipe's canonical version?").
 						Affirmative("Overwrite").
 						Negative("Skip").
 						Value(&overwrite),

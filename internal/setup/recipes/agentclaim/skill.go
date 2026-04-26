@@ -23,14 +23,14 @@ import (
 //
 // Two install modes:
 //
-//   1. Embedded (Body non-empty): clawtool ships the SKILL.md
-//      inline. No network. Used for community skills we want to
-//      bundle for reliability.
+//  1. Embedded (Body non-empty): clawtool ships the SKILL.md
+//     inline. No network. Used for community skills we want to
+//     bundle for reliability.
 //
-//   2. URL (URL non-empty): clawtool downloads the SKILL.md at
-//      Apply time. The URL must point to raw markdown (e.g. a raw
-//      GitHub gist). Useful for skills the author updates often
-//      where bundling would freeze a stale copy.
+//  2. URL (URL non-empty): clawtool downloads the SKILL.md at
+//     Apply time. The URL must point to raw markdown (e.g. a raw
+//     GitHub gist). Useful for skills the author updates often
+//     where bundling would freeze a stale copy.
 //
 // Body wins if both are set.
 type skillRecipe struct {
