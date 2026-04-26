@@ -9,6 +9,23 @@
 # line names the source. Don't add bare entries — they bit-rot.
 
 # ─────────────────────────────────────────────────────────────────────
+# clawtool's working brain (NOT part of the published product)
+# ─────────────────────────────────────────────────────────────────────
+# These directories hold the maintainer's local Obsidian vault used
+# as a research / decision-tracking aid. They live alongside the source
+# tree for convenience but are not user-facing artifacts.
+/wiki/
+/.obsidian/
+/_templates/
+/.raw/
+# Vault-level CLAUDE.md is Obsidian-specific instructions, not the
+# project README.
+/CLAUDE.md
+# direnv config is per-machine (multi-account git, GH_CONFIG_DIR).
+/.envrc
+/.envrc.local
+
+# ─────────────────────────────────────────────────────────────────────
 # Build outputs
 # ─────────────────────────────────────────────────────────────────────
 /bin/
