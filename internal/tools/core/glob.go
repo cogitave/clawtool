@@ -137,4 +137,3 @@ func executeGlob(pattern, cwd string, limit int) GlobResult {
 	res.DurationMs = time.Since(start).Milliseconds()
 	return res
 }
-

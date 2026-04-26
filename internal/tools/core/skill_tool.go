@@ -101,10 +101,10 @@ func RegisterSkillNew(s *server.MCPServer) {
 		path := filepath.Join(dir, "SKILL.md")
 
 		out := skillNewResult{
-			BaseResult: BaseResult{Operation: "SkillNew"},
-			Name:       name,
-			Path:       dir,
-			Triggers:   triggers,
+			BaseResult:  BaseResult{Operation: "SkillNew"},
+			Name:        name,
+			Path:        dir,
+			Triggers:    triggers,
 			Description: desc,
 		}
 
@@ -134,5 +134,3 @@ func RegisterSkillNew(s *server.MCPServer) {
 		return resultOf(out), nil
 	})
 }
-
-

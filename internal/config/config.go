@@ -22,12 +22,12 @@ import (
 
 // Config is the full on-disk shape of ~/.config/clawtool/config.toml.
 type Config struct {
-	CoreTools map[string]CoreTool       `toml:"core_tools,omitempty"`
-	Sources   map[string]Source         `toml:"sources,omitempty"`
-	Tools     map[string]ToolOverride   `toml:"tools,omitempty"`
-	Tags      map[string]TagRule        `toml:"tags,omitempty"`
-	Groups    map[string]GroupDef       `toml:"groups,omitempty"`
-	Profile   ProfileConfig             `toml:"profile,omitempty"`
+	CoreTools map[string]CoreTool     `toml:"core_tools,omitempty"`
+	Sources   map[string]Source       `toml:"sources,omitempty"`
+	Tools     map[string]ToolOverride `toml:"tools,omitempty"`
+	Tags      map[string]TagRule      `toml:"tags,omitempty"`
+	Groups    map[string]GroupDef     `toml:"groups,omitempty"`
+	Profile   ProfileConfig           `toml:"profile,omitempty"`
 }
 
 // CoreTool toggles a clawtool-shipped tool. Default (missing entry) = enabled.

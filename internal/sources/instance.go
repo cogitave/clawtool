@@ -37,14 +37,14 @@ const (
 //     which is itself goroutine-safe over a single stdio transport.
 //   - Stop closes the client which kills the child process.
 type Instance struct {
-	Name       string         // kebab-case instance name (selector form)
-	Spec       Spec           // immutable spawn spec
-	Client     *client.Client // nil when status != Running
-	Tools      []mcp.Tool     // snapshot from ListTools at start
-	StartedAt  time.Time
-	statusMu   sync.RWMutex
-	status     Status
-	statusErr  string
+	Name      string         // kebab-case instance name (selector form)
+	Spec      Spec           // immutable spawn spec
+	Client    *client.Client // nil when status != Running
+	Tools     []mcp.Tool     // snapshot from ListTools at start
+	StartedAt time.Time
+	statusMu  sync.RWMutex
+	status    Status
+	statusErr string
 }
 
 // Spec is the resolved spawn input for one source. The config + secrets

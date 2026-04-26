@@ -131,7 +131,6 @@ func (r ReadResult) Render() string {
 	return b.String()
 }
 
-
 func executeRead(ctx context.Context, path string, lineStart, lineEnd int, sheet string) ReadResult {
 	start := time.Now()
 	res := ReadResult{

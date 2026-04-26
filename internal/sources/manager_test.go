@@ -158,9 +158,9 @@ func TestSplitWireName(t *testing.T) {
 	}{
 		{"stub__echo", "stub", "echo", true},
 		{"github-personal__create_issue", "github-personal", "create_issue", true},
-		{"Bash", "", "", false},                    // no separator: core tool
-		{"__leading", "", "", false},               // empty instance
-		{"trailing__", "", "", false},              // empty tool
+		{"Bash", "", "", false},       // no separator: core tool
+		{"__leading", "", "", false},  // empty instance
+		{"trailing__", "", "", false}, // empty tool
 		{"", "", "", false},
 	}
 	for _, c := range cases {
