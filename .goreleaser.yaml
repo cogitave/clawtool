@@ -1,0 +1,91 @@
+# GoReleaser configuration for clawtool.
+#
+# Triggered by a tag push matching v[0-9]+.[0-9]+.[0-9]+ (see
+# .github/workflows/release.yml). Produces:
+#   - Cross-compiled binaries for linux + darwin (amd64 + arm64)
+#   - tar.gz archives with README + LICENSE + the binary
+#   - SHA-256 checksums file
+#   - GitHub Release with notes from git-cliff (--latest)
+#
+# We deliberately exclude Windows from the v0.8.x release line — the Bash
+# tool's process-group SIGKILL is unix-only, and we'd rather not ship an
+# advertised Windows binary that fails the timeout-safety quality bar
+# (ADR-005). Re-enable once the Windows job-object code path lands.
+
+version: 2
+
+project_name: clawtool
+
+before:
+  hooks:
+    - go mod download
+    - go mod tidy
+
+builds:
+  - id: clawtool
+    main: ./cmd/clawtool
+    binary: clawtool
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/cogitave/clawtool/internal/version.Version={{ .Version }}
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats: ["tar.gz"]
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+# Release notes are produced by git-cliff in the release workflow and
+# passed via --release-notes; GoReleaser's own changelog generator is
+# disabled to avoid duplication.
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: bahadirarda
+    name: clawtool
+  draft: false
+  prerelease: auto
+  mode: append
+  header: |
+    ## clawtool {{ .Tag }}
+
+    The canonical tool layer for AI coding agents. One binary, one
+    config, every agent. See ADR-009 for the versioning policy and
+    [CHANGELOG.md](https://github.com/bahadirarda/clawtool/blob/main/CHANGELOG.md)
+    for the full history.
+  footer: |
+    ---
+
+    **Install (user-local, no sudo)**
+
+    ```bash
+    curl -sSL https://github.com/bahadirarda/clawtool/releases/download/{{ .Tag }}/clawtool_{{ trimprefix .Tag "v" }}_linux_x86_64.tar.gz \
+      | tar -xz -C ~/.local/bin clawtool
+    clawtool init
+    claude mcp add-json clawtool '{"type":"stdio","command":"'"$HOME"'/.local/bin/clawtool","args":["serve"]}' --scope user
+    ```

@@ -71,3 +71,9 @@ dist: ## Build release binaries for linux/darwin amd64+arm64.
 	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/clawtool-darwin-amd64 ./cmd/clawtool
 	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/clawtool-darwin-arm64 ./cmd/clawtool
 	@echo "✓ dist binaries in $(DIST_DIR)/"
+
+.PHONY: release-snapshot
+release-snapshot: ## Run GoReleaser in snapshot mode (no publish, useful for local CI parity).
+	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser not found; install via 'go install github.com/goreleaser/goreleaser/v2@latest'"; exit 1; }
+	goreleaser release --clean --snapshot
+	@echo "✓ snapshot artifacts in dist/"
