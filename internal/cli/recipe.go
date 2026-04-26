@@ -13,6 +13,7 @@ import (
 	// Blank imports trigger each recipe package's init() so the
 	// global registry is populated before any subcommand runs.
 	// New recipe packages are added here.
+	_ "github.com/cogitave/clawtool/internal/setup/recipes/agentclaim"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/commits"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/governance"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/supplychain"

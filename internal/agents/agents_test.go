@@ -302,14 +302,5 @@ func TestFind_UnknownReturnsSentinel(t *testing.T) {
 	}
 }
 
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
+// equalStrings is now exported from claudecode.go for production use;
+// kept as an alias here only so existing test call sites compile.

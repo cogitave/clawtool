@@ -83,7 +83,8 @@ func (a *claudeCodeAdapter) Claim(opts Options) (Plan, error) {
 		return plan, err
 	}
 
-	// Anything we'd add: tools clawtool replaces that aren't already denied.
+	// New entries we'd add to the deny list (informational — surfaced
+	// in plan.ToolsAdded).
 	currentDeny := stringSet(settings.Deny)
 	var toAdd []string
 	for _, t := range ClaimedToolsForClawtool {
@@ -91,33 +92,46 @@ func (a *claudeCodeAdapter) Claim(opts Options) (Plan, error) {
 			toAdd = append(toAdd, t)
 		}
 	}
-
 	plan.ToolsAdded = toAdd
 
-	// Force a write when we found a legacy disabledTools field, even if
-	// every tool is already in Deny — that's how the orphan key gets
-	// removed during a re-run after upgrade.
+	// Reconcile the marker against the full picture, not just what
+	// this run added. The marker's job is "what to remove on Release"
+	// — it must always equal ClaimedToolsForClawtool ∩ resulting Deny
+	// so a Release after a legacy migration (or after a marker that
+	// was written empty by an older clawtool) restores correctly.
+	newDeny := append([]string{}, settings.Deny...)
+	newDeny = append(newDeny, toAdd...)
+	sort.Strings(newDeny)
+	newDeny = dedupSorted(newDeny)
+	finalDenySet := stringSet(newDeny)
+	var owned []string
+	for _, t := range ClaimedToolsForClawtool {
+		if finalDenySet[t] {
+			owned = append(owned, t)
+		}
+	}
+	sort.Strings(owned)
+
+	// Cheap noop detection: nothing to add, no legacy cleanup, and
+	// the existing marker already records the right ownership.
 	if len(toAdd) == 0 && !settings.HadLegacyDisabledTools {
-		plan.WasNoop = true
-		return plan, nil
+		if existing, err := a.readMarker(); err == nil && equalStrings(existing.Tools, owned) {
+			plan.WasNoop = true
+			return plan, nil
+		}
 	}
 
 	if opts.DryRun {
 		return plan, nil
 	}
 
-	// Apply: add new entries, sort for stable output, write atomically.
-	newDeny := append([]string{}, settings.Deny...)
-	newDeny = append(newDeny, toAdd...)
-	sort.Strings(newDeny)
-	newDeny = dedupSorted(newDeny)
 	settings.Deny = newDeny
 
 	if err := a.writeSettings(settings); err != nil {
 		return plan, fmt.Errorf("write settings: %w", err)
 	}
 
-	if err := a.writeMarker(toAdd); err != nil {
+	if err := a.writeMarker(owned); err != nil {
 		// We rolled forward on settings; failing to write the marker
 		// means future Release won't know what to undo. Best to surface
 		// loudly rather than silently.
@@ -386,6 +400,21 @@ func stringSet(xs []string) map[string]bool {
 		out[x] = true
 	}
 	return out
+}
+
+// equalStrings reports whether two string slices are element-wise
+// identical. Used by Claim's noop check to avoid pointless writes
+// when the marker already records the correct ownership.
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func dedupSorted(xs []string) []string {
