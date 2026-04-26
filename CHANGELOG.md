@@ -5,6 +5,80 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
+## [0.9.0](https://github.com/cogitave/clawtool/compare/v0.8.6...v0.9.0) (2026-04-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tools:** split MCP output — pretty text + structuredContent
+
+### Features
+
+* **agents:** hermes-agent + openclaw adapters ([b59b1d0](https://github.com/cogitave/clawtool/commit/b59b1d000b6611562e4c397ea55e2199e4ff3ac5))
+* claude-md + agents-md recipes + clawtool no-args TUI menu ([4124290](https://github.com/cogitave/clawtool/commit/41242904d09f08329fd918dc6968aa5ed127915c))
+* **cli:** clawtool doctor — one-command diagnostic ([4607fc4](https://github.com/cogitave/clawtool/commit/4607fc4642a20b4713e4a14f15c3ba4afbcf4527))
+* **cli:** clawtool init — interactive wizard via charmbracelet/huh ([4cc54af](https://github.com/cogitave/clawtool/commit/4cc54af77b7f2c8f1dd47ec91584991e865cd311))
+* **cli:** clawtool recipe list/status/apply ([a6ec288](https://github.com/cogitave/clawtool/commit/a6ec2885f491cd040572f091584e675d9cd22a93))
+* **cli:** clawtool source catalog (alias 'available') — browse before adding ([e0d1cd9](https://github.com/cogitave/clawtool/commit/e0d1cd981c63cb27781a2460f27d87ece659cfae))
+* **cli:** wizard asks before overwriting unmanaged files ([b6b7d0e](https://github.com/cogitave/clawtool/commit/b6b7d0ee1dac80b8d45e5ba790a5688252eb4dff))
+* **cli:** wizard install prompts + brain promoted to Stable ([db88a7f](https://github.com/cogitave/clawtool/commit/db88a7f4db317797dd52bf2deb9d279b5934c511))
+* dual-scope init wizard + RecipeList/Status/Apply MCP tools ([7da0632](https://github.com/cogitave/clawtool/commit/7da06329861039449f69cbe970b24a39bfc66791))
+* **install:** add curl one-liner installer ([aa20331](https://github.com/cogitave/clawtool/commit/aa203315fd98423b0d9cfd4dc1767b79d1cbcdd1))
+* **setup:** --force flag for recipe apply (overwrite unmanaged) ([0fe9e8d](https://github.com/cogitave/clawtool/commit/0fe9e8d0bb83c61c86e50bcd916f228f69d29d4b))
+* **setup:** agent-claim recipe + fix marker reconciliation ([86df90e](https://github.com/cogitave/clawtool/commit/86df90e5074106b61d66023f927154a45cf0d327))
+* **setup:** brain recipe — claude-obsidian wrapper ([07863a6](https://github.com/cogitave/clawtool/commit/07863a6e1197b799f8a82952185851343722acbe))
+* **setup:** caveman + superclaude + claude-flow Claude-Code plugin recipes ([115b7e6](https://github.com/cogitave/clawtool/commit/115b7e69e877a91402971e6f4ebac3044040c30b))
+* **setup:** devcontainer — first runtime-category recipe ([bfc14d3](https://github.com/cogitave/clawtool/commit/bfc14d366a35a9f0700e66807818d6bf1eb2caa5))
+* **setup:** foundation for clawtool init — recipes, runner, repo-config ([1afde74](https://github.com/cogitave/clawtool/commit/1afde74dcfbe2ad08d681da2ab224d96416817b3))
+* **setup:** gh-actions-test — first ci-category recipe ([b283198](https://github.com/cogitave/clawtool/commit/b283198a3c9378ada97c209f42270429c2fbc42d))
+* **setup:** lefthook + commitlint recipe — close release-please loop locally ([f6bbb41](https://github.com/cogitave/clawtool/commit/f6bbb41ace0b1c60b4e357cc416affcc4f585dab))
+* **setup:** license — add AGPL-3.0 SPDX option ([6e1b491](https://github.com/cogitave/clawtool/commit/6e1b4915543b7c558b99d57c38f0d2fce1d9085c))
+* **setup:** prettier + golangci-lint — open the quality category ([70701aa](https://github.com/cogitave/clawtool/commit/70701aad9a48a9be258ded76dad13fa6c944fdc3))
+* **setup:** release-please + goreleaser recipes ([04bb010](https://github.com/cogitave/clawtool/commit/04bb010533c972b7ed4d1d02e1feaf964edaaed9))
+* **setup:** skill recipe pattern + Karpathy LLM Wiki ([860166b](https://github.com/cogitave/clawtool/commit/860166bf63879a3b85df9e8e1c12276629a88f28))
+* **setup:** three more recipes — license, codeowners, dependabot ([f3edfe7](https://github.com/cogitave/clawtool/commit/f3edfe78c73d27889c28065090641f8ede1630ea))
+* **skill:** clawtool skill new/list/path + SkillNew MCP tool ([2cc78de](https://github.com/cogitave/clawtool/commit/2cc78de5dc71399c9fb37e83ea39035629ff802d))
+* **tools:** split MCP output — pretty text + structuredContent ([c45192d](https://github.com/cogitave/clawtool/commit/c45192d487c065a7feb6bbd487d068d8227c9f5c))
+* **version:** update-check + 6 new catalog entries ([d08cb57](https://github.com/cogitave/clawtool/commit/d08cb57a70d1e8fbf98cee5e42ab9dd02fcfaa0d))
+
+
+### Fixes
+
+* **agents:** claim/release write to permissions.deny, not disabledTools ([7eebd9f](https://github.com/cogitave/clawtool/commit/7eebd9f0cfb5d532dda1bd7adad36a66da14942b))
+* **ci:** bump orhun/git-cliff-action v3 to v4 ([cf4daf8](https://github.com/cogitave/clawtool/commit/cf4daf8768093c117d1822301e1d53ef1ddf6cbc))
+* **doctor:** quieter output + 5m update-cache (was 24h) ([8107321](https://github.com/cogitave/clawtool/commit/8107321324f6861695dfc5e9065bea082a0f6483))
+* **sources:** expand ${VAR} in command argv, not just env ([60c931b](https://github.com/cogitave/clawtool/commit/60c931bf9b6cbf7b69f82d618222ec45c311688f))
+
+
+### Documentation
+
+* **contributing:** three-tier testing strategy (unit / e2e / integration) ([daf90c6](https://github.com/cogitave/clawtool/commit/daf90c6760d8ab6b299e864186d33b3014b22885))
+* **readme:** pitch v0.9 — wizard + recipes lead the README ([a1a7c69](https://github.com/cogitave/clawtool/commit/a1a7c6997f07a97692fae02a2f4f6fe7f70c5d68))
+* **readme:** reposition narrative around the toolset concept ([a31ed68](https://github.com/cogitave/clawtool/commit/a31ed687bc1fb879e13cd41214d16593bc39635f))
+* **skill:** onboarding mode — Claude can run init from a conversation ([b449881](https://github.com/cogitave/clawtool/commit/b44988199140f841002ef59993d66d9ecc95fc11))
+* strip internal ADR pointers from user-facing surfaces ([a97ba57](https://github.com/cogitave/clawtool/commit/a97ba57a9f405115ec4bd04818aeddc2c85e27c0))
+
+
+### Tests
+
+* **cli:** wizard helpers + dispatch + claim-diff coverage ([dcf58c2](https://github.com/cogitave/clawtool/commit/dcf58c2352d9962413204579e3aa814a85895906))
+* **e2e:** assert all 12 v0.10 recipes + all 9 categories present ([1b07c80](https://github.com/cogitave/clawtool/commit/1b07c80444836d1371c0156dc11a6c5440176f74))
+* **e2e:** cover the Recipe* MCP surface end-to-end ([c5a296c](https://github.com/cogitave/clawtool/commit/c5a296cbf3b4255414faaf08035ebe6942032199))
+* **integration:** multi-instance soak against real upstream MCP servers ([0cbb747](https://github.com/cogitave/clawtool/commit/0cbb747b09a42a52e37ed862f9dfc75c9fdf0b61))
+
+
+### Build
+
+* **install:** post-install cleanup — drop duplicate manual MCP registration ([bef3c3e](https://github.com/cogitave/clawtool/commit/bef3c3ed39d0946407e1e43dc15b23b14d6a8585))
+* **integration:** make integration target + nightly workflow ([68f3ef9](https://github.com/cogitave/clawtool/commit/68f3ef94db99e0a5f3c4f2d6a72493358463137f))
+
+
+### Chores
+
+* **release:** finish version sync to 0.8.6 ([9f64b24](https://github.com/cogitave/clawtool/commit/9f64b24d8c4d1fe95844e4dc180e30df35b942f9))
+* **release:** sync version refs to 0.8.6 + tighten release-please policy ([2283563](https://github.com/cogitave/clawtool/commit/228356393aa61c93e596cb863cbde17ab43ab735))
+* **repo:** privatize wiki/.obsidian/_templates/.envrc/CLAUDE.md ([4b3c1b6](https://github.com/cogitave/clawtool/commit/4b3c1b65d26c39f71f40bd5f746a90ed2a3a424d))
+
 ## [0.8.4] - 2026-04-26
 
 ### Features
