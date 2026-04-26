@@ -27,7 +27,7 @@ jobs:
       # git-cliff for CHANGELOG.md generation as part of release. We pin
       # via the official action so the Rust binary is downloaded from a
       # known source, not implicitly trusted.
-      - uses: orhun/git-cliff-action@v3
+      - uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
           args: --latest --strip header
