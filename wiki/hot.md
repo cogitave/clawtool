@@ -17,7 +17,7 @@ status: developing
 
 ## Key Recent Facts
 
-- **clawtool's distinguishing primitive is search-first** (deferred tool loading + semantic discovery). Every other clawtool feature (aggregation, per-tool toggle, single-binary, multi-agent) is table stakes; search is the gap nobody else fills. metamcp has it on roadmap; nobody ships it. See [[004 clawtool initial architecture direction]].
+- **clawtool's positioning has TWO pillars**: (1) canonical core tools — bash/grep/read/edit/write/glob/webfetch shipped at quality higher than each agent's native built-in; goal is agents preferring clawtool over their own implementations ([[005 Positioning replace native agent tools]]). (2) search-first — `tool_search` primitive (deferred loading + semantic discovery), the prerequisite that lets a 50+ tool catalog scale. Aggregation/per-tool toggle/single-binary/multi-agent are table stakes; canonical-tool quality + search-first together are what makes clawtool worth building.
 - **MCP is locked in.** All four credible candidates speak MCP. clawtool exposes itself as an MCP server; no proprietary protocol.
 - **Distribution decided**: single user-local binary (~/.local/bin/clawtool), no Docker required. 1mcp-agent precedent. Trades container isolation (docker-mcp-gateway) for install simplicity.
 - **Tool manifest decided**: extend MCP schema via `annotations.clawtool` (tags, stability, default_enabled, search_keywords). No breaking changes to existing MCP servers.
@@ -32,10 +32,10 @@ status: developing
 
 ## Active Threads
 
-- **Open**: language choice for clawtool (Go / Rust / TypeScript). Trade-off: dist size + cross-compile vs dev iteration.
-- **Open**: license choice (Apache 2.0 vs MIT).
+- **Open**: language choice for clawtool — **weight increased** by ADR-005. Syscall-level reliability for canonical bash/file tools argues for Go or Rust over TypeScript.
+- **Open**: license choice (Apache 2.0 vs MIT). MIT slightly preferred for canonical-layer adoption (lower barrier to vendor inclusion).
 - **Open**: ranking model for `tool_search` primitive (BM25 vs embedding vs hybrid). Needs prototype.
 - **Open**: catalog format — define clawtool-native or read existing (Docker MCP Catalog, MCP Registry, Smithery)?
-- **Deferred to v2**: container isolation, middleware support.
+- **Deferred to v2**: container isolation, middleware support, plugin packaging (Claude Code plugin, Codex plugin) — phase 2 after binary works.
 - **Pending user-side**: work account `gh auth login` with `GH_CONFIG_DIR=~/.config/gh-work` (not blocking clawtool).
-- **Next deliverable**: prototype of search index + `tool_search` primitive — not full aggregator. Aggregation is solved; search is the new value.
+- **Next deliverable revised**: prototype of (a) MCP server stub, (b) **3-5 canonical core tools** (bash, ripgrep, read at minimum) at quality, (c) `tool_search` BM25 baseline, (d) `clawtool tools enable/disable` CLI. *Not* a full aggregator. Make it usable end-to-end on small surface, then expand.

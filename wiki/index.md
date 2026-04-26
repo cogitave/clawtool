@@ -25,6 +25,7 @@ Project-bound knowledge base for **clawtool**. Updated on every ingest.
 - [[002 Vault on Windows filesystem]]
 - [[003 Multi-account git via direnv and gh]]
 - [[004 clawtool initial architecture direction]] — initial spec direction (developing)
+- [[005 Positioning replace native agent tools]] — strategic positioning: canonical tool layer, not just aggregator (developing)
 
 ## Comparisons
 

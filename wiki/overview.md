@@ -41,10 +41,16 @@ The project's value is being the shared, configurable tool layer underneath. Too
 
 ### Architecture (developing)
 - [[004 clawtool initial architecture direction]]
+- [[005 Positioning replace native agent tools]]
 
 ## Distinguishing identity
 
-**Search-first.** Concretely: deferred tool loading + semantic discovery. Every other clawtool capability (aggregation, per-tool toggle, single-binary, multi-agent) is table stakes copied from [[Universal Toolset Projects Comparison|the best of class]]; search is the gap nobody else has filled.
+**Two pillars, mutually reinforcing:**
+
+1. **Canonical core tools** — bash, grep, read, edit, write, glob, webfetch shipped at quality higher than each agent's native built-in. Goal: agents prefer clawtool's tools to their own. See [[005 Positioning replace native agent tools]].
+2. **Search-first** — `tool_search` primitive (deferred loading + semantic discovery). Without it, a 50+ tool catalog drowns the agent. Search-first is the prerequisite that lets the canonical-tool ambition scale.
+
+Aggregation, per-tool toggle, single-binary, multi-agent are table stakes copied from [[Universal Toolset Projects Comparison|the best of class]] — they are not what clawtool is *for*.
 
 ## Open spec questions (deferred to prototype)
 

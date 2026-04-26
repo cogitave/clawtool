@@ -9,7 +9,7 @@ tags:
   - adr
 status: developing
 subdomain_of: ""
-page_count: 4
+page_count: 5
 ---
 
 # Decisions (ADRs)
@@ -25,6 +25,7 @@ Architecture Decision Records. Numbered sequentially. Each captures: context, de
 
 ### clawtool architecture (developing)
 - [[004 clawtool initial architecture direction]] — initial spec direction. Locks in: MCP distribution, single binary, search-first as identity, manifest extension via annotations, CLI dot-notation, build-new-not-fork. Open: language, license, ranking model, catalog source.
+- [[005 Positioning replace native agent tools]] — strategic positioning: clawtool's core tools (bash, grep, read, edit, write, glob, webfetch) ship at quality higher than each agent's native built-in. Search-first is the prerequisite. Aggregation is solved; core-tool quality is the actual work.
 
 ## Convention
 

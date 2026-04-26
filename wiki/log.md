@@ -17,6 +17,15 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### POSITIONING — ADR-005: replace native agent tools
+
+- New ADR. Locks the strategic ambition: clawtool is **the canonical tool layer**, not just an aggregator. Bash/Grep/Read/Edit/Write/Glob/WebFetch ship at quality higher than each agent's native built-in. Goal: agents prefer clawtool's implementations over their own.
+- **Search-first reframed**: not a competing identity feature alongside core tools, but the **prerequisite** that lets a 50+ tool catalog scale. Without `tool_search`, the catalog drowns agents. With it, the canonical-layer ambition is operationally feasible.
+- **Engineering priority flip**: aggregation is solved (1mcp-agent / docker-mcp-gateway); core-tool quality is the actual work. Implementation-language choice gains weight (Go / Rust > TypeScript for syscall reliability).
+- **Quality bar table** in ADR: per-tool axis where clawtool must beat native (bash timeout-drops-output, ripgrep ignore-file behavior, read pagination cursors, edit atomic write, glob cross-platform, webfetch canonicalization).
+- **Plugin packaging deferred to phase 2** — make binary usable end-to-end first; CC plugin is a wrapper, not a prerequisite.
+- Updated [[Agent-Agnostic Toolset]], [[Overview]], [[Index]], [[decisions _index]], [[Hot]], this log.
+
 ### REFINE — ADR-004 Distribution & Usage Scenarios (section 6)
 
 - Added new "Distribution & Usage Scenarios" section to ADR-004.
