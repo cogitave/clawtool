@@ -17,6 +17,9 @@ Thumbs.db
 coverage.txt
 coverage.html
 
+# Test fixtures (built on demand by `make stub-server`)
+/test/e2e/stub-server/stub-server
+
 # Editor / IDE
 .vscode/
 .idea/
