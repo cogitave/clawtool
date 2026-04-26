@@ -34,6 +34,8 @@ func (a *App) runSource(argv []string) int {
 		return a.runSourceAdd(argv[1:])
 	case "list":
 		return a.runSourceList(argv[1:])
+	case "catalog", "available":
+		return a.runSourceCatalog(argv[1:])
 	case "remove", "rm":
 		return a.runSourceRemove(argv[1:])
 	case "set-secret":
@@ -322,6 +324,9 @@ const sourceUsage = `Usage:
                               instance of the same source).
 
   clawtool source list        List configured sources, auth status, package.
+  clawtool source catalog     Browse the built-in catalog of MCP servers
+                              (alias: 'available'). Pick a name from the
+                              output and run 'clawtool source add <name>'.
   clawtool source remove <instance>
                               Delete an instance from config (secrets retained).
   clawtool source set-secret <instance> <KEY> [--value <value>]

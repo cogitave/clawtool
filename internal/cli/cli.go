@@ -321,6 +321,7 @@ Usage:
                             Add a source from the built-in catalog (e.g. github,
                             slack, postgres). See: clawtool source --help.
   clawtool source list      List configured sources and auth status.
+  clawtool source catalog   Browse the built-in catalog of MCP servers.
   clawtool source remove <instance>
   clawtool source set-secret <instance> <KEY> [--value <v>]
   clawtool source check     Verify required credentials per source.
