@@ -1,68 +1,251 @@
 # clawtool
 
-The canonical tool layer for AI coding agents. One binary, one config, every agent.
+[![Latest release](https://img.shields.io/github/v/release/cogitave/clawtool?display_name=tag&sort=semver&color=blue)](https://github.com/cogitave/clawtool/releases/latest)
+[![CI](https://github.com/cogitave/clawtool/actions/workflows/ci.yml/badge.svg)](https://github.com/cogitave/clawtool/actions/workflows/ci.yml)
+[![Release](https://github.com/cogitave/clawtool/actions/workflows/release.yml/badge.svg)](https://github.com/cogitave/clawtool/actions/workflows/release.yml)
+[![Go](https://img.shields.io/github/go-mod/go-version/cogitave/clawtool?logo=go)](go.mod)
+[![License](https://img.shields.io/github/license/cogitave/clawtool?color=brightgreen)](LICENSE)
+[![Conventional Commits](https://img.shields.io/badge/conventional--commits-1.0.0-yellow)](https://www.conventionalcommits.org)
 
-> **Status:** v0.1 — single tool (Bash), single transport (stdio), end-to-end working. v0.2 in progress.
-> **License:** [MIT](LICENSE).
-> **Design rationale:** see `wiki/decisions/` (ADR-001 through ADR-006).
+> **Define a toolset once. Use it in every AI coding agent.**
 
-clawtool is an MCP server you install once and connect every AI coding agent to. It ships canonical implementations of the tools agents already use (Bash, Read, Edit, Write, Grep, Glob, WebFetch) at a higher quality bar than each agent's native built-in, and provides a `ToolSearch` primitive so a 50+ tool catalog actually scales (deferred loading + semantic discovery).
+clawtool is the standard for shipping a single, configurable toolset
+across Claude Code, Codex, OpenCode and any other MCP-aware agent. One
+install, one config file, every agent — same `mcp__clawtool__*` surface
+everywhere.
 
-## Why
-
-- **One source of truth.** Configuration lives at `~/.config/clawtool/config.toml`. Switching agents does not switch toolsets.
-- **Multi-instance.** Two GitHub accounts? Add `github-personal` and `github-work` — wire form `github-personal__create_issue` is collision-free by construction (ADR-006).
-- **Selectors that compose.** `clawtool tools disable github` then `clawtool tools enable github.create_issue` leaves only `create_issue` enabled. Tags and groups follow the same model. Tool-level wins same-level (`deny wins`).
-- **No Docker requirement.** Single Go binary, ~7 MB, install via npm / brew / curl.
+---
 
 ## Install
 
-```bash
-go build -o bin/clawtool ./cmd/clawtool
-cp bin/clawtool ~/.local/bin/clawtool
-clawtool init
-claude mcp add-json clawtool '{"type":"stdio","command":"'"$HOME"'/.local/bin/clawtool","args":["serve"]}' --scope user
+```sh
+curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
 ```
 
-## Use
+The installer downloads the latest release tarball for your OS / arch,
+verifies its SHA-256 against `checksums.txt`, and atomically installs
+to `~/.local/bin/clawtool`.
 
-```bash
+<details>
+<summary>Other install paths</summary>
+
+```sh
+# Pin a version
+curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh -s -- --version=v0.8.6
+
+# Or use env vars
+CLAWTOOL_VERSION=v0.8.6 CLAWTOOL_INSTALL_DIR=$HOME/bin \
+  curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
+
+# Or build from source
+git clone https://github.com/cogitave/clawtool && cd clawtool
+make install
+```
+
+</details>
+
+## Plug it into Claude Code (zero ceremony)
+
+```sh
+claude plugin marketplace add cogitave/clawtool
+claude plugin install clawtool@clawtool-marketplace
+```
+
+This auto-registers the MCP server and exposes `/clawtool*` slash
+commands. Want Claude to **only** see clawtool's tools (no native
+fallback)? Run:
+
+```sh
+clawtool agents claim claude-code
+```
+
+That adds the native `Bash`/`Read`/`Edit`/`Write`/`Grep`/`Glob`/`WebFetch`/
+`WebSearch` tool names to `~/.claude/settings.json`'s `disabledTools`
+array. Reverse with `clawtool agents release claude-code`. Idempotent
++ atomic + `--dry-run` available.
+
+## What's a toolset?
+
+A toolset is the named surface of capabilities you want your AI coding
+agent to expose. Today every agent ships its own — and they're all
+subtly different. clawtool replaces them with one canonical layer:
+
+### Native-grade core tools
+
+Wrapped at a higher quality bar than every agent's built-in equivalent.
+
+| Tool          | Engine clawtool wraps                                | Polish (clawtool's own)                              |
+|---------------|------------------------------------------------------|------------------------------------------------------|
+| `Bash`        | `/bin/bash`                                          | timeout-safe (process-group SIGKILL), structured JSON |
+| `Read`        | stdlib + `pdftotext` + `pandoc` + `excelize` + `go-readability` | text · PDF · Word · Excel · CSV · HTML · ipynb · json/yaml/toml/xml; stable line cursors |
+| `Edit`        | stdlib (`atomic.go`)                                 | atomic temp+rename · line-ending + BOM preserve · ambiguity guard |
+| `Write`       | stdlib (`atomic.go`)                                 | atomic temp+rename · parent-dir auto-create · BOM preserve |
+| `Grep`        | `ripgrep` (system grep fallback)                     | uniform output across engines                        |
+| `Glob`        | `bmatcuk/doublestar`                                 | bounded streaming · forward-slash output cross-platform |
+| `WebFetch`    | `net/http` + `go-readability` (Mozilla port)         | UA · timeout · 10 MiB body cap · binary refusal       |
+| `WebSearch`   | pluggable backend (Brave today, Tavily/SearXNG planned) | API key via secrets store · HTML markup stripped     |
+| `ToolSearch`  | `bleve` (BM25)                                       | name^3 · keywords^2 · description^1 boosts; type/limit filters |
+
+Per [ADR-007](https://github.com/cogitave/clawtool/blob/main/CHANGELOG.md)
+every engine is **wrapped, never reinvented**. The polish layer
+(uniform structured output, timeout-safety, BOM preserve, atomic
+writes, secret redaction) is what clawtool brings.
+
+### Source aggregation
+
+`clawtool source add github` resolves to the canonical MCP server,
+prints the auth hint, registers it. Twelve entries in the catalog out
+of the box:
+
+```
+github · slack · postgres · sqlite · filesystem · fetch
+brave-search · google-maps · memory · sequentialthinking · time · git
+```
+
+Sources spawn as child MCP processes; their tools are aggregated under
+the wire-form name `<instance>__<tool>` (e.g.
+`github-personal__create_issue`). Two GitHub accounts? Add
+`github-personal` and `github-work` — collision-free by construction.
+
+### Search-first discovery
+
+When the catalog grows past a few dozen tools, the agent can't hold
+every schema in context. `mcp__clawtool__ToolSearch` ranks candidates
+by query so the agent picks the right tool without seeing every
+schema:
+
+```jsonc
+ToolSearch{ query: "search file contents regex", limit: 3 }
+// → {"results":[
+//     {"name":"Grep",       "score":0.94, "type":"core"},
+//     {"name":"Read",       "score":0.05, "type":"core"},
+//     {"name":"ToolSearch", "score":0.01, "type":"core"}
+//   ], "engine":"bleve-bm25", "duration_ms":1}
+```
+
+## Common workflows
+
+```sh
+# See your toolset
 clawtool tools list
-clawtool tools disable Bash                       # use the agent's native Bash
-clawtool tools enable Bash                        # use clawtool's
-clawtool tools status Bash                        # show resolved state
+
+# Toggle a core tool
+clawtool tools disable Bash       # use the agent's native Bash
+clawtool tools enable  Bash       # back to clawtool's
+clawtool tools status  Bash       # show which rule resolved this state
+
+# Add a source from the catalog
+clawtool source add github
+clawtool source set-secret github GITHUB_TOKEN
+clawtool source check
+
+# Make Claude Code prefer clawtool exclusively
+clawtool agents claim claude-code
+
+# Dry-run any mutation first
+clawtool agents claim claude-code --dry-run
+clawtool tools disable github.delete_repo
 ```
 
-In any MCP-aware agent (Claude Code, Codex, Cursor, …) clawtool's tools appear as `mcp__clawtool__Bash`, `mcp__clawtool__Read`, etc.
+## Configuration
 
-## Repo layout
+A single TOML file at `~/.config/clawtool/config.toml`:
+
+```toml
+[core_tools]
+[core_tools.Bash]
+enabled = true
+
+[sources.github]
+type = "mcp"
+command = ["npx", "-y", "@modelcontextprotocol/server-github"]
+[sources.github.env]
+GITHUB_TOKEN = "${GITHUB_TOKEN}"
+
+[tools."github.delete_repo"]
+enabled = false
+
+[profile]
+active = "default"
+```
+
+Secrets live separately at `~/.config/clawtool/secrets.toml` (mode
+`0600`) so `config.toml` can be safely committed to dotfiles repos.
+`${VAR}` references in env maps are resolved against secrets first,
+then the process env.
+
+## CLI reference
 
 ```
-clawtool/
-├── cmd/clawtool/         # entrypoint
-├── internal/
-│   ├── server/           # MCP server bootstrap
-│   ├── tools/core/       # canonical tools (Bash, ...)
-│   ├── config/           # config.toml read/write + resolution
-│   ├── cli/              # subcommand handlers
-│   └── version/
-├── test/e2e/             # end-to-end MCP integration test
-├── wiki/                 # project brain — decisions, comparisons, entities
-├── _templates/           # Obsidian note templates
-├── Makefile
-└── go.mod
+clawtool serve                        Run as an MCP server (stdio).
+clawtool init                         Create ~/.config/clawtool/config.toml.
+clawtool version                      Print the build version.
+
+clawtool tools list                   List core tools and resolved enabled state.
+clawtool tools enable  <selector>     Enable a tool.
+clawtool tools disable <selector>     Disable a tool (refuses ambiguous selectors).
+clawtool tools status  <selector>     Show resolved state + rule that won.
+
+clawtool source add <name> [--as <instance>]
+                                      Resolve <name> from the built-in catalog.
+clawtool source list                  Configured sources + auth status.
+clawtool source remove <instance>     Drop from config (secrets retained).
+clawtool source set-secret <instance> <KEY> [--value <v>]
+                                      Store a credential (stdin fallback).
+clawtool source check                 Verify required env per source.
+
+clawtool agents list                  Show registered agent adapters.
+clawtool agents claim   <agent> [--dry-run]
+                                      Disable native equivalents in <agent>.
+clawtool agents release <agent> [--dry-run]
+                                      Reverse a previous claim.
+clawtool agents status  [<agent>]     Per-agent claim state.
 ```
 
 ## Development
 
-```bash
-make build       # build to ./bin/clawtool
-make test        # go test ./...
-make e2e         # spawn binary, send MCP messages, assert responses
-make install     # copy to ~/.local/bin
-make clean       # remove ./bin and ./dist
+```sh
+make build              # → ./bin/clawtool
+make test               # go test -race ./...
+make e2e                # spawn binary, drive MCP over stdio, assert
+make install            # atomic copy to ~/.local/bin/clawtool
+make changelog          # regenerate CHANGELOG.md from git history
+make release-snapshot   # GoReleaser dry-run (no publish)
 ```
 
-## Architecture in one paragraph
+Test totals at v0.8.6: **134 Go unit + 57 e2e = 191 green** across
+8 packages.
 
-clawtool is one MCP server (`mcp__clawtool__*`) that aggregates canonical core tools (PascalCase: `Bash`, `Read`, `Edit`, …) plus user-attached source instances (kebab-case + tool: `github-personal__create_issue`). Wire and CLI surfaces use distinct separators (`__` vs `.`) so parsing is unambiguous. Config is a single TOML file watched for hot-reload. Search is the prerequisite that makes a 50+ tool catalog usable — `ToolSearch` (deferred schema loading + semantic ranking) is clawtool's identity feature; everything else (aggregation, per-tool toggle, single binary) is table stakes copied from the best-in-class projects (`mcp-router`, `1mcp-agent`, `metamcp`, `docker mcp-gateway`) — see `wiki/comparisons/universal-toolset-projects.md`.
+The release pipeline is fully automated:
+[Conventional Commits](https://www.conventionalcommits.org) on `main`
+→ [release-please](https://github.com/googleapis/release-please) opens
+a "release PR" → merging the PR cuts the tag → [GoReleaser](https://goreleaser.com)
+publishes signed tarballs to GitHub Releases. Manual `git tag` is
+deprecated.
+
+## Status
+
+Path to v1.0 is gated by six criteria:
+
+|                                          | Status                  |
+|------------------------------------------|-------------------------|
+| Real-world soak (≥ 1 week)               | ⏳ pending               |
+| Canonical core list shipped              | ✅ v0.8.6                |
+| CI matrix on linux + macOS               | ✅ v0.8.6                |
+| Signed binary release pipeline           | 🟢 GoReleaser + Releases |
+| Versioned API stability promise          | ⏳ pending               |
+| Multi-instance against ≥ 3 real upstreams | ⏳ pending               |
+| Plugin packaging for Claude Code         | ✅ v0.8.6                |
+
+Until all are green, every increment is a patch (`v0.8.x`).
+
+## Contributing
+
+PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow
+(Conventional Commits required, test discipline, ADR cross-link
+expectations) and [SECURITY.md](SECURITY.md) for vulnerability
+disclosure.
+
+## License
+
+[MIT](LICENSE)
