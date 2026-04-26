@@ -65,18 +65,17 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      # Linux runners ship ripgrep + grep already; macOS runners ship
-      # grep but not rg. We install rg explicitly on macOS so the Grep
-      # tool's preferred-engine code path gets exercised everywhere.
-      - name: Install ripgrep (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install ripgrep
-      - name: Install pandoc (universal — needed for Read .docx)
+      # ripgrep is no longer pre-installed on either runner image
+      # consistently. Install it explicitly so Grep's preferred-engine
+      # code path stays exercised everywhere (the e2e test asserts
+      # engine == ripgrep, not grep).
+      - name: Install test-time binaries
         run: |
           if [ "$(uname -s)" = "Linux" ]; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq pandoc poppler-utils
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ripgrep pandoc poppler-utils
           else
-            brew install pandoc poppler
+            brew install ripgrep pandoc poppler
           fi
 
       - name: go test -race

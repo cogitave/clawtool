@@ -2,7 +2,6 @@ package sources
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -23,12 +22,14 @@ func ensureStubServer(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stubPath := filepath.Join(repoRoot, "test", "e2e", "stub-server", "stub-server")
-
-	if _, err := os.Stat(stubPath); err == nil {
-		return stubPath
-	}
-
+	// Build into the test's tempdir so a stale cross-arch binary
+	// from a previous host (e.g. a Linux-ELF stub-server checked
+	// into a macOS-runner workspace) can never poison the run.
+	// This caused CI macOS jobs to fail with `exec format error`
+	// after a Linux ELF binary made it into the working tree;
+	// since we always build fresh per-test, that class of bug is
+	// closed.
+	stubPath := filepath.Join(t.TempDir(), "stub-server")
 	cmd := exec.Command("go", "build", "-o", stubPath, "./test/e2e/stub-server")
 	cmd.Dir = repoRoot
 	if out, err := cmd.CombinedOutput(); err != nil {
