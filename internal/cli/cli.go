@@ -151,8 +151,10 @@ func (a *App) ToolsStatus(selector string) error {
 // Returns the exit code; 0 = success, 2 = usage error, 1 = runtime failure.
 func (a *App) Run(argv []string) int {
 	if len(argv) == 0 {
-		fmt.Fprint(a.Stderr, topUsage)
-		return 2
+		// No-args invocation: drop into the friendly TUI menu so
+		// users who'd rather not memorise subcommands have a
+		// landing UI. Falls back to topUsage on non-TTY stdin/out.
+		return a.runMenu()
 	}
 	switch argv[0] {
 	case "init":
