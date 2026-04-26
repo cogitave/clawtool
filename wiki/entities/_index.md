@@ -8,7 +8,7 @@ tags:
   - index
 status: developing
 subdomain_of: ""
-page_count: 2
+page_count: 6
 ---
 
 # Entities
@@ -19,9 +19,16 @@ People, organizations, products, repositories, plugins relevant to clawtool.
 
 - [[Bahadır Arda]] — project owner
 
-## Products / Plugins
+## Tools / products evaluated
 
-- [[claude-obsidian]] — chosen brain layer
+### Brain layer
+- [[claude-obsidian]] — chosen as Claude's working memory (see [[001 Choose claude-obsidian as brain layer]])
+
+### Universal toolset / MCP aggregators (input to [[004 clawtool initial architecture direction]])
+- [[mcp-router]] — desktop GUI manager
+- [[1mcp-agent]] — lean CLI aggregator (closest ancestor to clawtool)
+- [[metamcp]] — Docker-based aggregator + orchestrator + middleware + gateway
+- [[docker-mcp-gateway]] — Docker official, ships in Docker Desktop 4.59+
 
 ## Pending
 

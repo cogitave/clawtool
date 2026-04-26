@@ -13,23 +13,28 @@ status: developing
 
 ## Last Updated
 
-2026-04-26. Initial vault scaffold completed. Project is in pre-spec research phase.
+2026-04-26. **Research phase round 1 done.** Surveyed 4 universal-toolset projects, drafted initial architecture ADR.
 
 ## Key Recent Facts
 
-- **clawtool's vision**: a customizable, agent-agnostic toolset that installs once on the device and is usable across all AI coding agents (Claude Code, Codex, OpenCode, future IDEs). Single name, easy configuration. Out of scope: memory layers, brain-maps, agent-side features — those are about *how Claude works*, not what we build.
-- **Brain layer chosen**: [[claude-obsidian]] (AgriciDaniel) — Karpathy LLM Wiki pattern, Obsidian-based, multi-agent support (Claude/Codex/Gemini/Cursor/Windsurf), 11 skills (wiki, ingest, query, lint, save, autoresearch, canvas, ...).
-- **Vault location**: `/mnt/c/Users/Arda/workspaces/@cogitave/clawtool` (Windows-side). Reason: Obsidian's file watcher (chokidar/Node fs.watch) cannot operate over `\\wsl.localhost\` UNC paths — fails with `EISDIR illegal operation on a directory, watch`. Native Windows filesystem (visible from WSL via `/mnt/c`) is the only reliable option.
-- **Multi-account git**: direnv + `GH_CONFIG_DIR` per-directory env + git `[includeIf]` for identity. No `gh auth switch` (global state breaks parallel terminals). Personal account `bahadirarda` already authenticated to `~/.config/gh-personal/`. Work account `caucasian01` pending user-side `gh auth login` with `GH_CONFIG_DIR=~/.config/gh-work`.
+- **clawtool's distinguishing primitive is search-first** (deferred tool loading + semantic discovery). Every other clawtool feature (aggregation, per-tool toggle, single-binary, multi-agent) is table stakes; search is the gap nobody else fills. metamcp has it on roadmap; nobody ships it. See [[004 clawtool initial architecture direction]].
+- **MCP is locked in.** All four credible candidates speak MCP. clawtool exposes itself as an MCP server; no proprietary protocol.
+- **Distribution decided**: single user-local binary (~/.local/bin/clawtool), no Docker required. 1mcp-agent precedent. Trades container isolation (docker-mcp-gateway) for install simplicity.
+- **Tool manifest decided**: extend MCP schema via `annotations.clawtool` (tags, stability, default_enabled, search_keywords). No breaking changes to existing MCP servers.
+- **Config UX decided**: CLI dot-notation (docker-mcp-gateway-style ergonomics) + declarative TOML/JSON + hot-reload. GUI is out of scope for v1; mcp-router covers GUI users.
+- **Build new, not fork.** Search-first changes core handshake; cleaner to start fresh. Borrow from 1mcp-agent (distribution, hot-reload), docker-mcp-gateway (CLI ergonomics, profiles), metamcp (per-tool override UX).
 
 ## Recent Changes
 
-- Created: [[Index]], [[Log]], [[Hot]], [[Overview]], [[001 Choose claude-obsidian as brain layer]], [[002 Vault on Windows filesystem]], [[003 Multi-account git via direnv and gh]], [[Memory Tools Evaluated]], [[Bahadır Arda]], [[claude-obsidian]], [[Karpathy LLM Wiki Pattern]], [[Agent-Agnostic Toolset]]
-- Updated: (none yet — fresh scaffold)
+- Created: [[Research Scope 2026-04-26]], [[mcp-router]], [[1mcp-agent]], [[metamcp]], [[docker-mcp-gateway]], [[Universal Toolset Projects Comparison]], [[004 clawtool initial architecture direction]]
+- Updated: [[Index]], [[Log]], [[entities _index]], [[comparisons _index]], [[decisions _index]]
 
 ## Active Threads
 
-- **Open**: clawtool research → spec phase. Need to define: tool manifest format, search/discovery protocol, MCP integration model, configuration UX.
-- **Open**: work account (caucasian01) `gh auth login` — user runs when needed.
-- **Open**: enable `vault-colors.css` snippet in Obsidian (Settings → Appearance → CSS Snippets → toggle on).
-- **Pending**: install Obsidian community plugins (Templater, Obsidian Git) — recommended but optional.
+- **Open**: language choice for clawtool (Go / Rust / TypeScript). Trade-off: dist size + cross-compile vs dev iteration.
+- **Open**: license choice (Apache 2.0 vs MIT).
+- **Open**: ranking model for `tool_search` primitive (BM25 vs embedding vs hybrid). Needs prototype.
+- **Open**: catalog format — define clawtool-native or read existing (Docker MCP Catalog, MCP Registry, Smithery)?
+- **Deferred to v2**: container isolation, middleware support.
+- **Pending user-side**: work account `gh auth login` with `GH_CONFIG_DIR=~/.config/gh-work` (not blocking clawtool).
+- **Next deliverable**: prototype of search index + `tool_search` primitive — not full aggregator. Aggregation is solved; search is the new value.

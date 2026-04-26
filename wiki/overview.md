@@ -18,7 +18,7 @@ clawtool is a **customizable toolset** that:
 - Is usable across any AI coding agent / IDE (Claude Code, Codex, OpenCode, future ones)
 - Lets the user easily configure / enable / disable which tools are exposed
 - Ships some core tools (bash, grep, etc.) that are commonly needed
-- Treats search as a primary interaction paradigm
+- **Treats search as a primary interaction paradigm** — see [[004 clawtool initial architecture direction]]
 
 ## What it is NOT
 
@@ -30,26 +30,37 @@ The project's value is being the shared, configurable tool layer underneath. Too
 
 ## Status
 
-**Pre-spec / research phase.** Specs come before implementation. The foundation must be right because clawtool aims to be a standard across multiple agents.
+**Pre-spec / research phase round 1 done.** [[004 clawtool initial architecture direction]] captures the locked direction; some questions deliberately deferred for prototyping. Next deliverable: prototype of `tool_search` primitive.
 
-## Key Decisions So Far
+## Decisions
 
-- [[001 Choose claude-obsidian as brain layer]] — Claude's working memory for this project lives in this Obsidian vault
-- [[002 Vault on Windows filesystem]] — vault must be on native NTFS for Obsidian's watcher
-- [[003 Multi-account git via direnv and gh]] — per-directory identity, no global switching
+### Brain layer + infra
+- [[001 Choose claude-obsidian as brain layer]]
+- [[002 Vault on Windows filesystem]]
+- [[003 Multi-account git via direnv and gh]]
 
-## Next Open Questions
+### Architecture (developing)
+- [[004 clawtool initial architecture direction]]
 
-- Distribution mechanism: MCP server (likely) vs. custom protocol?
-- "Search-first" interpretation: deferred tool loading vs. unified tool search index?
-- Tool manifest / registry format
-- Configuration UX (CLI? declarative? plugin-based?)
+## Distinguishing identity
+
+**Search-first.** Concretely: deferred tool loading + semantic discovery. Every other clawtool capability (aggregation, per-tool toggle, single-binary, multi-agent) is table stakes copied from [[Universal Toolset Projects Comparison|the best of class]]; search is the gap nobody else has filled.
+
+## Open spec questions (deferred to prototype)
+
+- Implementation language (Go / Rust / TypeScript)
+- License (Apache 2.0 / MIT)
+- Tool-search ranking model (BM25 / embedding / hybrid)
+- Catalog source (define new vs read existing Docker MCP Catalog / MCP Registry / Smithery)
+- Container isolation as optional layer (v2)
+- Middleware support (v2)
 
 ## Owner
 
 [[Bahadır Arda]]
 
-## Related
+## Research inputs
 
-- [[Memory Tools Evaluated]] — research on agent memory frameworks (separate from clawtool's scope)
-- [[claude-obsidian]] — chosen brain layer plugin
+- [[Memory Tools Evaluated]] — brain layer survey
+- [[Universal Toolset Projects Comparison]] — MCP-aggregator landscape survey
+- [[Research Scope 2026-04-26]] — selection criteria for above

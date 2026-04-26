@@ -24,18 +24,24 @@ Project-bound knowledge base for **clawtool**. Updated on every ingest.
 - [[001 Choose claude-obsidian as brain layer]]
 - [[002 Vault on Windows filesystem]]
 - [[003 Multi-account git via direnv and gh]]
+- [[004 clawtool initial architecture direction]] — initial spec direction (developing)
 
 ## Comparisons
 
-- [[Memory Tools Evaluated]] — survey of brain/memory plugins for AI coding agents
+- [[Memory Tools Evaluated]] — survey of brain/memory plugins (input to ADR-001)
+- [[Universal Toolset Projects Comparison]] — survey of MCP-aggregator projects (input to ADR-004)
 
 ## Entities
 
+### People
 - [[Bahadır Arda]] — project owner
-- [[claude-obsidian]] — Obsidian-based knowledge companion plugin (chosen brain layer)
-- [[Claude Code]] — primary AI coding agent
-- [[Codex]] — secondary target agent
-- [[OpenCode]] — secondary target agent
+
+### Tools / products evaluated
+- [[claude-obsidian]] — chosen brain layer plugin
+- [[mcp-router]] — desktop GUI MCP manager
+- [[1mcp-agent]] — lean CLI MCP aggregator
+- [[metamcp]] — comprehensive Docker-based MCP aggregator
+- [[docker-mcp-gateway]] — Docker official, ships in Docker Desktop
 
 ## Concepts
 
@@ -45,7 +51,7 @@ Project-bound knowledge base for **clawtool**. Updated on every ingest.
 
 ## Sources
 
-_(Populated by ingest. Empty until first source dropped in `.raw/`.)_
+- [[Research Scope 2026-04-26]] — selection criteria and universe surveyed for ADR-004 input
 
 ## Questions
 
