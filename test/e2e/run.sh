@@ -716,7 +716,7 @@ pass "init-token: file mode is 0600"
 # 16b. Boot the gateway in the background, wait for it to start.
 XDG_CONFIG_HOME="$TMPCFG" "$BIN" serve --listen ":$HTTP_PORT" --token-file "$HTTP_TOKEN_FILE" >/dev/null 2>&1 &
 HTTP_PID=$!
-trap 'kill $HTTP_PID 2>/dev/null; rm -rf "$TMPCFG" "$RECIPE_TMP"' EXIT
+trap 'kill $HTTP_PID 2>/dev/null || true; rm -rf "$TMPCFG" "$RECIPE_TMP" 2>/dev/null || true' EXIT
 
 # Wait up to 5s for the listener to come up.
 for _ in $(seq 1 50); do
