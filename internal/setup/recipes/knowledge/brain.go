@@ -121,7 +121,7 @@ func (brainRecipe) Apply(_ context.Context, repo string, opts setup.Options) err
 	if err != nil {
 		return err
 	}
-	if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) {
+	if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", brainConfigPath)
 	}
 

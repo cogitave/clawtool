@@ -71,7 +71,7 @@ func detectEcosystems(repo string) []string {
 	return out
 }
 
-func (dependabotRecipe) Apply(_ context.Context, repo string, _ setup.Options) error {
+func (dependabotRecipe) Apply(_ context.Context, repo string, opts setup.Options) error {
 	ecosystems := detectEcosystems(repo)
 	if len(ecosystems) == 0 {
 		return fmt.Errorf("no recognized package ecosystems found in %s (looked for go.mod, package.json, requirements.txt, pyproject.toml, .github/workflows)", repo)
@@ -82,7 +82,7 @@ func (dependabotRecipe) Apply(_ context.Context, repo string, _ setup.Options) e
 	if err != nil {
 		return err
 	}
-	if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) {
+	if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", dependabotPath)
 	}
 

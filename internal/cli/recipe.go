@@ -30,13 +30,16 @@ const recipeUsage = `Usage:
   clawtool recipe status [<name>]
                             Show Detect status for a single recipe or all
                             recipes against the current working directory.
-  clawtool recipe apply <name> [key=value ...]
+  clawtool recipe apply <name> [--force] [key=value ...]
                             Apply <name> to the current working directory.
                             Options are key=value pairs; values containing
-                            commas become string slices. Examples:
+                            commas become string slices. --force lets a
+                            recipe overwrite a file that exists but isn't
+                            clawtool-managed (default: refuse). Examples:
                               clawtool recipe apply license holder="Jane Doe" spdx=MIT
                               clawtool recipe apply codeowners owners=@me,@team
                               clawtool recipe apply dependabot
+                              clawtool recipe apply license --force holder="..."
 `
 
 // RecipeList prints every registered recipe grouped by category with
@@ -249,11 +252,28 @@ func (a *App) runRecipe(argv []string) int {
 		}
 	case "apply":
 		if len(argv) < 2 {
-			fmt.Fprint(a.Stderr, "usage: clawtool recipe apply <name> [key=value ...]\n")
+			fmt.Fprint(a.Stderr, "usage: clawtool recipe apply <name> [--force] [key=value ...]\n")
 			return 2
 		}
 		name := argv[1]
-		if err := a.RecipeApply(name, argv[2:]); err != nil {
+		// Strip a leading --force / -f and translate it to the
+		// canonical opts[force]=true so recipes get a uniform input.
+		// Bare key=value form (`force=true`) keeps working too —
+		// parseKV's bool path handles it.
+		rest := argv[2:]
+		filtered := rest[:0]
+		forced := false
+		for _, a := range rest {
+			if a == "--force" || a == "-f" {
+				forced = true
+				continue
+			}
+			filtered = append(filtered, a)
+		}
+		if forced {
+			filtered = append(filtered, "force=true")
+		}
+		if err := a.RecipeApply(name, filtered); err != nil {
 			return 1
 		}
 	default:

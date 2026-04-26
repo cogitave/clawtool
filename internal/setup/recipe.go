@@ -106,6 +106,21 @@ const (
 // fills them via the recipe_apply call's arguments map.
 type Options map[string]any
 
+// ForceOption is the canonical key recipes consult to decide
+// whether to overwrite a file that exists but is not clawtool-
+// managed. The wizard surfaces this as an "overwrite anyway?"
+// prompt; the CLI exposes it via `--force` (which parseKV
+// translates to opts[force]=true).
+const ForceOption = "force"
+
+// IsForced reports whether opts requests an overwrite of unmanaged
+// files. Defaults to false. Recipes call this in their Apply to
+// gate the "exists but no marker → refuse" check.
+func IsForced(o Options) bool {
+	v, _ := GetOption[bool](o, ForceOption)
+	return v
+}
+
 // Get is a typed helper that returns the option's value as T or
 // the zero value if missing. Recipes use this instead of touching
 // the map directly so the keys stay grep-able.

@@ -85,7 +85,7 @@ func (prettierRecipe) Prereqs() []setup.Prereq {
 	}}
 }
 
-func (prettierRecipe) Apply(_ context.Context, repo string, _ setup.Options) error {
+func (prettierRecipe) Apply(_ context.Context, repo string, opts setup.Options) error {
 	cfgPath := filepath.Join(repo, prettierConfigPath)
 	if exists, err := setup.FileExists(cfgPath); err != nil {
 		return err
@@ -95,7 +95,7 @@ func (prettierRecipe) Apply(_ context.Context, repo string, _ setup.Options) err
 	ignPath := filepath.Join(repo, prettierIgnorePath)
 	if existing, err := setup.ReadIfExists(ignPath); err != nil {
 		return err
-	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) {
+	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", prettierIgnorePath)
 	}
 	if err := setup.WriteAtomic(cfgPath, prettierConfig, 0o644); err != nil {
@@ -172,14 +172,14 @@ func (golangciRecipe) Prereqs() []setup.Prereq {
 	}}
 }
 
-func (golangciRecipe) Apply(_ context.Context, repo string, _ setup.Options) error {
+func (golangciRecipe) Apply(_ context.Context, repo string, opts setup.Options) error {
 	if exists, _ := setup.FileExists(filepath.Join(repo, "go.mod")); !exists {
 		return fmt.Errorf("no go.mod in %s; golangci-lint targets Go projects only", repo)
 	}
 	path := filepath.Join(repo, golangciConfigPath)
 	if existing, err := setup.ReadIfExists(path); err != nil {
 		return err
-	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) {
+	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", golangciConfigPath)
 	}
 	return setup.WriteAtomic(path, golangciConfig, 0o644)

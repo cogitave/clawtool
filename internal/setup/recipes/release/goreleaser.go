@@ -73,19 +73,19 @@ func (goreleaserRecipe) Prereqs() []setup.Prereq {
 	}}
 }
 
-func (goreleaserRecipe) Apply(_ context.Context, repo string, _ setup.Options) error {
+func (goreleaserRecipe) Apply(_ context.Context, repo string, opts setup.Options) error {
 	// Workflow YAML — markable.
 	wfPath := filepath.Join(repo, grWorkflowPath)
 	if existing, err := setup.ReadIfExists(wfPath); err != nil {
 		return err
-	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) {
+	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", grWorkflowPath)
 	}
 	// .goreleaser.yaml — markable too (YAML supports # comments).
 	cfgPath := filepath.Join(repo, grConfigPath)
 	if existing, err := setup.ReadIfExists(cfgPath); err != nil {
 		return err
-	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) {
+	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", grConfigPath)
 	}
 

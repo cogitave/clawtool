@@ -81,7 +81,7 @@ func (ghActionsTestRecipe) Detect(_ context.Context, repo string) (setup.Status,
 
 func (ghActionsTestRecipe) Prereqs() []setup.Prereq { return nil }
 
-func (ghActionsTestRecipe) Apply(_ context.Context, repo string, _ setup.Options) error {
+func (ghActionsTestRecipe) Apply(_ context.Context, repo string, opts setup.Options) error {
 	lang, ok := detectLanguage(repo)
 	if !ok {
 		return fmt.Errorf("no language manifest detected in %s (drop a go.mod / package.json / requirements.txt / pyproject.toml / Cargo.toml first, or skip this recipe)", repo)
@@ -90,7 +90,7 @@ func (ghActionsTestRecipe) Apply(_ context.Context, repo string, _ setup.Options
 	path := filepath.Join(repo, ghActionsTestPath)
 	if existing, err := setup.ReadIfExists(path); err != nil {
 		return err
-	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) {
+	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", ghActionsTestPath)
 	}
 

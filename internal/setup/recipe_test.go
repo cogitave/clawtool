@@ -219,6 +219,24 @@ func TestInCategoryFilters(t *testing.T) {
 	}
 }
 
+func TestIsForced(t *testing.T) {
+	if IsForced(nil) {
+		t.Error("nil opts should not be forced")
+	}
+	if IsForced(Options{}) {
+		t.Error("empty opts should not be forced")
+	}
+	if !IsForced(Options{"force": true}) {
+		t.Error("opts[force]=true should be forced")
+	}
+	if IsForced(Options{"force": false}) {
+		t.Error("opts[force]=false should not be forced")
+	}
+	if IsForced(Options{"force": "true"}) {
+		t.Error("opts[force]=string-true should not satisfy bool — typed Get is strict")
+	}
+}
+
 func TestGetOption(t *testing.T) {
 	opts := Options{
 		"vault_path": "~/Documents/MyVault",

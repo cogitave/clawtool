@@ -84,8 +84,8 @@ func (licenseRecipe) Apply(_ context.Context, repo string, opts setup.Options) e
 	if err != nil {
 		return err
 	}
-	if existing != nil && !setup.HasMarker(existing, licenseMarker) {
-		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", licensePath)
+	if existing != nil && !setup.HasMarker(existing, licenseMarker) && !setup.IsForced(opts) {
+		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite (pass force=true to override)", licensePath)
 	}
 
 	tplBytes, err := licenseAssets.ReadFile("assets/" + spdx + ".txt")

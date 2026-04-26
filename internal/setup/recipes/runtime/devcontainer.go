@@ -87,7 +87,7 @@ func (devcontainerRecipe) Detect(_ context.Context, repo string) (setup.Status, 
 
 func (devcontainerRecipe) Prereqs() []setup.Prereq { return nil }
 
-func (devcontainerRecipe) Apply(_ context.Context, repo string, _ setup.Options) error {
+func (devcontainerRecipe) Apply(_ context.Context, repo string, opts setup.Options) error {
 	lang, ok := detectLanguage(repo)
 	if !ok {
 		return fmt.Errorf("no language manifest detected in %s; devcontainer recipe needs Go/Node/Python/Rust", repo)
@@ -96,7 +96,7 @@ func (devcontainerRecipe) Apply(_ context.Context, repo string, _ setup.Options)
 	path := filepath.Join(repo, devcontainerPath)
 	if existing, err := setup.ReadIfExists(path); err != nil {
 		return err
-	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) {
+	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", devcontainerPath)
 	}
 

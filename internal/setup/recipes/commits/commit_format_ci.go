@@ -52,13 +52,13 @@ func (commitFormatCIRecipe) Detect(_ context.Context, repo string) (setup.Status
 
 func (commitFormatCIRecipe) Prereqs() []setup.Prereq { return nil }
 
-func (commitFormatCIRecipe) Apply(_ context.Context, repo string, _ setup.Options) error {
+func (commitFormatCIRecipe) Apply(_ context.Context, repo string, opts setup.Options) error {
 	path := filepath.Join(repo, commitFormatPath)
 	b, err := setup.ReadIfExists(path)
 	if err != nil {
 		return err
 	}
-	if b != nil && !setup.HasMarker(b, setup.ManagedByMarker) {
+	if b != nil && !setup.HasMarker(b, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		// Conservative: refuse to overwrite a file we didn't
 		// write. The wizard surfaces this as a partial-applied
 		// status; a future --force flag (v0.10) overrides.

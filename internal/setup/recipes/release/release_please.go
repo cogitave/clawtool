@@ -112,12 +112,12 @@ func (releasePleaseRecipe) Prereqs() []setup.Prereq {
 	}}
 }
 
-func (releasePleaseRecipe) Apply(_ context.Context, repo string, _ setup.Options) error {
+func (releasePleaseRecipe) Apply(_ context.Context, repo string, opts setup.Options) error {
 	// Workflow YAML — the only file we can mark.
 	wf := filepath.Join(repo, rpWorkflowPath)
 	if existing, err := setup.ReadIfExists(wf); err != nil {
 		return err
-	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) {
+	} else if existing != nil && !setup.HasMarker(existing, setup.ManagedByMarker) && !setup.IsForced(opts) {
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", rpWorkflowPath)
 	}
 	// JSON config + manifest — can't be marked. Refuse to overwrite

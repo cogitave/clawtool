@@ -148,6 +148,31 @@ func TestLicense_RefusesOverwriteOfUnmanagedFile(t *testing.T) {
 	}
 }
 
+func TestLicense_ForceOverridesUnmanagedRefusal(t *testing.T) {
+	r := setup.Lookup("license")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "LICENSE")
+	if err := os.WriteFile(target, []byte("Some user-authored license\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Without force, Apply must refuse (covered by the test above).
+	// With force, it must succeed and the rendered file becomes
+	// clawtool-managed (marker present).
+	if err := r.Apply(context.Background(), dir, setup.Options{
+		"holder": "Test",
+		"force":  true,
+	}); err != nil {
+		t.Fatalf("Apply with force should succeed; got %v", err)
+	}
+	body, _ := os.ReadFile(target)
+	if !setup.HasMarker(body, licenseMarker) {
+		t.Error("force-overwritten file lacks licenseMarker")
+	}
+	if err := r.Verify(context.Background(), dir); err != nil {
+		t.Errorf("Verify after force-overwrite: %v", err)
+	}
+}
+
 func TestLicense_ApplyIsIdempotent(t *testing.T) {
 	r := setup.Lookup("license")
 	dir := t.TempDir()
