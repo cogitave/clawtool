@@ -23,8 +23,20 @@ fi
 fail() { echo "✘ $*" >&2; exit 1; }
 pass() { echo "✓ $*"; }
 
+# `timeout` is in GNU coreutils on Linux but absent from macOS's BSD
+# userland; coreutils-via-brew installs it as `gtimeout`. Resolve once
+# at script start so every later invocation can use $TIMEOUT_BIN.
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_BIN=timeout
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_BIN=gtimeout
+else
+  echo "✘ neither 'timeout' nor 'gtimeout' on PATH — install GNU coreutils" >&2
+  exit 1
+fi
+
 mcp_session() {
-  timeout 10 "$BIN" serve 2>/dev/null
+  "$TIMEOUT_BIN" 10 "$BIN" serve 2>/dev/null
 }
 
 initialize_msg='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"e2e","version":"0.1"}}}'
@@ -235,7 +247,7 @@ list_with_proxy=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
 echo "$list_with_proxy" | grep -q '"name":"Bash"' \
   || fail "proxy: core Bash missing from tools/list"
@@ -255,7 +267,7 @@ call_response=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"stub__echo","arguments":{"text":"e2e-proxy"}}}' \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
 echo "$call_response" | grep -qF 'echo:e2e-proxy' \
   || fail "proxy: tools/call did not return echoed text — got: $call_response"
@@ -283,7 +295,7 @@ list_no_bash=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
 if echo "$list_no_bash" | grep -q '"name":"Bash"' ; then
   fail "proxy: Bash present despite core_tools.Bash.enabled=false"
@@ -322,7 +334,7 @@ search_grep=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"search file contents regex","limit":3}}}' \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
 echo "$search_grep" | grep -qF '"engine":"bleve-bm25"' \
   || fail "ToolSearch: engine != bleve-bm25"
@@ -343,7 +355,7 @@ search_stub=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"echo back input text","limit":3}}}' \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
 top_name=$(echo "$search_stub" | grep structuredContent | grep -oE '"name":"[A-Za-z_]+"' | head -1 | grep -oE '[A-Za-z_]+' | tail -1)
 if [[ "$top_name" != "stub__echo" ]]; then
@@ -356,7 +368,7 @@ search_core=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"echo","type":"core","limit":5}}}' \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
 if echo "$search_core" | grep -qF '"name":"stub__echo"' ; then
   fail "ToolSearch type=core: leaked sourced tool stub__echo"
@@ -370,7 +382,7 @@ glob_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Glob","arguments":{"pattern":"**/*.md","cwd":"%s","limit":50}}}' "$REPO_ROOT")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
 echo "$glob_resp" | grep -qF '"engine":"doublestar"' \
   || fail "Glob: engine != doublestar"
@@ -410,7 +422,7 @@ html_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$HTMLFX")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$html_resp" | grep -qF '"format":"html"' \
   || fail "Read HTML: format != html — got: $html_resp"
@@ -437,7 +449,7 @@ csv_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$CSVFX")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$csv_resp" | grep -qF '"format":"csv"' \
   || fail "Read CSV: format != csv"
@@ -463,7 +475,7 @@ webfetch_bad=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"WebFetch","arguments":{"url":"ftp://example.com/file"}}}' \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$webfetch_bad" | grep -qF 'http://' \
   || fail "WebFetch: error_reason missing scheme hint"
@@ -474,7 +486,7 @@ websearch_noauth=$(env -u BRAVE_API_KEY printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"WebSearch","arguments":{"query":"go programming"}}}' \
-  | env -u BRAVE_API_KEY XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | env -u BRAVE_API_KEY XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$websearch_noauth" | grep -qF 'BRAVE_API_KEY' \
   || fail "WebSearch: missing-key error should mention BRAVE_API_KEY"
@@ -489,7 +501,7 @@ write_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Write","arguments":{"path":"%s","content":"hello\\nworld\\n"}}}' "$WFILE")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$write_resp" | grep -qF '"created":true' \
   || fail "Write: created flag missing/false on fresh file"
@@ -504,7 +516,7 @@ edit_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"hello","new_string":"HOWDY"}}}' "$WFILE")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$edit_resp" | grep -qF '"replaced":true' \
   || fail "Edit: replaced flag missing/false"
@@ -521,7 +533,7 @@ ambig_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"dup line","new_string":"X"}}}' "$WFILE")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$ambig_resp" | grep -qF 'appears 2 times' \
   || fail "Edit: should refuse ambiguous match — got: $ambig_resp"
@@ -536,7 +548,7 @@ recipe_list_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 for t in RecipeList RecipeStatus RecipeApply SkillNew; do
   echo "$recipe_list_resp" | grep -q "\"name\":\"$t\"" \
@@ -549,7 +561,7 @@ list_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeList","arguments":{}}}' \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 # Recipe names live inside structuredContent — same parse trick as
 # the ToolSearch tests (§9): scope to the structuredContent line so
@@ -577,7 +589,7 @@ status_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeStatus","arguments":{"name":"conventional-commits-ci","repo":"%s"}}}' "$RECIPE_TMP")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$status_resp" | grep structuredContent | grep -qF '"status":"absent"' \
   || fail "RecipeStatus: empty tempdir should report status=absent — got: $status_resp"
@@ -588,7 +600,7 @@ apply_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeApply","arguments":{"name":"conventional-commits-ci","repo":"%s"}}}' "$RECIPE_TMP")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$apply_resp" | grep structuredContent | grep -qF '"verify_ok":true' \
   || fail "RecipeApply: verify_ok != true — got: $apply_resp"
@@ -607,7 +619,7 @@ status2_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeStatus","arguments":{"name":"conventional-commits-ci","repo":"%s"}}}' "$RECIPE_TMP")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$status2_resp" | grep structuredContent | grep -qF '"status":"applied"' \
   || fail "RecipeStatus: post-Apply status != applied"
@@ -618,7 +630,7 @@ bad_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeApply","arguments":{"name":"not-a-real-recipe","repo":"%s"}}}' "$RECIPE_TMP")" \
-  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 echo "$bad_resp" | grep -qF "unknown recipe" \
   || fail "RecipeApply: unknown name should surface 'unknown recipe' message"
