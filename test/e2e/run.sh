@@ -555,18 +555,19 @@ list_resp=$(printf '%s\n%s\n%s\n' \
 # the ToolSearch tests (§9): scope to the structuredContent line so
 # JSONRPC envelope's serverInfo.name doesn't leak into the match.
 recipe_payload=$(echo "$list_resp" | grep structuredContent)
-for r in conventional-commits-ci license codeowners dependabot release-please goreleaser agent-claim brain; do
+for r in conventional-commits-ci license codeowners dependabot release-please goreleaser agent-claim brain gh-actions-test prettier golangci-lint devcontainer; do
   echo "$recipe_payload" | grep -qF "\"name\":\"$r\"" \
     || fail "RecipeList: recipe $r missing"
 done
-pass "RecipeList: all 8 v0.9 recipes present (conventional-commits-ci · license · codeowners · dependabot · release-please · goreleaser · agent-claim · brain)"
+pass "RecipeList: all 12 v0.10 recipes present (governance/commits/release/ci/quality/supply-chain/knowledge/agents/runtime each populated)"
 
-# Category strings are part of the v1.0 contract — verify a few.
-for c in governance commits release supply-chain knowledge agents; do
+# Category strings are part of the v1.0 contract — every category
+# now has at least one recipe, so all 9 must surface.
+for c in governance commits release ci quality supply-chain knowledge agents runtime; do
   echo "$recipe_payload" | grep -qF "\"category\":\"$c\"" \
     || fail "RecipeList: category $c missing"
 done
-pass "RecipeList: governance/commits/release/supply-chain/knowledge/agents categories all surfaced"
+pass "RecipeList: all 9 categories surfaced (the v1.0 taxonomy contract)"
 
 # 14c. RecipeStatus on a single recipe in a tempdir reports absent.
 RECIPE_TMP=$(mktemp -d)
