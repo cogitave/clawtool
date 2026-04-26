@@ -1,6 +1,9 @@
 ---
 type: decision
 title: "003 Multi-account git via direnv and gh"
+aliases:
+  - "003 Multi-account git via direnv and gh"
+  - "ADR-003"
 created: 2026-04-26
 updated: 2026-04-26
 tags:

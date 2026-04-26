@@ -1,6 +1,9 @@
 ---
 type: decision
 title: "005 Positioning replace native agent tools"
+aliases:
+  - "005 Positioning replace native agent tools"
+  - "ADR-005"
 created: 2026-04-26
 updated: 2026-04-26
 tags:

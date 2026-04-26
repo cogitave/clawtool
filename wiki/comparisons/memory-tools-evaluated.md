@@ -1,6 +1,8 @@
 ---
 type: comparison
 title: "Memory Tools Evaluated"
+aliases:
+  - "Memory Tools Evaluated"
 created: 2026-04-26
 updated: 2026-04-26
 tags:

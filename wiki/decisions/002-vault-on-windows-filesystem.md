@@ -1,6 +1,9 @@
 ---
 type: decision
 title: "002 Vault on Windows filesystem"
+aliases:
+  - "002 Vault on Windows filesystem"
+  - "ADR-002"
 created: 2026-04-26
 updated: 2026-04-26
 tags:

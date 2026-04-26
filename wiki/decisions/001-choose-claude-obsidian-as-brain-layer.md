@@ -1,6 +1,9 @@
 ---
 type: decision
 title: "001 Choose claude-obsidian as brain layer"
+aliases:
+  - "001 Choose claude-obsidian as brain layer"
+  - "ADR-001"
 created: 2026-04-26
 updated: 2026-04-26
 tags:

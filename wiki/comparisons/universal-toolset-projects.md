@@ -1,6 +1,8 @@
 ---
 type: comparison
 title: "Universal Toolset Projects Comparison"
+aliases:
+  - "Universal Toolset Projects Comparison"
 created: 2026-04-26
 updated: 2026-04-26
 tags:

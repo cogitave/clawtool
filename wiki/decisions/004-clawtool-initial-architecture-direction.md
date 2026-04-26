@@ -1,6 +1,9 @@
 ---
 type: decision
 title: "004 clawtool initial architecture direction"
+aliases:
+  - "004 clawtool initial architecture direction"
+  - "ADR-004"
 created: 2026-04-26
 updated: 2026-04-26
 tags:

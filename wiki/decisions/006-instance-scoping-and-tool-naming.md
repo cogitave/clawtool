@@ -1,6 +1,9 @@
 ---
 type: decision
 title: "006 Instance scoping and tool naming"
+aliases:
+  - "006 Instance scoping and tool naming"
+  - "ADR-006"
 created: 2026-04-26
 updated: 2026-04-26
 tags:
