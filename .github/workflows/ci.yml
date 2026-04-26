@@ -70,12 +70,16 @@ jobs:
       # code path stays exercised everywhere (the e2e test asserts
       # engine == ripgrep, not grep).
       - name: Install test-time binaries
+        # macOS GitHub runners do not ship GNU coreutils, so `timeout`
+        # (and its homonym `gtimeout`) are absent until we install them
+        # via brew. test/e2e/run.sh detects whichever is on PATH and
+        # uses it; we just have to make sure one ends up there.
         run: |
           if [ "$(uname -s)" = "Linux" ]; then
             sudo apt-get update -qq
             sudo apt-get install -y -qq ripgrep pandoc poppler-utils
           else
-            brew install ripgrep pandoc poppler
+            brew install ripgrep pandoc poppler coreutils
           fi
 
       - name: go test -race
