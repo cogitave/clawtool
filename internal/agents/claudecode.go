@@ -1,7 +1,13 @@
-// Claude Code adapter — mutates ~/.claude/settings.json's `disabledTools`
-// array to take the native Bash/Read/Edit/Write/Grep/Glob/WebFetch/
-// WebSearch out of the model's tool surface, leaving only
-// mcp__clawtool__*. See ADR-011.
+// Claude Code adapter — mutates ~/.claude/settings.json's
+// `permissions.deny` array to take native Bash/Read/Edit/Write/Grep/
+// Glob/WebFetch/WebSearch out of the model's tool surface, leaving
+// only mcp__clawtool__*.
+//
+// Wire-format note: earlier versions of this adapter wrote to a
+// top-level `disabledTools` field. Claude Code 2.x ignores that key
+// — the canonical mechanism is `permissions.deny`. On read we still
+// recognize the legacy field and migrate it forward; on write we
+// only emit `permissions.deny`.
 package agents
 
 import (
@@ -11,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 func init() {
@@ -42,11 +47,12 @@ func (a *claudeCodeAdapter) settingsPath() string {
 
 // markerPath sits next to settings.json. Format:
 //
-//	{"version": 1, "tools": ["Bash", "Read", ...]}
+//	{"version": 2, "tools": ["Bash", "Read", ...]}
 //
 // We use the marker as the source of truth for "which tools did clawtool
 // disable" so Release is precise even if the user manually edited
-// settings.json between Claim and Release.
+// settings.json between Claim and Release. Version bumped to 2 when
+// the deny field moved from disabledTools to permissions.deny.
 func (a *claudeCodeAdapter) markerPath() string {
 	dir := filepath.Dir(a.settingsPath())
 	return filepath.Join(dir, "settings.clawtool.lock")
@@ -61,7 +67,7 @@ func (a *claudeCodeAdapter) Detected() bool {
 }
 
 // Claim disables every name in ClaimedToolsForClawtool that isn't
-// already disabled, persists the updated settings, and writes the
+// already denied, persists the updated settings, and writes the
 // marker file recording exactly which names this Claim added.
 func (a *claudeCodeAdapter) Claim(opts Options) (Plan, error) {
 	plan := Plan{
@@ -77,18 +83,21 @@ func (a *claudeCodeAdapter) Claim(opts Options) (Plan, error) {
 		return plan, err
 	}
 
-	// Anything we'd add: tools clawtool replaces that aren't already disabled.
-	currentDisabled := stringSet(settings.DisabledTools)
+	// Anything we'd add: tools clawtool replaces that aren't already denied.
+	currentDeny := stringSet(settings.Deny)
 	var toAdd []string
 	for _, t := range ClaimedToolsForClawtool {
-		if !currentDisabled[t] {
+		if !currentDeny[t] {
 			toAdd = append(toAdd, t)
 		}
 	}
 
 	plan.ToolsAdded = toAdd
 
-	if len(toAdd) == 0 {
+	// Force a write when we found a legacy disabledTools field, even if
+	// every tool is already in Deny — that's how the orphan key gets
+	// removed during a re-run after upgrade.
+	if len(toAdd) == 0 && !settings.HadLegacyDisabledTools {
 		plan.WasNoop = true
 		return plan, nil
 	}
@@ -98,11 +107,11 @@ func (a *claudeCodeAdapter) Claim(opts Options) (Plan, error) {
 	}
 
 	// Apply: add new entries, sort for stable output, write atomically.
-	newDisabled := append([]string{}, settings.DisabledTools...)
-	newDisabled = append(newDisabled, toAdd...)
-	sort.Strings(newDisabled)
-	newDisabled = dedupSorted(newDisabled)
-	settings.DisabledTools = newDisabled
+	newDeny := append([]string{}, settings.Deny...)
+	newDeny = append(newDeny, toAdd...)
+	sort.Strings(newDeny)
+	newDeny = dedupSorted(newDeny)
+	settings.Deny = newDeny
 
 	if err := a.writeSettings(settings); err != nil {
 		return plan, fmt.Errorf("write settings: %w", err)
@@ -119,7 +128,7 @@ func (a *claudeCodeAdapter) Claim(opts Options) (Plan, error) {
 }
 
 // Release reads the marker file and removes exactly those tools from
-// disabledTools — preserving any disable entries the user added for
+// permissions.deny — preserving any deny entries the user added for
 // unrelated reasons.
 func (a *claudeCodeAdapter) Release(opts Options) (Plan, error) {
 	plan := Plan{
@@ -155,12 +164,12 @@ func (a *claudeCodeAdapter) Release(opts Options) (Plan, error) {
 
 	toRemove := stringSet(marker.Tools)
 	var keep []string
-	for _, t := range settings.DisabledTools {
+	for _, t := range settings.Deny {
 		if !toRemove[t] {
 			keep = append(keep, t)
 		}
 	}
-	settings.DisabledTools = keep
+	settings.Deny = keep
 
 	if err := a.writeSettings(settings); err != nil {
 		return plan, fmt.Errorf("write settings: %w", err)
@@ -199,13 +208,20 @@ func (a *claudeCodeAdapter) Status() (Status, error) {
 
 // ── settings.json read / write ─────────────────────────────────────────
 
-// settingsShape captures only the fields clawtool reads/writes. Other
-// fields in the file are preserved by round-tripping through a
-// map[string]any so we don't accidentally drop user state.
+// settingsShape holds the deny list plus everything else as an
+// untyped map so we round-trip user keys we don't understand.
+//
+// HadLegacyDisabledTools is set during read when a top-level
+// `disabledTools` field is found and folded into Deny + dropped.
+// Claim consults it so a re-run after upgrading clawtool always
+// rewrites the file (even when the deny list looks already-complete)
+// to clean up the orphan field.
 type settingsShape struct {
-	DisabledTools []string `json:"disabledTools,omitempty"`
+	Deny                   []string
+	HadLegacyDisabledTools bool
 
-	// Anything else lives here and is written back unchanged.
+	// Everything else lives here, including `permissions` minus
+	// the `deny` array (which we hoist into Deny).
 	rest map[string]any
 }
 
@@ -218,26 +234,44 @@ func (a *claudeCodeAdapter) readSettings() (*settingsShape, error) {
 		}
 		return nil, err
 	}
-	var raw map[string]any
 	if len(b) == 0 {
 		return out, nil
 	}
+	var raw map[string]any
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", a.settingsPath(), err)
 	}
 	if raw == nil {
 		return out, nil
 	}
+
+	// Hoist permissions.deny if present.
+	if perms, ok := raw["permissions"].(map[string]any); ok {
+		if v, ok := perms["deny"]; ok {
+			out.Deny = stringArray(v)
+			delete(perms, "deny")
+		}
+		if len(perms) == 0 {
+			delete(raw, "permissions")
+		} else {
+			raw["permissions"] = perms
+		}
+	}
+
+	// Migrate legacy top-level disabledTools into Deny if present.
+	// Claude Code 2.x ignores this key; we fold it into the canonical
+	// permissions.deny list and drop the orphan.
 	if v, ok := raw["disabledTools"]; ok {
-		if arr, ok := v.([]any); ok {
-			for _, item := range arr {
-				if s, ok := item.(string); ok {
-					out.DisabledTools = append(out.DisabledTools, s)
-				}
-			}
+		legacy := stringArray(v)
+		if len(legacy) > 0 {
+			out.Deny = append(out.Deny, legacy...)
+			sort.Strings(out.Deny)
+			out.Deny = dedupSorted(out.Deny)
 		}
 		delete(raw, "disabledTools")
+		out.HadLegacyDisabledTools = true
 	}
+
 	out.rest = raw
 	return out, nil
 }
@@ -247,11 +281,34 @@ func (a *claudeCodeAdapter) writeSettings(s *settingsShape) error {
 	for k, v := range s.rest {
 		out[k] = v
 	}
-	if len(s.DisabledTools) > 0 {
-		out["disabledTools"] = s.DisabledTools
-	} else {
-		delete(out, "disabledTools")
+
+	// Re-attach permissions.deny if non-empty. Preserve any other
+	// keys under `permissions` the user already had (e.g. `allow`,
+	// `defaultMode`).
+	if len(s.Deny) > 0 {
+		var perms map[string]any
+		if existing, ok := out["permissions"].(map[string]any); ok {
+			perms = existing
+		} else {
+			perms = map[string]any{}
+		}
+		anyDeny := make([]any, 0, len(s.Deny))
+		for _, t := range s.Deny {
+			anyDeny = append(anyDeny, t)
+		}
+		perms["deny"] = anyDeny
+		out["permissions"] = perms
+	} else if existing, ok := out["permissions"].(map[string]any); ok {
+		// Empty deny: drop the key but preserve sibling permissions
+		// entries the user might depend on.
+		delete(existing, "deny")
+		if len(existing) == 0 {
+			delete(out, "permissions")
+		} else {
+			out["permissions"] = existing
+		}
 	}
+
 	body, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return err
@@ -260,6 +317,23 @@ func (a *claudeCodeAdapter) writeSettings(s *settingsShape) error {
 		return err
 	}
 	return atomicWriteJSON(a.settingsPath(), append(body, '\n'))
+}
+
+// stringArray normalizes JSON-decoded `any` back to []string. Used
+// on read for both permissions.deny and the legacy disabledTools
+// field.
+func stringArray(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // ── marker read / write ────────────────────────────────────────────────
@@ -285,7 +359,7 @@ func (a *claudeCodeAdapter) writeMarker(tools []string) error {
 	if err := os.MkdirAll(filepath.Dir(a.markerPath()), 0o755); err != nil {
 		return err
 	}
-	body, err := json.MarshalIndent(markerShape{Version: 1, Tools: tools}, "", "  ")
+	body, err := json.MarshalIndent(markerShape{Version: 2, Tools: tools}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -328,11 +402,5 @@ func dedupSorted(xs []string) []string {
 }
 
 // SetClaudeCodeSettingsPath redirects the adapter to a custom settings
-// path. Tests use it; production should never call it. Exported (vs a
-// package-level test hook) so test packages outside `agents_test.go`
-// can wire it in if they need to.
+// path. Tests use it; production should never call it.
 func SetClaudeCodeSettingsPath(p string) { claudeCodePathOverride = p }
-
-// Sanity export to silence unused-import warnings if strings ever
-// unused in this file due to refactor.
-var _ = strings.TrimSpace

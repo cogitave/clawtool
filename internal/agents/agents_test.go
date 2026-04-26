@@ -45,13 +45,22 @@ func loadJSON(t *testing.T, path string) map[string]any {
 	return out
 }
 
-func disabledTools(t *testing.T, path string) []string {
+// denyList reads permissions.deny — the canonical Claude Code field
+// — from a written settings.json. Earlier clawtool versions wrote
+// to a top-level disabledTools array which Claude Code 2.x ignored;
+// the adapter now writes to permissions.deny exclusively, and the
+// tests follow.
+func denyList(t *testing.T, path string) []string {
 	t.Helper()
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil
 	}
 	raw := loadJSON(t, path)
-	v, ok := raw["disabledTools"]
+	perms, ok := raw["permissions"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	v, ok := perms["deny"]
 	if !ok {
 		return nil
 	}
@@ -85,7 +94,7 @@ func TestClaim_AddsClawtoolToolsToEmptySettings(t *testing.T) {
 		t.Errorf("ToolsAdded = %v, want all %d clawtool tools", plan.ToolsAdded, len(ClaimedToolsForClawtool))
 	}
 
-	got := disabledTools(t, settings)
+	got := denyList(t, settings)
 	want := append([]string{}, ClaimedToolsForClawtool...)
 	sort.Strings(want)
 	if !equalStrings(got, want) {
@@ -95,9 +104,11 @@ func TestClaim_AddsClawtoolToolsToEmptySettings(t *testing.T) {
 
 func TestClaim_PreservesUserState(t *testing.T) {
 	initial := map[string]any{
-		"theme":         "dark",
-		"disabledTools": []any{"SomethingTheUserDisabled"},
-		"permissions":   map[string]any{"allow": []any{"Bash"}},
+		"theme": "dark",
+		"permissions": map[string]any{
+			"allow": []any{"Bash"},
+			"deny":  []any{"SomethingTheUserDenied"},
+		},
 	}
 	settings, _, cleanup := withTempSettings(t, initial)
 	defer cleanup()
@@ -111,19 +122,55 @@ func TestClaim_PreservesUserState(t *testing.T) {
 	if got["theme"] != "dark" {
 		t.Errorf("theme dropped: %v", got["theme"])
 	}
-	if _, ok := got["permissions"]; !ok {
-		t.Error("permissions field dropped")
+	perms, ok := got["permissions"].(map[string]any)
+	if !ok {
+		t.Fatal("permissions field dropped")
+	}
+	if _, ok := perms["allow"]; !ok {
+		t.Error("permissions.allow dropped — sibling deny merge must preserve it")
 	}
 
-	disabled := disabledTools(t, settings)
+	deny := denyList(t, settings)
 	hasSomething := false
-	for _, d := range disabled {
-		if d == "SomethingTheUserDisabled" {
+	for _, d := range deny {
+		if d == "SomethingTheUserDenied" {
 			hasSomething = true
 		}
 	}
 	if !hasSomething {
-		t.Errorf("user's disable list lost: %v", disabled)
+		t.Errorf("user's permissions.deny entry lost: %v", deny)
+	}
+}
+
+// Legacy migration: a settings file written by an older clawtool
+// (top-level disabledTools) must be rewritten under permissions.deny
+// the next time Claim runs. The orphan key is dropped.
+func TestClaim_MigratesLegacyDisabledTools(t *testing.T) {
+	initial := map[string]any{
+		"disabledTools": []any{"Bash", "Edit", "UserAddedTool"},
+		"theme":         "light",
+	}
+	settings, _, cleanup := withTempSettings(t, initial)
+	defer cleanup()
+
+	a := &claudeCodeAdapter{}
+	if _, err := a.Claim(Options{}); err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+
+	raw := loadJSON(t, settings)
+	if _, present := raw["disabledTools"]; present {
+		t.Error("legacy top-level disabledTools must be removed after migration")
+	}
+	deny := denyList(t, settings)
+	want := append([]string{"UserAddedTool"}, ClaimedToolsForClawtool...)
+	sort.Strings(want)
+	want = dedupSorted(want)
+	if !equalStrings(deny, want) {
+		t.Errorf("after migration, permissions.deny = %v, want %v", deny, want)
+	}
+	if raw["theme"] != "light" {
+		t.Error("non-tool fields must round-trip across migration")
 	}
 }
 
@@ -135,13 +182,13 @@ func TestClaim_Idempotent(t *testing.T) {
 	if _, err := a.Claim(Options{}); err != nil {
 		t.Fatal(err)
 	}
-	first := disabledTools(t, settings)
+	first := denyList(t, settings)
 
 	plan2, err := a.Claim(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := disabledTools(t, settings)
+	second := denyList(t, settings)
 
 	if !plan2.WasNoop {
 		t.Error("second Claim should be a no-op")
@@ -173,7 +220,9 @@ func TestClaim_DryRunWritesNothing(t *testing.T) {
 
 func TestRelease_RestoresExactly(t *testing.T) {
 	initial := map[string]any{
-		"disabledTools": []any{"UserKept"},
+		"permissions": map[string]any{
+			"deny": []any{"UserKept"},
+		},
 	}
 	settings, _, cleanup := withTempSettings(t, initial)
 	defer cleanup()
@@ -187,9 +236,9 @@ func TestRelease_RestoresExactly(t *testing.T) {
 	if _, err := a.Release(Options{}); err != nil {
 		t.Fatal(err)
 	}
-	got := disabledTools(t, settings)
+	got := denyList(t, settings)
 	if !equalStrings(got, []string{"UserKept"}) {
-		t.Errorf("after Release, disabledTools = %v, want [UserKept]", got)
+		t.Errorf("after Release, permissions.deny = %v, want [UserKept]", got)
 	}
 }
 
