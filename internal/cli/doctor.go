@@ -75,6 +75,19 @@ func (a *App) doctorBinary(w io.Writer, rep *doctorReport) {
 	} else {
 		rep.warn(w, "could not resolve own executable path: "+err.Error(), "")
 	}
+	// Surface a pending upstream release if we know about one.
+	// Cached for 24h so we don't hit GitHub on every doctor run.
+	upd := version.CheckForUpdate(context.Background())
+	switch {
+	case upd.Err != nil:
+		rep.info(w, fmt.Sprintf("update check failed: %v (cached for 24h)", upd.Err))
+	case upd.HasUpdate:
+		rep.warn(w,
+			fmt.Sprintf("new release available: %s (you have %s)", upd.Latest, upd.Current),
+			"curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh")
+	case upd.Latest != "":
+		rep.ok(w, fmt.Sprintf("up to date (latest release: %s)", upd.Latest))
+	}
 	fmt.Fprintln(w)
 }
 

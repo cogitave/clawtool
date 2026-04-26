@@ -163,13 +163,16 @@ writes, secret redaction) is what clawtool brings.
 ### Source aggregation
 
 `clawtool source add github` resolves to the canonical MCP server,
-prints the auth hint, registers it. Twelve entries in the catalog out
-of the box:
+prints the auth hint, registers it. Eighteen entries in the catalog
+out of the box:
 
 ```
 github · slack · postgres · sqlite · filesystem · fetch
 brave-search · google-maps · memory · sequentialthinking · time · git
+context7 · playwright · desktop-commander · exa · notion · atlassian
 ```
+
+Pick what you need; clawtool installs none by default.
 
 Sources spawn as child MCP processes; their tools are aggregated under
 the wire-form name `<instance>__<tool>` (e.g.

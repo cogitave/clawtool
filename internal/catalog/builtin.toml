@@ -129,3 +129,51 @@ required_env = ["GIT_REPO"]
 auth_hint = "Set GIT_REPO to the absolute path of the local clone you want exposed."
 homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/git"
 maintained = "anthropic"
+
+[entries.context7]
+description = "Context7: pulls up-to-date library docs into Claude's context (kills hallucinated API calls)"
+runtime = "npx"
+package = "@upstash/context7-mcp"
+homepage = "https://github.com/upstash/context7"
+maintained = "community"
+
+[entries.playwright]
+description = "Playwright: drive Chromium/Firefox/WebKit via MCP — let Claude test web apps"
+runtime = "npx"
+package = "@playwright/mcp"
+homepage = "https://github.com/microsoft/playwright-mcp"
+maintained = "microsoft"
+
+[entries.desktop-commander]
+description = "Desktop Commander: filesystem + terminal + process control on the host machine"
+runtime = "npx"
+package = "@wonderwhy-er/desktop-commander"
+homepage = "https://github.com/wonderwhy-er/DesktopCommanderMCP"
+maintained = "community"
+
+[entries.exa]
+description = "Exa: neural web search built for AI agents (semantic, not keyword) — great for research tasks"
+runtime = "npx"
+package = "exa-mcp-server"
+required_env = ["EXA_API_KEY"]
+auth_hint = "Generate an API key at https://exa.ai. Then: clawtool source set-secret exa EXA_API_KEY"
+homepage = "https://github.com/exa-labs/exa-mcp-server"
+maintained = "community"
+
+[entries.notion]
+description = "Notion: workspace access — read pages, create entries, update databases"
+runtime = "npx"
+package = "@notionhq/notion-mcp-server"
+required_env = ["NOTION_API_KEY"]
+auth_hint = "Create an integration at https://www.notion.so/my-integrations, share pages with it, then: clawtool source set-secret notion NOTION_API_KEY"
+homepage = "https://github.com/makenotion/notion-mcp-server"
+maintained = "notion"
+
+[entries.atlassian]
+description = "Atlassian: Jira + Confluence read/write (issues, pages, search)"
+runtime = "python"
+package = "mcp-atlassian"
+required_env = ["JIRA_URL", "JIRA_USERNAME", "JIRA_API_TOKEN"]
+auth_hint = "Generate an API token at https://id.atlassian.com/manage-profile/security/api-tokens. Set JIRA_URL to https://<your>.atlassian.net."
+homepage = "https://github.com/sooperset/mcp-atlassian"
+maintained = "community"
