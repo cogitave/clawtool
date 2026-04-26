@@ -17,6 +17,30 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### CATALOG — ADR-008: curated source catalog with name-only ergonomics
+
+- New ADR. `clawtool source add github` resolves bare names to canonical implementations from a built-in catalog (package name, runtime, required env vars, auth flow hints, homepage, maintenance status). Long-form `clawtool source add custom -- npx -y my/server` remains for unknown sources — catalog is a fast path, not a gate.
+- Federation strategy with external catalogs (Docker MCP Catalog, MCP Registry, Smithery) per ADR-007 wrap-don't-reinvent.
+- Secrets isolated: `~/.config/clawtool/secrets.toml` (mode 0600) separate from `config.toml`. Config can be safely committed; secrets file references via `${VAR}` interpolation.
+- Per-runtime support (npx | node | python | docker | binary) with version pinning syntax `clawtool source add github@1.4.2`.
+- Lands in v0.4 alongside the source-instance feature. Catalog file format: `internal/catalog/catalog.toml`.
+
+### V0.3 SHIPPED — Grep (ripgrep) + Read (stdlib + pdftotext + ipynb)
+
+- **Engine detection layer** at `internal/tools/core/engines.go` — sync.Once cache, `LookupEngine("rg"|"grep"|"pdftotext")`. Per ADR-007: detect, prefer best-in-class, fall back gracefully.
+- **Grep tool** at `internal/tools/core/grep.go`. Wraps ripgrep `--json` event stream (path, line_number, submatches → uniform `GrepMatch{Path,Line,Column,Text}`); system grep fallback parses `path:line:text` format. Engine field exposed in result so users / tests can verify which ran. Knobs: pattern (required), path, glob, type alias, case_insensitive, max_matches.
+- **Read tool** at `internal/tools/core/read.go`. Three engines:
+  - stdlib bufio for text (single-pass, deterministic total_lines)
+  - pdftotext shell-out (`-layout`) with helpful "not installed" error when poppler missing
+  - native ipynb JSON parse (handles both legacy array-of-strings and modern single-string `source`)
+- Format detection via extension + 4 KiB content sniff (PDF magic, NUL bytes). Binary content refused with structured error rather than dumped.
+- **ripgrep installed**: `~/.local/bin/rg` 15.1.0 musl static binary (MIT-or-Unlicense, BurntSushi/ripgrep). No sudo. Without this clawtool's Grep would fall back to system grep (still works, just slower).
+- **5 + 6 unit tests** for Grep and Read covering matches, glob filter, max_matches truncation, no-match path, case-insensitive, line range, beyond-EOF, binary rejection, ipynb parsing, PDF-without-engine error path, directory rejection.
+- **5 + 5 e2e assertions** added: tools/list registration, Grep call against repo README returns ripgrep engine + matches, Read of README honors line_start/line_end + reports total_lines + format=text/engine=stdlib.
+- Test totals after v0.3: **58 green** (16 tools/core + 11 config + 8 cli + 23 e2e).
+- Updated `KnownCoreTools` to ["Bash","Grep","Read"]; server registers all three on startup.
+- Updated [[Canonical Tool Implementations Survey 2026-04-26]] with adopted-engine markers.
+
 ### DISCIPLINE — ADR-007: leverage best-in-class, don't reinvent
 
 - New ADR locks the engineering posture for core-tool work. Wrap mature engines (ripgrep, defuddle/Readability, OpenAI apply_patch, doublestar, bleve, …) and add the polish layer (timeout-safe, structured JSON, secret redaction, MCP correctness, uniform conventions across tools). Reimplement from scratch only when no upstream meets the bar.

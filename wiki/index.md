@@ -28,6 +28,7 @@ Project-bound knowledge base for **clawtool**. Updated on every ingest.
 - [[005 Positioning replace native agent tools]] — strategic positioning: canonical tool layer, not just aggregator (developing)
 - [[006 Instance scoping and tool naming]] — multi-instance support, naming convention, no-collision guarantees (developing)
 - [[007 Leverage best-in-class not reinvent]] — wrap mature engines + add polish layer; don't rewrite ripgrep / defuddle / apply_patch (developing)
+- [[008 Curated source catalog]] — `clawtool source add github` ergonomics; bare-name → canonical package + auth hint; secrets in 0600 file separate from config (developing)
 
 ## Comparisons
 

@@ -25,6 +25,8 @@ func ServeStdio(ctx context.Context) error {
 	)
 
 	core.RegisterBash(s)
+	core.RegisterGrep(s)
+	core.RegisterRead(s)
 
 	if err := server.ServeStdio(s); err != nil {
 		return fmt.Errorf("stdio serve: %w", err)

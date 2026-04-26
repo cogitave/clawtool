@@ -44,23 +44,26 @@ Per [[007 Leverage best-in-class not reinvent|ADR-007]], the first move on every
 
 | Engine | License | Notes |
 |---|---|---|
-| **ripgrep** (`rg`, BurntSushi) | MIT-or-Unlicense | Fastest, correct ignore-file handling, JSON output, type filters. **Default choice.** |
-| GNU grep | GPL | Universal; OK to shell out (no linkage). Fallback when `rg` absent. |
+| **ripgrep** (`rg`, BurntSushi) | MIT-or-Unlicense | Fastest, correct ignore-file handling, JSON output, type filters. **Default choice — adopted v0.3.** |
+| GNU grep | GPL | Universal; OK to shell out (no linkage). Fallback when `rg` absent — **adopted v0.3 as fallback**. |
 | `the_silver_searcher` (`ag`) | Apache 2.0 | Older, slower than rg; not worth maintaining. |
 | Pure-Go (`github.com/grailbio/zaplog/regexp`-class) | Various | Slow vs ripgrep; only for "no rg available, no system grep" emergencies. |
 
-**Plan**: wrap `rg` when present, fall back to `grep` (system) when not. Translate output through clawtool's uniform shape so the agent never sees the difference.
+**Status (v0.3)**: Wired at `internal/tools/core/grep.go`. Detects ripgrep first via `LookupEngine("rg")`, falls back to system grep. Uniform output shape: `{matches[], matches_count, truncated, engine, duration_ms, cwd, pattern}`. Engine field exposes which one ran. ripgrep `--json` event stream parsed for path/line_number/submatches; system grep parses `path:line:text` line format.
+
+**Engine install path**: `~/.local/bin/rg` (15.1.0 musl static binary from BurntSushi/ripgrep releases). No sudo. clawtool README will link to a one-liner installer for users without rg already.
 
 ## Read
 
 | Engine | Notes |
 |---|---|
-| **stdlib `os.Open` + bufio** | For plain text. clawtool owns line-counting and pagination cursors. |
-| **`github.com/dslipak/pdf` / `pdftotext` shell-out** | PDF extraction. Library for embedded use; binary fallback for breadth. |
-| **`gopkg.in/yaml.v3`, `encoding/json`** | Structured-text passthrough — render in original syntax with line numbers. |
-| **Jupyter `.ipynb`** | JSON parse cells; render code/text/output blocks per ADR-005 quality bar. |
+| **stdlib `os.Open` + bufio.Scanner** | Plain text — single-pass line-walking. clawtool owns line counting (`total_lines` is deterministic) and pagination cursor (`line_start`/`line_end` are 1-indexed inclusive). **Adopted v0.3.** |
+| **`pdftotext` (poppler-utils) shell-out** | PDF extraction with `-layout` to preserve column structure. Detected via `LookupEngine("pdftotext")`; absence yields a structured error pointing to the apt/brew install command rather than a crash. **Adopted v0.3 (binary detected at runtime).** |
+| **Native ipynb JSON parse** | Cells walked, rendered as `# --- cell N (cell_type) ---` markers + body. Handles both legacy array-of-strings `source` and modern single-string form. **Adopted v0.3.** |
 
-**Open question**: should `Read` ever decode binary formats it doesn't understand, or refuse with a structured "unsupported format" result? Lean toward refuse-with-helpful-error.
+**Status (v0.3)**: Wired at `internal/tools/core/read.go`. Format detection ordered (extension first, then 4 KiB sniff for `%PDF-` magic and NUL bytes). Binary files refused with structured `format: "binary-rejected"` and helpful pointer to `Bash` + `xxd`/`hexdump`. Output cap 5 MiB protects context budget.
+
+**Open**: Markdown / HTML / structured-doc rendering. v0.4 candidates: `goldmark` for markdown lint, `github.com/PuerkitoBio/goquery` for HTML readability — but most of this belongs in `WebFetch`, not `Read`.
 
 ## Edit
 

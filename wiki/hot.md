@@ -35,12 +35,17 @@ status: developing
 
 ## Active Threads
 
-- ✅ **v0.2 PROTOTYPE WORKING**. Tests: 5 unit tests (Bash) + 13 e2e tests + 11 unit tests (config) + 8 unit tests (cli) = 37 green tests. Manual CLI smoke verified on every subcommand. atomic install pattern survives a running binary. CC still `✓ Connected` after live binary swap. See [[Prototype Bringup 2026-04-26]].
+- ✅ **v0.3 SHIPPED**. Two new core tools wrapping best-in-class engines per [[007 Leverage best-in-class not reinvent]]:
+  - **Grep** wraps ripgrep (`~/.local/bin/rg` 15.1.0 musl static, MIT-or-Unlicense) with system grep fallback. Uniform output (`matches[], matches_count, truncated, engine, duration_ms, cwd`). 5 unit tests + 5 e2e assertions green; engine == "ripgrep" verified end-to-end.
+  - **Read** uses stdlib bufio for text, pdftotext shell-out for PDF (gracefully reports missing engine), native ipynb JSON parse. Stable line-based cursors (1-indexed inclusive), deterministic `total_lines`, 5 MiB content cap, binary-rejected for unknown formats. 6 unit tests + 5 e2e assertions green.
+  - Detection layer at `internal/tools/core/engines.go` (sync.Once cache, `LookupEngine("rg"|"grep"|"pdftotext")`).
+- ✅ **Test totals across all of clawtool**: 16 unit tests in `tools/core` (Bash 5 + Grep 5 + Read 6) + 11 config + 8 cli + 23 e2e = **58 green tests**.
+- ✅ **v0.2 PROTOTYPE WORKING**. (See [[Prototype Bringup 2026-04-26]] for the v0.1+v0.2 baseline.)
 - ✅ **Closed**: language → **Go**, license → **MIT** (LICENSE in repo).
 - **Open**: ranking model for `tool_search` (BM25 vs embedding vs hybrid). Prototype with BM25 first.
 - **Open**: catalog format — define clawtool-native or read existing (Docker MCP Catalog, MCP Registry, Smithery)? Defer until 5+ instance types.
 - **Deferred to v2**: container isolation, middleware support, plugin packaging (Claude Code plugin, Codex plugin) — phase 2 after binary feature-complete.
 - **v0.2 shipped**: (1) `~/.config/clawtool/config.toml` read/write ✅ — TOML schema per ADR-006 (core_tools, tools, sources, tags, groups, profile); (2) CLI subcommands (`init`, `tools list/enable/disable/status`, `version`, `help`) ✅ — selector validation (PascalCase or kebab-case `.` snake_case); (3) Makefile (`build`, `test`, `e2e`, `install` atomic, `lint`, `dist`) ✅; (4) LICENSE (MIT) + README.md ✅.
-- **v0.3 next increments**: (1) `Read` + `Grep` core tools per [[007 Leverage best-in-class not reinvent]] (ripgrep wrap for Grep); (2) one source instance live (`clawtool source add github -- npx -y @modelcontextprotocol/server-github`); (3) tag + group resolution in config (full ADR-004 §4 precedence); (4) `ToolSearch` BM25 baseline via `bleve`; (5) hot-reload config watcher.
+- **v0.4 increments**: (1) **Source catalog** per [[008 Curated source catalog]] — `clawtool source add github` resolves to `@modelcontextprotocol/server-github` from a built-in TOML catalog with required-env hints and auth flow; (2) tag + group resolution in config (full ADR-004 §4 precedence); (3) `ToolSearch` BM25 baseline via `bleve`; (4) hot-reload config watcher; (5) `Edit` + `Write` core tools using OpenAI `apply_patch` format.
 - **Pending user-side**: work account `gh auth login` with `GH_CONFIG_DIR=~/.config/gh-work` (not blocking clawtool).
 - **Next deliverable revised**: prototype of (a) MCP server stub, (b) **3-5 canonical core tools** (bash, ripgrep, read at minimum) at quality, (c) `tool_search` BM25 baseline, (d) `clawtool tools enable/disable` CLI. *Not* a full aggregator. Make it usable end-to-end on small surface, then expand.

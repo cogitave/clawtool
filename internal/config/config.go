@@ -103,6 +103,8 @@ func Default() Config {
 // `clawtool tools list`.
 var KnownCoreTools = []string{
 	"Bash",
+	"Grep",
+	"Read",
 }
 
 // Load reads and parses a config file. Returns os.ErrNotExist (wrapped) when

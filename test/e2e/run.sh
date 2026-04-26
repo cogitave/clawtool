@@ -124,6 +124,75 @@ if (( duration > 2000 )); then
 fi
 pass "Bash timeout: returned in ${duration}ms (<2000ms; child reaped)"
 
+# ── 5. tools/list registers Grep and Read ───────────────────────────────
+echo ""
+echo "▶ test: Grep and Read tools registered"
+list2=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | mcp_session)
+
+echo "$list2" | grep -q '"name":"Grep"' \
+  || fail "tools/list: Grep tool missing"
+pass "tools/list: Grep registered"
+
+echo "$list2" | grep -q '"name":"Read"' \
+  || fail "tools/list: Read tool missing"
+pass "tools/list: Read registered"
+
+# ── 6. tools/call Grep finds 'clawtool' in the repo's own README ─────────
+echo ""
+echo "▶ test: Grep call against repo README"
+grep_response=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Grep","arguments":{"pattern":"clawtool","path":"README.md","cwd":"%s"}}}' "$REPO_ROOT")" \
+  | mcp_session)
+
+echo "$grep_response" | grep -qF '\"engine\":\"ripgrep\"' \
+  || fail "Grep: engine != ripgrep — got: $grep_response"
+pass "Grep: engine == ripgrep (preferred when present)"
+
+echo "$grep_response" | grep -qF '\"matches_count\":' \
+  || fail "Grep: matches_count missing"
+pass "Grep: matches_count present in response"
+
+# At least one match for 'clawtool' in README must be reported.
+if ! echo "$grep_response" | grep -qF '\"text\":\"' ; then
+  fail "Grep: no matches text in response — got: $grep_response"
+fi
+pass "Grep: at least one match returned"
+
+# ── 7. tools/call Read returns the README structured correctly ──────────
+echo ""
+echo "▶ test: Read call against repo README"
+read_response=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"README.md","line_start":1,"line_end":3,"cwd":"%s"}}}' "$REPO_ROOT")" \
+  | mcp_session)
+
+echo "$read_response" | grep -qF '\"format\":\"text\"' \
+  || fail "Read: format != text"
+pass "Read: format == text"
+
+echo "$read_response" | grep -qF '\"engine\":\"stdlib\"' \
+  || fail "Read: engine != stdlib"
+pass "Read: engine == stdlib"
+
+echo "$read_response" | grep -qF '\"line_end\":3' \
+  || fail "Read: line_end != 3 (range honored)"
+pass "Read: line range honored (line_end=3)"
+
+echo "$read_response" | grep -qF '\"total_lines\":' \
+  || fail "Read: total_lines missing"
+pass "Read: total_lines reported"
+
+echo "$read_response" | grep -qF 'clawtool' \
+  || fail "Read: README content missing"
+pass "Read: README content captured"
+
 # ── done ──────────────────────────────────────────────────────────────────
 echo ""
 echo "✓ all e2e tests passed"
