@@ -5,6 +5,13 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
+## [0.9.1](https://github.com/cogitave/clawtool/compare/v0.9.0...v0.9.1) (2026-04-26)
+
+
+### Fixes
+
+* **ci:** vet unreachable-code + gofmt across the tree ([1830ee2](https://github.com/cogitave/clawtool/commit/1830ee21d151f6d839da96cd6c92b0553b6da3be))
+
 ## [0.9.0](https://github.com/cogitave/clawtool/compare/v0.8.6...v0.9.0) (2026-04-26)
 
 
