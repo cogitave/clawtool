@@ -5,7 +5,24 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.8.0] - 2026-04-26
+## [0.8.2] - 2026-04-26
+
+### Build
+
+- **ci:** Add GitHub Actions matrix + GoReleaser pipeline (d4f04c8)
+### Chores
+
+- **github:** Add CODEOWNERS + Dependabot config (615ac42)
+### Documentation
+
+- Add CONTRIBUTING + SECURITY + issue/PR templates (7770140)
+### Fixes
+
+- **changelog:** Guard cliff.toml template against unreleased-commit null version (306eac8)## [0.8.1] - 2026-04-26
+
+### Documentation
+
+- **adr-009:** Adopt versioning policy + git-cliff for changelog (1ad7798)## [0.8.0] - 2026-04-26
 
 ### Decisions
 
