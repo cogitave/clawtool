@@ -110,6 +110,8 @@ func RegisterAgentTools(s *server.MCPServer) {
 				mcp.Description("Output format: text | json | stream-json. Pass-through; not all upstreams honor every value.")),
 			mcp.WithString("cwd",
 				mcp.Description("Working directory for the upstream CLI. Defaults to current process cwd.")),
+			mcp.WithString("tag",
+				mcp.Description("Tag-routed dispatch (Phase 4). When set, picks any callable instance whose tags include this label. Overrides the configured dispatch.mode for this call.")),
 		),
 		runSendMessage,
 	)
@@ -140,19 +142,27 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	model := req.GetString("model", "")
 	format := req.GetString("format", "")
 	cwd := req.GetString("cwd", "")
+	tag := req.GetString("tag", "")
 
 	start := time.Now()
 	out := sendMessageResult{BaseResult: BaseResult{Operation: "SendMessage", Engine: "supervisor"}}
 
 	sup := agents.NewSupervisor()
-	resolved, err := sup.Resolve(ctx, agentName)
-	if err != nil {
-		out.ErrorReason = err.Error()
-		out.DurationMs = time.Since(start).Milliseconds()
-		return resultOf(out), nil
+
+	// Pre-resolve only when the caller pinned an instance and didn't
+	// pass a tag. Tag-routed dispatch and round-robin pick instances
+	// inside Supervisor.Send, so a pre-resolve here would either
+	// short-circuit the policy or fail noisily on tag-only calls.
+	if agentName != "" && tag == "" {
+		resolved, rerr := sup.Resolve(ctx, agentName)
+		if rerr != nil {
+			out.ErrorReason = rerr.Error()
+			out.DurationMs = time.Since(start).Milliseconds()
+			return resultOf(out), nil
+		}
+		out.Instance = resolved.Instance
+		out.Family = resolved.Family
 	}
-	out.Instance = resolved.Instance
-	out.Family = resolved.Family
 
 	opts := map[string]any{}
 	if session != "" {
@@ -166,6 +176,9 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 	if cwd != "" {
 		opts["cwd"] = cwd
+	}
+	if tag != "" {
+		opts["tag"] = tag
 	}
 
 	rc, err := sup.Send(ctx, agentName, prompt, opts)

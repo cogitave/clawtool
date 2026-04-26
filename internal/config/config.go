@@ -30,17 +30,32 @@ type Config struct {
 	Profile   ProfileConfig              `toml:"profile,omitempty"`
 	Agents    map[string]AgentConfig     `toml:"agents,omitempty"`
 	Bridges   map[string]BridgeOverrides `toml:"bridge,omitempty"`
+	Dispatch  Dispatch                   `toml:"dispatch,omitempty"`
 }
 
 // AgentConfig declares one runtime agent instance per ADR-006 instance
 // scoping. Multiple instances of the same family (claude-personal,
 // claude-work, codex1, …) get separate auth scopes and HOME overrides.
 // Per ADR-014, the supervisor reads this map plus installed bridges
-// to compose its agent registry.
+// to compose its agent registry. Phase 4 fields (Tags, FailoverTo)
+// drive the dispatch policies.
 type AgentConfig struct {
-	Family       string `toml:"family"`                  // CLI family ("claude", "codex", "opencode", "gemini")
-	SecretsScope string `toml:"secrets_scope,omitempty"` // [secrets.X] section to resolve env from; defaults to instance name
-	HomeOverride string `toml:"home,omitempty"`          // optional HOME override (e.g. "~/.claude-personal") so each instance has its own auth dir
+	Family       string   `toml:"family"`                  // CLI family ("claude", "codex", "opencode", "gemini")
+	SecretsScope string   `toml:"secrets_scope,omitempty"` // [secrets.X] section to resolve env from; defaults to instance name
+	HomeOverride string   `toml:"home,omitempty"`          // optional HOME override (e.g. "~/.claude-personal") so each instance has its own auth dir
+	Tags         []string `toml:"tags,omitempty"`          // labels for tag-routed dispatch ("fast", "long-context", …)
+	FailoverTo   []string `toml:"failover_to,omitempty"`   // ordered fallback chain of instance names; failover policy cascades through this list on Send error
+}
+
+// Dispatch configures how the supervisor resolves prompts when the
+// caller doesn't pin an explicit instance. Phase 4 of ADR-014.
+//
+//	Mode = ""             → explicit (default; current Phase 1 behaviour)
+//	Mode = "round-robin"  → rotate across same-family callable instances
+//	Mode = "failover"     → primary + cascade on error (uses AgentConfig.FailoverTo)
+//	Mode = "tag-routed"   → caller passes --tag/tag; supervisor picks any matching healthy instance
+type Dispatch struct {
+	Mode string `toml:"mode,omitempty"`
 }
 
 // BridgeOverrides lets a power user point a bridge family at a

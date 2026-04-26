@@ -692,6 +692,17 @@ echo "$send_resp" | grep -qE "not found|no callable|not callable|bridge add" \
   || fail "SendMessage: ghost instance should surface a resolution / bridge-missing error — got: $send_resp"
 pass "SendMessage: actionable error when target unreachable"
 
+# 15e. SendMessage with an unknown tag surfaces 'no callable instance carries tag' (ADR-014 Phase 4).
+tag_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"SendMessage","arguments":{"prompt":"hi","tag":"non-existent-tag"}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
+
+echo "$tag_resp" | grep -qE "carries tag|no callable" \
+  || fail "SendMessage tag-routed: unknown tag should surface 'no callable instance carries tag' — got: $tag_resp"
+pass "SendMessage: tag-routed dispatch errors actionably on unknown tag (Phase 4)"
+
 # ── 16. HTTP gateway (ADR-014 Phase 2, v0.11) ────────────────────────────
 echo ""
 echo "▶ test: clawtool serve --listen HTTP gateway"
@@ -750,6 +761,20 @@ bad=$(curl -sS -o /dev/null -w '%{http_code}' \
   "http://127.0.0.1:$HTTP_PORT/v1/send_message")
 [[ "$bad" == "400" ]] || fail "/v1/send_message empty prompt: expected 400, got $bad"
 pass "/v1/send_message: 400 on missing prompt"
+
+# 16f-bis. /v1/send_message accepts the top-level `tag` shortcut (Phase 4).
+# An unknown tag still 400s with a clear message — but the request must
+# at least be parsed without error.
+bad=$(curl -sS -w '%{http_code}' -o /tmp/clawtool_tag_resp \
+  -H "Authorization: Bearer $HTTP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"hi","tag":"non-existent-tag"}' \
+  "http://127.0.0.1:$HTTP_PORT/v1/send_message")
+[[ "$bad" == "400" ]] || fail "/v1/send_message tag-routed unknown tag: expected 400, got $bad"
+grep -qE "carries tag|no callable" /tmp/clawtool_tag_resp \
+  || fail "/v1/send_message tag-routed: error body should mention the missing tag"
+rm -f /tmp/clawtool_tag_resp
+pass "/v1/send_message: top-level 'tag' field routes through tag-routed dispatch (Phase 4)"
 
 # 16g. Wrong token rejected.
 status=$(curl -sS -o /dev/null -w '%{http_code}' \
