@@ -22,12 +22,33 @@ import (
 
 // Config is the full on-disk shape of ~/.config/clawtool/config.toml.
 type Config struct {
-	CoreTools map[string]CoreTool     `toml:"core_tools,omitempty"`
-	Sources   map[string]Source       `toml:"sources,omitempty"`
-	Tools     map[string]ToolOverride `toml:"tools,omitempty"`
-	Tags      map[string]TagRule      `toml:"tags,omitempty"`
-	Groups    map[string]GroupDef     `toml:"groups,omitempty"`
-	Profile   ProfileConfig           `toml:"profile,omitempty"`
+	CoreTools map[string]CoreTool        `toml:"core_tools,omitempty"`
+	Sources   map[string]Source          `toml:"sources,omitempty"`
+	Tools     map[string]ToolOverride    `toml:"tools,omitempty"`
+	Tags      map[string]TagRule         `toml:"tags,omitempty"`
+	Groups    map[string]GroupDef        `toml:"groups,omitempty"`
+	Profile   ProfileConfig              `toml:"profile,omitempty"`
+	Agents    map[string]AgentConfig     `toml:"agents,omitempty"`
+	Bridges   map[string]BridgeOverrides `toml:"bridge,omitempty"`
+}
+
+// AgentConfig declares one runtime agent instance per ADR-006 instance
+// scoping. Multiple instances of the same family (claude-personal,
+// claude-work, codex1, …) get separate auth scopes and HOME overrides.
+// Per ADR-014, the supervisor reads this map plus installed bridges
+// to compose its agent registry.
+type AgentConfig struct {
+	Family       string `toml:"family"`                  // CLI family ("claude", "codex", "opencode", "gemini")
+	SecretsScope string `toml:"secrets_scope,omitempty"` // [secrets.X] section to resolve env from; defaults to instance name
+	HomeOverride string `toml:"home,omitempty"`          // optional HOME override (e.g. "~/.claude-personal") so each instance has its own auth dir
+}
+
+// BridgeOverrides lets a power user point a bridge family at a
+// non-canonical plugin (e.g. internal mirror, fork). Per ADR-014's
+// "no install-time plugin shopping on the CLI" rule this is the
+// only override surface; the CLI exposes no `--plugin` flag.
+type BridgeOverrides struct {
+	Plugin string `toml:"plugin,omitempty"` // org/repo of the plugin to install instead of the default
 }
 
 // CoreTool toggles a clawtool-shipped tool. Default (missing entry) = enabled.
