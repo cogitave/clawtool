@@ -283,35 +283,7 @@ func (a *App) wizardAgentClaims() int {
 		return 0
 	}
 
-	type agentRow struct {
-		name     string
-		detected bool
-		claimed  bool
-	}
-	rows := make([]agentRow, 0, len(agents.Registry))
-	options := make([]huh.Option[string], 0, len(agents.Registry))
-	preSelected := []string{}
-
-	for _, ad := range agents.Registry {
-		s, err := ad.Status()
-		if err != nil {
-			continue
-		}
-		row := agentRow{name: ad.Name(), detected: s.Detected, claimed: s.Claimed}
-		rows = append(rows, row)
-		marker := "○"
-		hint := "not detected"
-		if row.detected {
-			hint = "detected"
-		}
-		if row.claimed {
-			marker = "●"
-			hint = "already claimed"
-			preSelected = append(preSelected, row.name)
-		}
-		label := fmt.Sprintf("%s  %-15s  %s", marker, row.name, hint)
-		options = append(options, huh.NewOption(label, row.name))
-	}
+	rows, options, preSelected := snapshotAgentRows()
 
 	chosen := append([]string{}, preSelected...)
 	f := huh.NewForm(huh.NewGroup(
@@ -329,39 +301,86 @@ func (a *App) wizardAgentClaims() int {
 		return 1
 	}
 
+	a.applyAgentClaimDiff(rows, chosen)
+	return 0
+}
+
+// agentRow is the per-agent data the wizard threads through huh
+// (label rendering, pre-selection) and back into the diff applier.
+type agentRow struct {
+	Name     string
+	Detected bool
+	Claimed  bool
+}
+
+// snapshotAgentRows queries every registered adapter for its status
+// and packages the data the wizard needs: the rows themselves, the
+// huh option slice (label + value), and the pre-selected names
+// (already-claimed agents). Pure helper — no prompts.
+func snapshotAgentRows() ([]agentRow, []huh.Option[string], []string) {
+	rows := make([]agentRow, 0, len(agents.Registry))
+	options := make([]huh.Option[string], 0, len(agents.Registry))
+	preSelected := []string{}
+
+	for _, ad := range agents.Registry {
+		s, err := ad.Status()
+		if err != nil {
+			continue
+		}
+		row := agentRow{Name: ad.Name(), Detected: s.Detected, Claimed: s.Claimed}
+		rows = append(rows, row)
+		marker := "○"
+		hint := "not detected"
+		if row.Detected {
+			hint = "detected"
+		}
+		if row.Claimed {
+			marker = "●"
+			hint = "already claimed"
+			preSelected = append(preSelected, row.Name)
+		}
+		label := fmt.Sprintf("%s  %-15s  %s", marker, row.Name, hint)
+		options = append(options, huh.NewOption(label, row.Name))
+	}
+	return rows, options, preSelected
+}
+
+// applyAgentClaimDiff reconciles the user's chosen set against the
+// current claim status: claims agents that are now wanted but not
+// claimed, releases agents that were claimed but no longer wanted.
+// Pure orchestration over agents.Find — easy to test.
+func (a *App) applyAgentClaimDiff(rows []agentRow, chosen []string) {
 	chosenSet := map[string]bool{}
 	for _, n := range chosen {
 		chosenSet[n] = true
 	}
-
 	for _, row := range rows {
-		want := chosenSet[row.name]
+		want := chosenSet[row.Name]
 		switch {
-		case want && !row.claimed:
-			ad, err := agents.Find(row.name)
+		case want && !row.Claimed:
+			ad, err := agents.Find(row.Name)
 			if err != nil {
-				fmt.Fprintf(a.Stdout, "  ✘ %s — %v\n", row.name, err)
+				fmt.Fprintf(a.Stdout, "  ✘ %s — %v\n", row.Name, err)
 				continue
 			}
 			if _, err := ad.Claim(agents.Options{}); err != nil {
-				fmt.Fprintf(a.Stdout, "  ✘ claim %s — %v\n", row.name, err)
+				fmt.Fprintf(a.Stdout, "  ✘ claim %s — %v\n", row.Name, err)
 				continue
 			}
-			fmt.Fprintf(a.Stdout, "  ✓ claimed %s\n", row.name)
-		case !want && row.claimed:
-			ad, err := agents.Find(row.name)
+			fmt.Fprintf(a.Stdout, "  ✓ claimed %s\n", row.Name)
+		case !want && row.Claimed:
+			ad, err := agents.Find(row.Name)
 			if err != nil {
-				fmt.Fprintf(a.Stdout, "  ✘ %s — %v\n", row.name, err)
+				fmt.Fprintf(a.Stdout, "  ✘ %s — %v\n", row.Name, err)
 				continue
 			}
 			if _, err := ad.Release(agents.Options{}); err != nil {
-				fmt.Fprintf(a.Stdout, "  ✘ release %s — %v\n", row.name, err)
+				fmt.Fprintf(a.Stdout, "  ✘ release %s — %v\n", row.Name, err)
 				continue
 			}
-			fmt.Fprintf(a.Stdout, "  ↺ released %s\n", row.name)
+			fmt.Fprintf(a.Stdout, "  ↺ released %s\n", row.Name)
 		}
 	}
-	return 0
 }
 
 // wizardSources lets the user pick MCP sources from the built-in
