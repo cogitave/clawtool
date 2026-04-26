@@ -11,7 +11,8 @@
 
 clawtool is the canonical toolset + setup layer for AI coding agents.
 A single binary that (1) gives every MCP-aware agent — Claude Code,
-Codex, OpenCode — the same higher-quality `Bash` / `Read` / `Edit` /
+Codex, OpenCode, Hermes Agent, OpenClaw — the same higher-quality
+`Bash` / `Read` / `Edit` /
 `Write` / `Grep` / `Glob` / `WebFetch` / `WebSearch` / `ToolSearch`,
 and (2) injects the canonical project-setup tools (release-please,
 GoReleaser, Conventional Commits CI, Dependabot, CODEOWNERS, an
