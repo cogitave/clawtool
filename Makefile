@@ -41,13 +41,18 @@ integration: build ## Multi-instance soak against real upstream MCP servers (npx
 stub-server: ## Build the stub MCP server used as a test fixture.
 	$(GO) build -o test/e2e/stub-server/stub-server ./test/e2e/stub-server
 
-install: build ## Copy the binary to $(INSTALL_DIR) atomically.
+install: build ## Copy the binary to $(INSTALL_DIR) atomically + run postinstall cleanup.
 	@mkdir -p $(INSTALL_DIR)
 	@# Atomic replace via rename; survives a binary that's currently
 	@# being executed (e.g. by an MCP client that has clawtool serving).
 	cp $(BIN) $(INSTALL_DIR)/clawtool.new
 	mv $(INSTALL_DIR)/clawtool.new $(INSTALL_DIR)/clawtool
 	@echo "✓ installed to $(INSTALL_DIR)/clawtool"
+	@# Postinstall cleanup: drop any leftover manual `claude mcp`
+	@# registration (so we don't end up with mcp__clawtool__* AND
+	@# mcp__plugin_clawtool_clawtool__* doubled in the model's view),
+	@# and hint at the plugin install if the user hasn't done it yet.
+	@bash scripts/postinstall.sh
 
 fmt: ## gofmt the codebase.
 	$(GO) fmt ./...
