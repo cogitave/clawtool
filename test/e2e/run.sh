@@ -46,7 +46,7 @@ echo "$list_response" | grep -q '"name":"Bash"' \
   || fail "tools/list: Bash tool missing"
 pass "tools/list: Bash tool registered (PascalCase per ADR-006)"
 
-for t in Glob ToolSearch; do
+for t in Glob ToolSearch WebFetch WebSearch; do
   if ! echo "$list_response" | grep -q "\"name\":\"$t\""; then
     fail "tools/list: $t missing"
   fi
@@ -451,6 +451,31 @@ pass "Read CSV: header preview rendered"
 echo "$csv_resp" | grep -qF 'alpha | Istanbul | 42' \
   || fail "Read CSV: data row missing"
 pass "Read CSV: data row rendered"
+
+# ── 12. WebFetch input validation (no live network required) ────────────
+echo ""
+echo "▶ test: WebFetch + WebSearch input/error paths"
+
+webfetch_bad=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"WebFetch","arguments":{"url":"ftp://example.com/file"}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$webfetch_bad" | grep -qF 'http://' \
+  || fail "WebFetch: error_reason missing scheme hint"
+pass "WebFetch: rejects non-http(s) scheme with structured reason"
+
+# 12b. WebSearch without API key surfaces helpful error mentioning BRAVE_API_KEY
+websearch_noauth=$(env -u BRAVE_API_KEY printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"WebSearch","arguments":{"query":"go programming"}}}' \
+  | env -u BRAVE_API_KEY XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$websearch_noauth" | grep -qF 'BRAVE_API_KEY' \
+  || fail "WebSearch: missing-key error should mention BRAVE_API_KEY"
+pass "WebSearch: missing-key error guides user to BRAVE_API_KEY"
 
 # ── done ──────────────────────────────────────────────────────────────────
 

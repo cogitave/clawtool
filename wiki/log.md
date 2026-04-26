@@ -17,6 +17,21 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### V0.7 SHIPPED — WebFetch + WebSearch (web tier)
+
+clawtool's canonical core list now hits 7 of 7 from ADR-005's tabletop. Web operations route through the same wrap-don't-reinvent discipline.
+
+- **`internal/tools/core/webfetch.go`**: stdlib `net/http` client (UA, redirect, TLS, proxy all stock) + `github.com/go-shiori/go-readability` for HTML body extraction (same engine the Read tool uses for `.html` files — unified extractor across local + web sources). 30s default timeout (max 120s), 10 MiB body cap to protect agent context. Content-type-aware dispatch: `text/html` / `application/xhtml` → readability; `text/*` / `application/{json,yaml,xml,toml}` → passthrough; everything else → structured `binary-rejected` error. Output: `{url, final_url, status, content_type, format, engine, title, byline, site_name, content, size_bytes, fetched_at, duration_ms, truncated, error_reason}`.
+- **`internal/tools/core/websearch.go`** + **`websearch_brave.go`**: pluggable `Backend` interface (`Name`, `Search(ctx, query, limit)`). v0.7 ships Brave because it has the most lenient free-tier policy and well-documented JSON. Backend resolution: `secrets[scope=websearch].backend` → `CLAWTOOL_WEBSEARCH_BACKEND` env → default `brave`. API key from same secrets scope or `BRAVE_API_KEY` env. Brave-specific polish: strips `<strong>` / `<b>` markers from snippet `description` so HTML markup doesn't pollute agent context. Output: `{query, results[{title,url,snippet}], results_count, backend, duration_ms, truncated, error_reason}`.
+- **CoreToolDocs** entries added — descriptions and keywords picked so ToolSearch surfaces the right tool: `"search the web for results"` → WebSearch top (score 0.89), `"fetch a URL"` / `"download a page"` → WebFetch top.
+- **`KnownCoreTools`** now `[Bash, Glob, Grep, Read, ToolSearch, WebFetch, WebSearch]` — 7 entries, matching ADR-005's canonical list.
+- **Server.go** registers WebFetch + WebSearch alongside other cores, gated on `config.IsEnabled`. WebSearch receives a reference to the secrets store so the API key is read at call time (key changes don't require restart).
+- **Unit tests** (11 new): WebFetch covers HTML readability extraction (httptest fixture serving cluttered article), plain-text passthrough, binary-content rejection, follow-redirect semantics, non-http scheme rejection, timeout. WebSearch covers Brave happy path (httptest mocking the API + asserting headers/query), missing-key sentinel error, 4xx response, unknown-backend error path, the stripHTML helper. Total tests now **99 unit**.
+- **E2E** (4 new assertions): tools/list registers WebFetch + WebSearch (now 4 added: Glob, ToolSearch, WebFetch, WebSearch); WebFetch with non-http scheme returns structured error mentioning `http://`; WebSearch without API key returns error mentioning `BRAVE_API_KEY`. Total e2e: **50 assertions**.
+- **Live smoke** against `https://example.com`: title="Example Domain", engine=go-readability, 79ms.
+- New deps: nothing new — both tools reuse `net/http` stdlib and the existing `go-readability` import. Zero binary growth from this turn.
+- Updated [[Hot]], [[Canonical Tool Implementations Survey 2026-04-26]] WebFetch + WebSearch rows ("Adopted v0.7"), this log.
+
 ### V0.6 SHIPPED — Read expansion to 9 formats (docx, xlsx, csv/tsv, html, json/yaml/toml/xml)
 
 User-driven: "PDF değil çoklu format okumalı, big-firm-preferred paketlerden faydalanalım." Per ADR-007 we wrap, never reimplement. Big firms picked these specific engines and we adopt the same ones.

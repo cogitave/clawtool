@@ -107,6 +107,8 @@ var KnownCoreTools = []string{
 	"Grep",
 	"Read",
 	"ToolSearch",
+	"WebFetch",
+	"WebSearch",
 }
 
 // Load reads and parses a config file. Returns os.ErrNotExist (wrapped) when

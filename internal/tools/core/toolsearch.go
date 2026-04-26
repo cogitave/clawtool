@@ -116,5 +116,17 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"discover", "find", "search", "query", "tools"},
 		},
+		{
+			Name:        "WebFetch",
+			Description: "Retrieve a URL and return clean article text via Mozilla Readability for HTML, or raw text for text/* MIME types. Binary refused. 10 MB body cap.",
+			Type:        "core",
+			Keywords:    []string{"http", "https", "url", "fetch", "download", "web", "page", "article", "scrape", "readability"},
+		},
+		{
+			Name:        "WebSearch",
+			Description: "Run a web search via the configured backend (default Brave). Returns ranked {title, url, snippet}. API key in secrets[scope=websearch].",
+			Type:        "core",
+			Keywords:    []string{"search", "web", "google", "brave", "tavily", "duckduckgo", "results", "query", "engine"},
+		},
 	}
 }

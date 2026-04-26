@@ -117,25 +117,27 @@ Same primitive as Edit. The interesting concerns are:
 
 ## WebFetch
 
-| Engine | Notes |
-|---|---|
-| **`defuddle`** (used by claude-obsidian, see [[claude-obsidian]]) | Strips ads/nav/headers; clean markdown out. **Strong candidate.** |
-| **Mozilla Readability port** (`go-readability`) | Classic engine; battle-tested over a decade. |
-| **`trafilatura`** (Python) | Best academic benchmarks for content extraction; would shell out. |
-| `chromedp` headless Chrome | For JS-rendered sites; heavyweight; opt-in only. |
+| Engine | License | Notes |
+|---|---|---|
+| **`net/http` stdlib** | — | Transport (TLS, redirect, proxy). Default Go client. |
+| **`github.com/go-shiori/go-readability`** | Apache-2.0 | Mozilla Readability port (Firefox Reader View). **Adopted v0.7.** Same engine `Read` uses for `.html` files; unified extractor across local + web sources. |
+| `chromedp` headless Chrome | BSD-3 | For JS-rendered sites; heavyweight; v0.8 opt-in. |
+| `trafilatura` (Python) | GPL | Best academic benchmarks; would shell out; v0.9 candidate if accuracy beats Readability. |
 
-**Plan**: default Readability/defuddle, opt-in headless Chrome behind a flag for stubborn sites. Output: cleaned markdown + citation metadata (title, author if extractable, canonical URL, fetch timestamp).
+**Status (v0.7)**: Wired at `internal/tools/core/webfetch.go`. Stdlib `http.Client` with 30s default timeout (max 120s), `User-Agent: clawtool/0.7`, `Accept: text/html, text/plain, …`. Body capped at 10 MiB to protect agent context. Content-type-aware dispatch: `text/html` / `application/xhtml` → readability, `text/*` / `application/json|yaml|xml|toml` → passthrough, everything else → structured `binary-rejected` error. Output: `{url, final_url, status, content_type, format, engine, title, byline, site_name, content, size_bytes, fetched_at, duration_ms, truncated}`. Live verified against `https://example.com` → title="Example Domain", engine=go-readability, 79ms.
 
 ## WebSearch
 
-| Engine | Notes |
-|---|---|
-| **Brave Search API** | Privacy-friendly, decent quality. |
-| **Tavily** | Built for AI-agent use case. |
-| **searxng (self-hosted)** | Aggregates many engines; full control. |
-| Google CSE / Bing | Available; quality vs cost depends. |
+Pluggable backend behind a small interface (`Name`, `Search(ctx, query, limit) []Hit`). Per ADR-007 we wrap upstream APIs; clawtool provides only the polish layer (uniform result shape, HTML-tag stripping, key-management via secrets store).
 
-**Plan**: pluggable backend, user supplies API key in config, default backend recommendation in docs but not bundled.
+| Backend | License | Notes |
+|---|---|---|
+| **Brave Search API** | Free tier (no card), commercial paid | **Adopted v0.7.** Lenient free tier, no political content filtering, well-documented JSON. Default backend. API key in secrets[scope=websearch].BRAVE_API_KEY or env BRAVE_API_KEY. Get key: https://api.search.brave.com/app/keys |
+| Tavily | Free tier + paid | Built specifically for AI-agent workflows; planned v0.8. |
+| SearXNG (self-hosted) | AGPL — shell-out / HTTP only | Aggregates 70+ engines; full control; planned v0.8. |
+| Google CSE / Bing | Paid | Available but pricier; v0.9. |
+
+**Status (v0.7)**: Wired at `internal/tools/core/websearch.go` + `websearch_brave.go`. Backend resolution reads `secrets[scope=websearch].backend` then `CLAWTOOL_WEBSEARCH_BACKEND` env, defaulting to `brave`. Brave backend stripping `<strong>` / `<b>` markers from `description` snippets so HTML noise doesn't pollute agent context. 15s request timeout, 5 MB response cap. Output: `{query, results[{title,url,snippet}], results_count, backend, duration_ms, truncated, error_reason}`. Missing-key error explicitly cites `BRAVE_API_KEY` and the `clawtool source set-secret websearch BRAVE_API_KEY` recipe.
 
 ## ToolSearch (unique to clawtool)
 
