@@ -193,6 +193,100 @@ echo "$read_response" | grep -qF 'clawtool' \
   || fail "Read: README content missing"
 pass "Read: README content captured"
 
+# ── 8. Source proxy: spawn stub-server, aggregate stub__echo, route call ─
+echo ""
+echo "▶ test: source proxy via stub-server"
+
+# Build a temp config that wires the stub-server as a source.
+TMPCFG=$(mktemp -d)
+trap 'rm -rf "$TMPCFG"' EXIT
+mkdir -p "$TMPCFG/clawtool"
+STUB="$REPO_ROOT/test/e2e/stub-server/stub-server"
+if [[ ! -x "$STUB" ]]; then
+  fail "stub-server not built; run 'make stub-server' first"
+fi
+
+cat > "$TMPCFG/clawtool/config.toml" <<EOF
+[core_tools]
+[core_tools.Bash]
+enabled = true
+[core_tools.Grep]
+enabled = true
+[core_tools.Read]
+enabled = true
+
+[sources.stub]
+type = "mcp"
+command = ["$STUB"]
+
+[profile]
+active = "default"
+EOF
+
+# 8a. tools/list with stub configured must include stub__echo alongside cores
+list_with_proxy=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+
+echo "$list_with_proxy" | grep -q '"name":"Bash"' \
+  || fail "proxy: core Bash missing from tools/list"
+pass "proxy: core Bash still present alongside source tools"
+
+echo "$list_with_proxy" | grep -q '"name":"stub__echo"' \
+  || fail "proxy: stub__echo not aggregated — got: $list_with_proxy"
+pass "proxy: stub__echo aggregated under wire-form name (ADR-006)"
+
+# 8b. Wire-form name parsing: clawtool exposes 'stub__echo' (two underscores)
+echo "$list_with_proxy" | grep -qE '"name":"stub_echo"' \
+  && fail "proxy: tool wire-name uses single underscore (ADR-006 requires __)"
+pass "proxy: wire-name uses double underscore separator"
+
+# 8c. tools/call stub__echo must route to the child and return its response
+call_response=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"stub__echo","arguments":{"text":"e2e-proxy"}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+
+echo "$call_response" | grep -qF 'echo:e2e-proxy' \
+  || fail "proxy: tools/call did not return echoed text — got: $call_response"
+pass "proxy: tools/call routed to child and child's response returned"
+
+# 8d. Disabled core tool stays out of tools/list
+cat > "$TMPCFG/clawtool/config.toml" <<EOF
+[core_tools]
+[core_tools.Bash]
+enabled = false
+[core_tools.Grep]
+enabled = true
+[core_tools.Read]
+enabled = true
+
+[sources.stub]
+type = "mcp"
+command = ["$STUB"]
+
+[profile]
+active = "default"
+EOF
+
+list_no_bash=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 15 "$BIN" serve 2>/dev/null)
+
+if echo "$list_no_bash" | grep -q '"name":"Bash"' ; then
+  fail "proxy: Bash present despite core_tools.Bash.enabled=false"
+fi
+pass "proxy: disabled core tool correctly absent from tools/list"
+
+echo "$list_no_bash" | grep -q '"name":"stub__echo"' \
+  || fail "proxy: stub__echo missing when Bash disabled"
+pass "proxy: source tool unaffected by core-tool disable"
+
 # ── done ──────────────────────────────────────────────────────────────────
 echo ""
 echo "✓ all e2e tests passed"

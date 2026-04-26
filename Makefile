@@ -29,8 +29,12 @@ build: ## Build the clawtool binary into ./bin.
 test: ## Run unit tests (race detector enabled).
 	$(GO) test -race -count=1 -timeout=60s ./...
 
-e2e: build ## Run end-to-end MCP integration tests against the built binary.
+e2e: build stub-server ## Run end-to-end MCP integration tests against the built binary.
 	@bash test/e2e/run.sh
+
+.PHONY: stub-server
+stub-server: ## Build the stub MCP server used as a test fixture.
+	$(GO) build -o test/e2e/stub-server/stub-server ./test/e2e/stub-server
 
 install: build ## Copy the binary to $(INSTALL_DIR) atomically.
 	@mkdir -p $(INSTALL_DIR)

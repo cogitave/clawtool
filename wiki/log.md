@@ -17,6 +17,27 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### V0.4 TURN 2 SHIPPED — MCP client/server proxy
+
+ADR-008's runtime substance lives now: clawtool spawns configured sources as child MCP servers, aggregates their tools under wire-form `<instance>__<tool>` names per ADR-006, and routes tools/call to the right child.
+
+- **`internal/sources` package**: Manager + Instance. Wraps `github.com/mark3labs/mcp-go/client.NewStdioMCPClient` (ADR-007 again — don't write a custom MCP client, use the same library that powers our server side). Each instance: spawn → Initialize → ListTools → cache. Status: Starting/Running/Down/Unauthenticated with reason strings preserved for surface. Manager.Start is non-fatal per source (others continue if one fails). Stop reaps everyone.
+- **`SourceTool` aggregation**: each (running instance × tool) becomes one SourceTool. Tool name rewritten to `<instance>__<original>`. Handler closure routes calls to the right Instance with original (un-prefixed) name. Tools from non-Running instances silently omitted.
+- **Server integration** (`internal/server/server.go`): ServeStdio loads config + secrets, builds a Manager, starts it, registers core tools (filtered by `config.IsEnabled`), then registers aggregated source tools. Manager.Stop on shutdown.
+- **Stub-server test fixture** at `test/e2e/stub-server/`. Tiny Go MCP server with a single `echo` tool. Built via `make stub-server`; e2e and unit tests both spawn it as a real child process, so we exercise the full subprocess + stdio + protocol path with no external dependencies.
+- **Unit tests** (`internal/sources/manager_test.go`, 7 tests + 6 SplitWireName subtests):
+  - StartsRunningInstance — Status=Running, ToolCount≥1 after spawn
+  - AggregatedTools_PrefixedWithInstance — `stub__echo` emerges
+  - RouteCall_ReturnsChildResult — calling the closure routes to the child and returns its `echo:<text>` response
+  - SplitWireName — bidirectional parsing roundtrips per ADR-006
+  - MissingEnvMarksUnauthenticated — `${VAR}` template with no resolution stays Unauthenticated, doesn't try to spawn
+  - BadCommandMarksDown — bogus command path → Down, manager continues
+  - StopReapsAll — every instance Down, AggregatedTools empty
+- **E2E** (+6 assertions, total 29): tools/list with stub source includes `stub__echo` alongside `Bash/Grep/Read`; verify two-underscore separator (not single); tools/call routes correctly; disabled-core-tool config gate verified by removing Bash from output while stub__echo stays.
+- **Test totals**: **65 Go unit + 29 e2e = 94 green**. New: sources 7, e2e proxy 6.
+- **Smoke**: `clawtool serve` with `[sources.stub] command=["…/stub-server"]` shows 4 tools (Bash, Grep, Read, stub__echo) in tools/list and routes a tools/call against `stub__echo` end-to-end. `claude mcp list` still reports `✓ Connected` after live binary swap via atomic `make install`.
+- Updated [[Hot]], this log.
+
 ### V0.4 TURN 1 SHIPPED — catalog + secrets + source CLI
 
 ADR-008's user-facing UX is now real on the CLI. Sources are still config-only (no proxy spawn yet — turn 2), but the entire add/list/remove/set-secret/check loop works against an embedded catalog.
