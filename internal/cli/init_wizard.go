@@ -205,6 +205,30 @@ func (a *App) runInitRepoInteractive(cwd string) int {
 				fmt.Fprintf(a.Stdout, "  ↷ skipped %s\n", name)
 				continue
 			}
+			// If the recipe is currently Partial (file exists but
+			// not clawtool-managed), surface the situation and ask
+			// for explicit consent before letting Apply overwrite.
+			// Anything else (Absent / Applied) flows through unchanged.
+			status, detail, _ := r.Detect(context.Background(), cwd)
+			if status == setup.StatusPartial {
+				var overwrite bool
+				confirm := huh.NewForm(huh.NewGroup(
+					huh.NewConfirm().
+						Title(fmt.Sprintf("[%s] file exists but isn't clawtool-managed", name)).
+						Description(detail+"\n\nOverwrite with the recipe's canonical version?").
+						Affirmative("Overwrite").
+						Negative("Skip").
+						Value(&overwrite),
+				))
+				if err := confirm.Run(); err != nil || !overwrite {
+					fmt.Fprintf(a.Stdout, "  ↷ skipped %s (declined to overwrite)\n", name)
+					continue
+				}
+				if opts == nil {
+					opts = setup.Options{}
+				}
+				opts[setup.ForceOption] = true
+			}
 			picks = append(picks, pick{recipe: r, opts: opts})
 		}
 	}
