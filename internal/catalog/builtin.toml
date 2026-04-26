@@ -1,0 +1,131 @@
+# clawtool built-in source catalog.
+#
+# Per ADR-008, `clawtool source add <name>` resolves a bare name to one of
+# these entries. Long-form `clawtool source add <name> -- <command...>`
+# bypasses the catalog and is the path for community / private sources.
+#
+# Entry contract:
+#   description   one-line agent-facing summary; surfaces in /tools/list
+#   runtime       npx | node | python | docker | binary
+#   package       canonical package identifier passed to the runtime
+#   args          extra positional args passed to the package
+#   required_env  list of env vars users must set via secrets store
+#   auth_hint     short instruction for obtaining the credentials
+#   homepage      URL of canonical README
+#   maintained    informational; "anthropic" | "openai" | "community" | ...
+#
+# Adding entries here requires a follow-up survey row in
+# wiki/sources/canonical-tool-implementations-survey-2026-04-26.md so the
+# decision is auditable.
+
+schema_version = 1
+
+[entries.github]
+description = "GitHub: issues, PRs, code search, repository operations"
+runtime = "npx"
+package = "@modelcontextprotocol/server-github"
+required_env = ["GITHUB_TOKEN"]
+auth_hint = "Generate a token at https://github.com/settings/tokens (scopes: repo, read:org). Then: clawtool source set-secret github GITHUB_TOKEN"
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/github"
+maintained = "anthropic"
+
+[entries.slack]
+description = "Slack: messages, channels, users, search"
+runtime = "npx"
+package = "@modelcontextprotocol/server-slack"
+required_env = ["SLACK_BOT_TOKEN", "SLACK_TEAM_ID"]
+auth_hint = "Create a Slack app at https://api.slack.com/apps, install it to your workspace, copy the Bot Token and Team ID."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/slack"
+maintained = "anthropic"
+
+[entries.postgres]
+description = "PostgreSQL: schema introspection, parameterised SELECT, EXPLAIN"
+runtime = "npx"
+package = "@modelcontextprotocol/server-postgres"
+required_env = ["POSTGRES_URL"]
+auth_hint = "Set POSTGRES_URL to a postgres://user:pass@host:port/db connection string."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres"
+maintained = "anthropic"
+
+[entries.sqlite]
+description = "SQLite: read/query a local sqlite database file"
+runtime = "npx"
+package = "@modelcontextprotocol/server-sqlite"
+required_env = ["SQLITE_PATH"]
+auth_hint = "Set SQLITE_PATH to the absolute path of your .sqlite/.db file."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite"
+maintained = "anthropic"
+
+[entries.filesystem]
+description = "Filesystem: read/list a sandboxed root directory"
+runtime = "npx"
+package = "@modelcontextprotocol/server-filesystem"
+args = ["${FILESYSTEM_ROOT}"]
+required_env = ["FILESYSTEM_ROOT"]
+auth_hint = "Set FILESYSTEM_ROOT to the absolute path of the directory you want exposed."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem"
+maintained = "anthropic"
+
+[entries.fetch]
+description = "Fetch: retrieve a URL and convert HTML to markdown"
+runtime = "python"
+package = "mcp-server-fetch"
+required_env = []
+auth_hint = "No credentials required. Install handled automatically via uvx."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch"
+maintained = "anthropic"
+
+[entries.brave-search]
+description = "Brave Search: web search results without ads or trackers"
+runtime = "npx"
+package = "@modelcontextprotocol/server-brave-search"
+required_env = ["BRAVE_API_KEY"]
+auth_hint = "Get an API key at https://api.search.brave.com/app/keys."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search"
+maintained = "anthropic"
+
+[entries.google-maps]
+description = "Google Maps: geocoding, directions, places search"
+runtime = "npx"
+package = "@modelcontextprotocol/server-google-maps"
+required_env = ["GOOGLE_MAPS_API_KEY"]
+auth_hint = "Enable Maps Platform APIs and get a key at https://console.cloud.google.com/google/maps-apis/."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/google-maps"
+maintained = "anthropic"
+
+[entries.memory]
+description = "Memory: knowledge graph storage of entities and relations across sessions"
+runtime = "npx"
+package = "@modelcontextprotocol/server-memory"
+required_env = []
+auth_hint = "No credentials required. Default storage is in the user data dir."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/memory"
+maintained = "anthropic"
+
+[entries.sequentialthinking]
+description = "Sequential thinking: scratchpad for chain-of-thought planning"
+runtime = "npx"
+package = "@modelcontextprotocol/server-sequential-thinking"
+required_env = []
+auth_hint = "No credentials required."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking"
+maintained = "anthropic"
+
+[entries.time]
+description = "Time: timezone conversion and current-time helpers"
+runtime = "python"
+package = "mcp-server-time"
+required_env = []
+auth_hint = "No credentials required."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/time"
+maintained = "anthropic"
+
+[entries.git]
+description = "Git: read repository history, diffs, blame from a local checkout"
+runtime = "python"
+package = "mcp-server-git"
+args = ["--repository", "${GIT_REPO}"]
+required_env = ["GIT_REPO"]
+auth_hint = "Set GIT_REPO to the absolute path of the local clone you want exposed."
+homepage = "https://github.com/modelcontextprotocol/servers/tree/main/src/git"
+maintained = "anthropic"

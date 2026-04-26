@@ -30,9 +30,15 @@ import (
 type App struct {
 	Stdout io.Writer
 	Stderr io.Writer
+	Stdin  io.Reader
 	// ConfigPath overrides the default config location. Empty = config.DefaultPath().
 	ConfigPath string
+	// secretsPath overrides the default secrets store path. Used by tests.
+	secretsPath string
 }
+
+// SetSecretsPath lets tests redirect the secrets store to a tmp file.
+func (a *App) SetSecretsPath(p string) { a.secretsPath = p }
 
 // New returns an App writing to the process's stdout/stderr and using the
 // default config path.
@@ -162,6 +168,8 @@ func (a *App) Run(argv []string) int {
 		}
 	case "tools":
 		return a.runTools(argv[1:])
+	case "source":
+		return a.runSource(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -305,6 +313,13 @@ Usage:
   clawtool tools enable <selector>
   clawtool tools disable <selector>
   clawtool tools status <selector>
+  clawtool source add <name> [--as <instance>]
+                            Add a source from the built-in catalog (e.g. github,
+                            slack, postgres). See: clawtool source --help.
+  clawtool source list      List configured sources and auth status.
+  clawtool source remove <instance>
+  clawtool source set-secret <instance> <KEY> [--value <v>]
+  clawtool source check     Verify required credentials per source.
   clawtool version          Print the build version.
   clawtool help             Show this help.
 
