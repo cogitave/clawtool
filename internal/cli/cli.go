@@ -165,6 +165,8 @@ func (a *App) Run(argv []string) int {
 		return a.runAgents(argv[1:])
 	case "recipe":
 		return a.runRecipe(argv[1:])
+	case "doctor":
+		return a.runDoctor(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -337,6 +339,8 @@ Usage:
                               clawtool recipe apply license holder="Jane Doe"
                               clawtool recipe apply codeowners owners=@me,@team
                               clawtool recipe apply dependabot
+  clawtool doctor           One-command diagnostic — surveys binary,
+                            agents, sources, and recipes; suggests fixes.
   clawtool version          Print the build version.
   clawtool help             Show this help.
 

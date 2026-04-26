@@ -95,14 +95,18 @@ Recipes shipped today:
 
 | Category | Recipe | Wraps |
 |---|---|---|
-| governance | `license` | SPDX (MIT · Apache-2.0 · BSD-3-Clause) |
+| governance | `license` | SPDX (MIT · Apache-2.0 · BSD-3-Clause · AGPL-3.0) |
 | governance | `codeowners` | GitHub CODEOWNERS spec |
 | commits | `conventional-commits-ci` | `amannn/action-semantic-pull-request` |
 | release | `release-please` | googleapis/release-please |
 | release | `goreleaser` | GoReleaser v2 |
+| ci | `gh-actions-test` | GitHub Actions (Go / Node / Python / Rust auto-detect) |
+| quality | `prettier` | prettier.io (cross-language formatter) |
+| quality | `golangci-lint` | golangci-lint v2 (errcheck/govet/staticcheck/gosec/…) |
 | supply-chain | `dependabot` | GitHub Dependabot |
 | knowledge | `brain` | claude-obsidian + Obsidian app |
 | agents | `agent-claim` | `clawtool agents claim` per-agent |
+| runtime | `devcontainer` | containers.dev (Codespaces / Remote-SSH) |
 
 Every recipe **detects** before it touches anything, **refuses** to
 overwrite a file you wrote yourself, and **records** what it touched
@@ -111,9 +115,24 @@ maintained upstream — clawtool is the wizard, never the
 implementation.
 
 Prefer one shot? `clawtool recipe apply license holder="Jane Doe"`.
+Need to overwrite a file you wrote yourself? `--force` is the
+explicit knob; the wizard prompts for it interactively.
+
 Want Claude to set things up from inside a chat? Just say "set me
 up" — the `/clawtool` skill teaches the model to walk the same
 recipes via `mcp__clawtool__RecipeApply`.
+
+## Diagnose your setup
+
+```sh
+clawtool doctor
+```
+
+One command that surveys the binary, agent claims, source
+credentials, and recipe statuses for the current repo. Each row
+ends in ✓ / ⚠ / ✗ with a suggested fix command for everything that
+isn't healthy. Exit code is non-zero only on critical issues, so it
+fits into CI / shell guards too.
 
 ## What's a toolset?
 
@@ -234,7 +253,11 @@ clawtool version                      Print the build version.
 
 clawtool recipe list [--category <c>] List project-setup recipes by category.
 clawtool recipe status [<name>]       Detect status for one or all recipes.
-clawtool recipe apply  <name> [k=v…]  Apply a single recipe.
+clawtool recipe apply  <name> [--force] [k=v…]
+                                      Apply a single recipe. --force lets it
+                                      overwrite an unmanaged user file.
+
+clawtool doctor                       Survey the local install + suggest fixes.
 
 clawtool tools list                   List core tools and resolved enabled state.
 clawtool tools enable  <selector>     Enable a tool.
