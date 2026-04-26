@@ -527,6 +527,102 @@ echo "$ambig_resp" | grep -qF 'appears 2 times' \
   || fail "Edit: should refuse ambiguous match — got: $ambig_resp"
 pass "Edit: refuses ambiguous match (suggests replace_all)"
 
+# ── 14. Recipe* MCP tools (v0.9 surface) ─────────────────────────────────
+echo ""
+echo "▶ test: Recipe* MCP tools"
+
+# 14a. tools/list registers all three Recipe tools.
+recipe_list_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+for t in RecipeList RecipeStatus RecipeApply; do
+  echo "$recipe_list_resp" | grep -q "\"name\":\"$t\"" \
+    || fail "tools/list: $t missing"
+  pass "tools/list: $t registered"
+done
+
+# 14b. RecipeList returns the v0.9 recipe set with category labels.
+list_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeList","arguments":{}}}' \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+# Recipe names live inside structuredContent — same parse trick as
+# the ToolSearch tests (§9): scope to the structuredContent line so
+# JSONRPC envelope's serverInfo.name doesn't leak into the match.
+recipe_payload=$(echo "$list_resp" | grep structuredContent)
+for r in conventional-commits-ci license codeowners dependabot release-please goreleaser agent-claim brain; do
+  echo "$recipe_payload" | grep -qF "\"name\":\"$r\"" \
+    || fail "RecipeList: recipe $r missing"
+done
+pass "RecipeList: all 8 v0.9 recipes present (conventional-commits-ci · license · codeowners · dependabot · release-please · goreleaser · agent-claim · brain)"
+
+# Category strings are part of the v1.0 contract — verify a few.
+for c in governance commits release supply-chain knowledge agents; do
+  echo "$recipe_payload" | grep -qF "\"category\":\"$c\"" \
+    || fail "RecipeList: category $c missing"
+done
+pass "RecipeList: governance/commits/release/supply-chain/knowledge/agents categories all surfaced"
+
+# 14c. RecipeStatus on a single recipe in a tempdir reports absent.
+RECIPE_TMP=$(mktemp -d)
+trap 'rm -rf "$TMPCFG" "$RECIPE_TMP"' EXIT
+
+status_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeStatus","arguments":{"name":"conventional-commits-ci","repo":"%s"}}}' "$RECIPE_TMP")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$status_resp" | grep structuredContent | grep -qF '"status":"absent"' \
+  || fail "RecipeStatus: empty tempdir should report status=absent — got: $status_resp"
+pass "RecipeStatus: empty tempdir → status=absent for conventional-commits-ci"
+
+# 14d. RecipeApply against the tempdir writes the workflow + reports verify_ok.
+apply_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeApply","arguments":{"name":"conventional-commits-ci","repo":"%s"}}}' "$RECIPE_TMP")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$apply_resp" | grep structuredContent | grep -qF '"verify_ok":true' \
+  || fail "RecipeApply: verify_ok != true — got: $apply_resp"
+pass "RecipeApply: verify_ok=true after applying conventional-commits-ci"
+
+[[ -f "$RECIPE_TMP/.github/workflows/commit-format.yml" ]] \
+  || fail "RecipeApply: workflow file not written"
+pass "RecipeApply: .github/workflows/commit-format.yml present on disk"
+
+grep -q "managed-by: clawtool" "$RECIPE_TMP/.github/workflows/commit-format.yml" \
+  || fail "RecipeApply: marker missing in written file"
+pass "RecipeApply: clawtool marker stamped in the workflow file"
+
+# 14e. RecipeStatus after Apply reports applied.
+status2_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeStatus","arguments":{"name":"conventional-commits-ci","repo":"%s"}}}' "$RECIPE_TMP")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$status2_resp" | grep structuredContent | grep -qF '"status":"applied"' \
+  || fail "RecipeStatus: post-Apply status != applied"
+pass "RecipeStatus: post-Apply status=applied"
+
+# 14f. RecipeApply with an unknown name surfaces an actionable error.
+bad_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeApply","arguments":{"name":"not-a-real-recipe","repo":"%s"}}}' "$RECIPE_TMP")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$bad_resp" | grep -qF "unknown recipe" \
+  || fail "RecipeApply: unknown name should surface 'unknown recipe' message"
+pass "RecipeApply: unknown name yields actionable error"
+
 # ── done ──────────────────────────────────────────────────────────────────
 
 echo ""
