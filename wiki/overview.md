@@ -42,6 +42,7 @@ The project's value is being the shared, configurable tool layer underneath. Too
 ### Architecture (developing)
 - [[004 clawtool initial architecture direction]]
 - [[005 Positioning replace native agent tools]]
+- [[006 Instance scoping and tool naming]]
 
 ## Distinguishing identity
 

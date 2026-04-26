@@ -51,17 +51,17 @@ This positioning sets two operational implications:
 
 Each clawtool core tool ships only when it beats native built-ins on a specific axis. Initial bar by tool:
 
-| Tool | Native pain point | clawtool target |
-|---|---|---|
-| **bash** | Timeout drops output; cwd state inconsistent across calls; no structured output mode | Output preserved on timeout; predictable cwd-persistence model; opt-in JSON mode; secret redaction; per-session command history |
-| **ripgrep / grep** | Different agents wrap differently; ignore-file behavior differs; no semantic file-type aliases | Single canonical wrapper; respects `.gitignore` + `.clawtoolignore`; named filetype aliases (`type:ts`, `type:py`) |
-| **read** | Large-file pagination unstable; image / PDF support uneven; line counts unpredictable for budgeting | Stable cursors across calls; first-class image / PDF / notebook; line counts deterministic |
-| **edit** | Partial writes on crash; no diff preview; line-ending hazards | Atomic write; built-in diff preview; line-ending + BOM preserve |
-| **write** | Same as edit; conflicts with concurrent edits ignored | Atomic; conflict detection; checkpointed undo log |
-| **glob** | Cross-platform path semantics inconsistent; ignore-files often skipped | Canonical glob with ignore-file respect; platform-stable separators |
-| **webfetch** | URL canonicalization missing; markdown conversion quality varies | Canonicalize redirects; consistent markdown via known model; citation metadata |
-| **websearch** | Result quality opaque; no source filters | Source allowlist / blocklist; transparent ranking |
-| **tool_search** *(unique to clawtool)* | Doesn't exist anywhere | BM25 baseline + optional embedding rerank; deferred schema loading |
+| Tool                                   | Native pain point                                                                                   | clawtool target                                                                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **bash**                               | Timeout drops output; cwd state inconsistent across calls; no structured output mode                | Output preserved on timeout; predictable cwd-persistence model; opt-in JSON mode; secret redaction; per-session command history |
+| **ripgrep / grep**                     | Different agents wrap differently; ignore-file behavior differs; no semantic file-type aliases      | Single canonical wrapper; respects `.gitignore` + `.clawtoolignore`; named filetype aliases (`type:ts`, `type:py`)              |
+| **read**                               | Large-file pagination unstable; image / PDF support uneven; line counts unpredictable for budgeting | Stable cursors across calls; first-class image / PDF / notebook; line counts deterministic                                      |
+| **edit**                               | Partial writes on crash; no diff preview; line-ending hazards                                       | Atomic write; built-in diff preview; line-ending + BOM preserve                                                                 |
+| **write**                              | Same as edit; conflicts with concurrent edits ignored                                               | Atomic; conflict detection; checkpointed undo log                                                                               |
+| **glob**                               | Cross-platform path semantics inconsistent; ignore-files often skipped                              | Canonical glob with ignore-file respect; platform-stable separators                                                             |
+| **webfetch**                           | URL canonicalization missing; markdown conversion quality varies                                    | Canonicalize redirects; consistent markdown via known model; citation metadata                                                  |
+| **websearch**                          | Result quality opaque; no source filters                                                            | Source allowlist / blocklist; transparent ranking                                                                               |
+| **tool_search** *(unique to clawtool)* | Doesn't exist anywhere                                                                              | BM25 baseline + optional embedding rerank; deferred schema loading                                                              |
 
 This list is illustrative. The actual launch set is decided when the prototype runs.
 

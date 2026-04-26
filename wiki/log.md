@@ -17,6 +17,20 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### NAMING — ADR-006: instance scoping and tool naming convention
+
+- New ADR locking naming for the wire (MCP) and CLI surfaces:
+  - **Instance** layer between source and tool. Instance names: kebab-case (`github-personal`).
+  - **Wire form** `<instance>__<tool>`; **CLI selector** `<instance>.<tool>`. Mechanical, reversible.
+  - **Disjoint charsets**: instance `[a-z0-9-]`, tool `[a-z0-9_]`. `__`-split is unambiguous.
+  - **Core tools** PascalCase (`Bash`, `Read`, `Edit`, `Write`, `Grep`, `Glob`, `WebFetch`, `ToolSearch`) matching Claude's native convention. Wire: `mcp__clawtool__Bash`.
+  - **First-instance bare name** allowed (`github`); second instance forces explicit rename. Prevents silent collision.
+  - **Pattern matching** in tags/groups uses glob against selector form for readability.
+  - Full `config.toml` shape spec'd.
+- **Language closed: Go.**
+- Open question count down to 3 (license, ranking model, catalog format) — all unblocking the prototype.
+- Updated [[Index]], [[Overview]], [[decisions _index]], [[Hot]], this log.
+
 ### POSITIONING — ADR-005: replace native agent tools
 
 - New ADR. Locks the strategic ambition: clawtool is **the canonical tool layer**, not just an aggregator. Bash/Grep/Read/Edit/Write/Glob/WebFetch ship at quality higher than each agent's native built-in. Goal: agents prefer clawtool's implementations over their own.

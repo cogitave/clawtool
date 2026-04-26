@@ -26,6 +26,7 @@ Project-bound knowledge base for **clawtool**. Updated on every ingest.
 - [[003 Multi-account git via direnv and gh]]
 - [[004 clawtool initial architecture direction]] — initial spec direction (developing)
 - [[005 Positioning replace native agent tools]] — strategic positioning: canonical tool layer, not just aggregator (developing)
+- [[006 Instance scoping and tool naming]] — multi-instance support, naming convention, no-collision guarantees (developing)
 
 ## Comparisons
 

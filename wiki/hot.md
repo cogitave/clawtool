@@ -17,7 +17,9 @@ status: developing
 
 ## Key Recent Facts
 
-- **clawtool's positioning has TWO pillars**: (1) canonical core tools — bash/grep/read/edit/write/glob/webfetch shipped at quality higher than each agent's native built-in; goal is agents preferring clawtool over their own implementations ([[005 Positioning replace native agent tools]]). (2) search-first — `tool_search` primitive (deferred loading + semantic discovery), the prerequisite that lets a 50+ tool catalog scale. Aggregation/per-tool toggle/single-binary/multi-agent are table stakes; canonical-tool quality + search-first together are what makes clawtool worth building.
+- **clawtool's positioning has TWO pillars**: (1) canonical core tools — bash/grep/read/edit/write/glob/webfetch shipped at quality higher than each agent's native built-in; goal is agents preferring clawtool over their own implementations ([[005 Positioning replace native agent tools]]). (2) search-first — `tool_search` primitive (deferred loading + semantic discovery), the prerequisite that lets a 50+ tool catalog scale.
+- **Multi-instance + naming locked** ([[006 Instance scoping and tool naming]]): instance names are kebab-case (`github-personal`, `github-work`), tool names from sources are snake_case (`create_issue`). Wire form `<instance>__<tool>` (two underscores), CLI selector `<instance>.<tool>` (one dot). Core tools use PascalCase (`Bash`, `Read`, `Edit`) matching Claude's native convention. No collision possible — disjoint charsets. First-instance bare name allowed; second instance forces explicit rename.
+- **Language locked: Go.** License likely MIT (lower vendor-adoption barrier). License is the only top-level open question now.
 - **MCP is locked in.** All four credible candidates speak MCP. clawtool exposes itself as an MCP server; no proprietary protocol.
 - **Distribution decided**: single user-local binary (~/.local/bin/clawtool), no Docker required. 1mcp-agent precedent. Trades container isolation (docker-mcp-gateway) for install simplicity.
 - **Tool manifest decided**: extend MCP schema via `annotations.clawtool` (tags, stability, default_enabled, search_keywords). No breaking changes to existing MCP servers.
@@ -32,10 +34,10 @@ status: developing
 
 ## Active Threads
 
-- **Open**: language choice for clawtool — **weight increased** by ADR-005. Syscall-level reliability for canonical bash/file tools argues for Go or Rust over TypeScript.
-- **Open**: license choice (Apache 2.0 vs MIT). MIT slightly preferred for canonical-layer adoption (lower barrier to vendor inclusion).
-- **Open**: ranking model for `tool_search` primitive (BM25 vs embedding vs hybrid). Needs prototype.
-- **Open**: catalog format — define clawtool-native or read existing (Docker MCP Catalog, MCP Registry, Smithery)?
+- ✅ **Closed**: language → **Go** (locked).
+- **Open**: license — Apache 2.0 vs MIT (MIT leaning for vendor adoption). Decide before first public commit.
+- **Open**: ranking model for `tool_search` (BM25 vs embedding vs hybrid). Prototype with BM25 first.
+- **Open**: catalog format — define clawtool-native or read existing (Docker MCP Catalog, MCP Registry, Smithery)? Defer until 5+ instance types.
 - **Deferred to v2**: container isolation, middleware support, plugin packaging (Claude Code plugin, Codex plugin) — phase 2 after binary works.
 - **Pending user-side**: work account `gh auth login` with `GH_CONFIG_DIR=~/.config/gh-work` (not blocking clawtool).
 - **Next deliverable revised**: prototype of (a) MCP server stub, (b) **3-5 canonical core tools** (bash, ripgrep, read at minimum) at quality, (c) `tool_search` BM25 baseline, (d) `clawtool tools enable/disable` CLI. *Not* a full aggregator. Make it usable end-to-end on small surface, then expand.
