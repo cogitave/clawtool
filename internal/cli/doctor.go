@@ -76,11 +76,10 @@ func (a *App) doctorBinary(w io.Writer, rep *doctorReport) {
 		rep.warn(w, "could not resolve own executable path: "+err.Error(), "")
 	}
 	// Surface a pending upstream release if we know about one.
-	// Cached for 24h so we don't hit GitHub on every doctor run.
+	// Quiet on failure: pre-release projects + offline runs both
+	// hit non-OK paths; an unprompted user-facing dump is noise.
 	upd := version.CheckForUpdate(context.Background())
 	switch {
-	case upd.Err != nil:
-		rep.info(w, fmt.Sprintf("update check failed: %v (cached for 24h)", upd.Err))
 	case upd.HasUpdate:
 		rep.warn(w,
 			fmt.Sprintf("new release available: %s (you have %s)", upd.Latest, upd.Current),
@@ -215,13 +214,11 @@ func (a *App) doctorRecipes(w io.Writer, rep *doctorReport) {
 				rep.warn(w,
 					fmt.Sprintf("%-26s partial — file exists but not clawtool-managed", r.Meta().Name),
 					fmt.Sprintf("clawtool recipe apply %s --force   (overwrite)", r.Meta().Name))
-			case setup.StatusAbsent:
-				// Absent is the default for most recipes; surface as
-				// info, not a warning. The user runs `clawtool init`
-				// to populate.
-				rep.info(w, fmt.Sprintf("%-26s absent", r.Meta().Name))
 			case setup.StatusError:
 				rep.warn(w, fmt.Sprintf("%s — Detect errored", r.Meta().Name), "")
+				// StatusAbsent is the common case — `clawtool recipe list`
+				// shows it explicitly; doctor stays focused on what's
+				// applied or warning-worthy.
 			}
 		}
 	}

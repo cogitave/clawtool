@@ -68,10 +68,10 @@ func updateCachePath() string {
 }
 
 // updateCacheTTL controls how long we trust a cached result.
-// 24h matches the typical "did it ship this morning?" check
-// rhythm and stays under GitHub's unauthenticated rate limit by
-// orders of magnitude.
-const updateCacheTTL = 24 * time.Hour
+// Short by design — `clawtool doctor` is user-invoked, not
+// polled, so refreshing freely is fine. The cache exists purely
+// to coalesce repeated invocations within a single shell loop.
+const updateCacheTTL = 5 * time.Minute
 
 // cachedUpdate is what we serialize to disk. UpdateInfo carries an
 // error which doesn't JSON-marshal cleanly, so we stash the
