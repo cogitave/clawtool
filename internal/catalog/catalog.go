@@ -79,8 +79,13 @@ func (c *Catalog) List() []NamedEntry {
 	return out
 }
 
-// SuggestSimilar returns up to `limit` candidate names that share a prefix
-// or substring with `name`. Used to nudge users who typo a source name.
+// SuggestSimilar returns up to `limit` candidate names that share a substring
+// with `name` in either direction. Catches both partial input (`git` →
+// `github`) and typos with extra characters (`github-typo` → `github`).
+//
+// We don't reach for full Levenshtein here because catalog names are short
+// and bidirectional substring matching covers the realistic typo patterns
+// users hit at the CLI.
 func (c *Catalog) SuggestSimilar(name string, limit int) []string {
 	if name == "" || limit <= 0 {
 		return nil
@@ -88,7 +93,8 @@ func (c *Catalog) SuggestSimilar(name string, limit int) []string {
 	lname := strings.ToLower(name)
 	var out []string
 	for _, e := range c.List() {
-		if strings.Contains(strings.ToLower(e.Name), lname) {
+		en := strings.ToLower(e.Name)
+		if strings.Contains(en, lname) || strings.Contains(lname, en) {
 			out = append(out, e.Name)
 			if len(out) >= limit {
 				break

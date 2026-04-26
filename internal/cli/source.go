@@ -50,7 +50,9 @@ func (a *App) runSourceAdd(argv []string) int {
 	fs := flag.NewFlagSet("source add", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	asInstance := fs.String("as", "", "Instance name to use (overrides the bare catalog name).")
-	if err := fs.Parse(argv); err != nil {
+	// stdlib flag stops at the first non-flag; reorder so flags can come
+	// after positionals (the form users actually type).
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{"as": true})); err != nil {
 		return 2
 	}
 	rest := fs.Args()
@@ -228,7 +230,7 @@ func (a *App) runSourceSetSecret(argv []string) int {
 	fs := flag.NewFlagSet("source set-secret", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	value := fs.String("value", "", "Value to store. If empty and stdin is a pipe, reads from stdin.")
-	if err := fs.Parse(argv); err != nil {
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{"value": true})); err != nil {
 		return 2
 	}
 	rest := fs.Args()
@@ -331,3 +333,31 @@ const sourceUsage = `Usage:
 
 // Look for runtime errors here as well as the App-level helpers.
 var _ = errors.New
+
+// reorderFlagsFirst takes argv and returns it with all flags (with their
+// values) moved to the front, so stdlib flag.FlagSet.Parse() picks them up
+// even when users type the natural `subcommand <positional> --flag value`
+// form. valueFlags maps flag names to whether they consume the next argv
+// as a value (e.g. {"as": true, "value": true}). Flags written as
+// --flag=value are passed through untouched.
+func reorderFlagsFirst(argv []string, valueFlags map[string]bool) []string {
+	var flags, positional []string
+	for i := 0; i < len(argv); i++ {
+		a := argv[i]
+		if strings.HasPrefix(a, "-") {
+			flags = append(flags, a)
+			// --flag=value: value already attached.
+			if strings.Contains(a, "=") {
+				continue
+			}
+			name := strings.TrimLeft(a, "-")
+			if valueFlags[name] && i+1 < len(argv) {
+				flags = append(flags, argv[i+1])
+				i++
+			}
+			continue
+		}
+		positional = append(positional, a)
+	}
+	return append(flags, positional...)
+}

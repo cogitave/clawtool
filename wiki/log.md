@@ -17,6 +17,41 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### V0.4 TURN 1 SHIPPED — catalog + secrets + source CLI
+
+ADR-008's user-facing UX is now real on the CLI. Sources are still config-only (no proxy spawn yet — turn 2), but the entire add/list/remove/set-secret/check loop works against an embedded catalog.
+
+- **Catalog** package at `internal/catalog/`:
+  - `builtin.toml` embedded via `go:embed` with 12 entries: github, slack, postgres, sqlite, filesystem, fetch, brave-search, google-maps, memory, sequentialthinking, time, git.
+  - Per-entry: description, runtime, package, args, required_env, auth_hint, homepage, maintained.
+  - `ToSourceCommand()` maps runtime → argv: npx → `["npx", "-y", pkg, args…]`, python → `["uvx", pkg, args…]`, docker → `["docker", "run", "-i", "--rm", img, args…]`, node, binary.
+  - `EnvTemplate()` builds `KEY → "${KEY}"` placeholders for required env.
+  - `SuggestSimilar` is bidirectional — catches both "git" → "github" and "github-typo" → "github".
+  - 11 unit tests.
+
+- **Secrets** package at `internal/secrets/`:
+  - TOML store at `~/.config/clawtool/secrets.toml` (mode 0600, separate file from config.toml).
+  - Scope-based: `[scopes.<instance>]` and `[scopes.global]` (global = fallback).
+  - `Set/Get/Delete/Resolve`. Resolve interpolates `${VAR}` against secrets first, then process env.
+  - Atomic temp+rename save.
+  - 7 unit tests.
+
+- **CLI source subcommands** at `internal/cli/source.go`:
+  - `clawtool source add <name>` — catalog lookup. Prints package + description + homepage + auth hint + actionable `set-secret` command if env missing. Stays config-only this turn (turn 2 wires actual spawn).
+  - `--as <instance>` overrides bare name (ADR-006 multi-instance rule). Adding a second `github` without `--as` errors with copy-paste suggestions.
+  - Unknown name → suggests similar catalog entries via `SuggestSimilar`.
+  - `clawtool source list` — table of configured sources with auth status (✓ ready / ✗ missing) + package.
+  - `clawtool source remove <instance>` — drop from config; secrets retained.
+  - `clawtool source set-secret <instance> <KEY>` — `--value` flag or stdin fallback. Empty value rejected explicitly.
+  - `clawtool source check` — verifies required env per source.
+  - **Flag-after-positional fix**: stdlib `flag.Parse` only sees flags before the first positional. Added `reorderFlagsFirst` helper so `source add github --as github-work` and `set-secret github KEY --value ghp_...` work as users naturally type them. Required because the Go stdlib `flag` package doesn't intersperse.
+  - 12 unit tests.
+
+- **Test totals: 58 Go unit tests + 23 e2e = 81 green.**
+  Per package: catalog 11, cli 21 (8 existing + 13 source-related new), config 11, secrets 7, tools/core 17 (Bash 5 + Grep 5 + Read 7).
+
+- Updated [[Hot]], this log. ADR-008 already locked in earlier this session.
+
 ### CATALOG — ADR-008: curated source catalog with name-only ergonomics
 
 - New ADR. `clawtool source add github` resolves bare names to canonical implementations from a built-in catalog (package name, runtime, required env vars, auth flow hints, homepage, maintenance status). Long-form `clawtool source add custom -- npx -y my/server` remains for unknown sources — catalog is a fast path, not a gate.
