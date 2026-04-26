@@ -167,6 +167,8 @@ func (a *App) Run(argv []string) int {
 		return a.runRecipe(argv[1:])
 	case "doctor":
 		return a.runDoctor(argv[1:])
+	case "skill":
+		return a.runSkill(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -341,6 +343,15 @@ Usage:
                               clawtool recipe apply dependabot
   clawtool doctor           One-command diagnostic — surveys binary,
                             agents, sources, and recipes; suggests fixes.
+  clawtool skill new <name> --description "..." [--triggers "a,b,c"] [--local] [--force]
+                            Scaffold an Agent Skill folder per the
+                            agentskills.io standard (SKILL.md + scripts/
+                            references/ assets/). MCP equivalent:
+                            mcp__clawtool__SkillNew.
+  clawtool skill list       Enumerate installed skills (~/.claude/skills
+                            and ./.claude/skills).
+  clawtool skill path [<name>]
+                            Print the on-disk path of a skill.
   clawtool version          Print the build version.
   clawtool help             Show this help.
 

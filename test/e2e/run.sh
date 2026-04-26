@@ -538,7 +538,7 @@ recipe_list_resp=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
 
-for t in RecipeList RecipeStatus RecipeApply; do
+for t in RecipeList RecipeStatus RecipeApply SkillNew; do
   echo "$recipe_list_resp" | grep -q "\"name\":\"$t\"" \
     || fail "tools/list: $t missing"
   pass "tools/list: $t registered"

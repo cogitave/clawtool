@@ -107,6 +107,12 @@ func ServeStdio(ctx context.Context) error {
 	// trivial when the need shows up.
 	core.RegisterRecipeTools(s)
 
+	// SkillNew lets a model scaffold an agentskills.io-standard
+	// skill from inside a conversation. Same template the
+	// `clawtool skill new` CLI emits — both go through the
+	// internal/skillgen package.
+	core.RegisterSkillNew(s)
+
 	// Aggregated source tools — one entry per (running instance × tool),
 	// already named in wire form `<instance>__<tool>`.
 	for _, st := range mgr.AggregatedTools() {

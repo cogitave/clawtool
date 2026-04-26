@@ -125,6 +125,24 @@ Want Claude to set things up from inside a chat? Just say "set me
 up" — the `/clawtool` skill teaches the model to walk the same
 recipes via `mcp__clawtool__RecipeApply`.
 
+## Author your own skills (agentskills.io standard)
+
+```sh
+clawtool skill new my-skill --description "What this skill does and when to load it." \
+                            --triggers "save this, file this, log this"
+```
+
+Scaffolds a folder under `~/.claude/skills/my-skill/` (or
+`./.claude/skills/my-skill/` with `--local`) containing a
+spec-compliant `SKILL.md` plus the optional `scripts/`,
+`references/`, `assets/` subdirectories from the
+[agentskills.io](https://agentskills.io) standard. The model can
+also do this from inside a chat — same template — via
+`mcp__clawtool__SkillNew`.
+
+`clawtool skill list` enumerates installed skills; `clawtool skill
+path <name>` prints the directory.
+
 ## Diagnose your setup
 
 ```sh
