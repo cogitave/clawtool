@@ -7,12 +7,26 @@
 [![License](https://img.shields.io/github/license/cogitave/clawtool?color=brightgreen)](LICENSE)
 [![Conventional Commits](https://img.shields.io/badge/conventional--commits-1.0.0-yellow)](https://www.conventionalcommits.org)
 
-> **Define a toolset once. Use it in every AI coding agent.**
+> **One install. Your repo and your AI are both ready in 30 seconds.**
 
-clawtool is the standard for shipping a single, configurable toolset
-across Claude Code, Codex, OpenCode and any other MCP-aware agent. One
-install, one config file, every agent — same `mcp__clawtool__*` surface
-everywhere.
+clawtool is the canonical toolset + setup layer for AI coding agents.
+A single binary that (1) gives every MCP-aware agent — Claude Code,
+Codex, OpenCode — the same higher-quality `Bash` / `Read` / `Edit` /
+`Write` / `Grep` / `Glob` / `WebFetch` / `WebSearch` / `ToolSearch`,
+and (2) injects the canonical project-setup tools (release-please,
+GoReleaser, Conventional Commits CI, Dependabot, CODEOWNERS, an
+SPDX-licensed `LICENSE`, an Obsidian-backed memory layer) into your
+repo from one wizard.
+
+```sh
+curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
+clawtool init
+```
+
+That's it. Pick what you want set up; clawtool runs each upstream's
+own init and drops the canonical glue config. **No reinvention** —
+release-please is googleapis/release-please, brain is claude-obsidian,
+license texts are SPDX. clawtool is the wizard, not a fork.
 
 ---
 
@@ -59,10 +73,47 @@ fallback)? Run:
 clawtool agents claim claude-code
 ```
 
-That adds the native `Bash`/`Read`/`Edit`/`Write`/`Grep`/`Glob`/`WebFetch`/
-`WebSearch` tool names to `~/.claude/settings.json`'s `disabledTools`
-array. Reverse with `clawtool agents release claude-code`. Idempotent
-+ atomic + `--dry-run` available.
+That writes the native `Bash`/`Read`/`Edit`/`Write`/`Grep`/`Glob`/`WebFetch`/
+`WebSearch` tool names into `~/.claude/settings.json`'s
+`permissions.deny` list — Claude Code refuses to invoke them, the
+model sees only `mcp__clawtool__*`. Reverse with `clawtool agents
+release claude-code`. Idempotent + atomic + `--dry-run` available.
+
+## Set up a repo in 30 seconds
+
+```sh
+cd my-repo
+clawtool init
+```
+
+The wizard asks what scope to set up — your repo, your global
+clawtool, both, or just preview — then walks 9 categories
+(governance, commits, release, ci, quality, supply-chain, knowledge,
+agents, runtime). Pick what you want; everything else is skipped.
+
+Recipes shipped today:
+
+| Category | Recipe | Wraps |
+|---|---|---|
+| governance | `license` | SPDX (MIT · Apache-2.0 · BSD-3-Clause) |
+| governance | `codeowners` | GitHub CODEOWNERS spec |
+| commits | `conventional-commits-ci` | `amannn/action-semantic-pull-request` |
+| release | `release-please` | googleapis/release-please |
+| release | `goreleaser` | GoReleaser v2 |
+| supply-chain | `dependabot` | GitHub Dependabot |
+| knowledge | `brain` | claude-obsidian + Obsidian app |
+| agents | `agent-claim` | `clawtool agents claim` per-agent |
+
+Every recipe **detects** before it touches anything, **refuses** to
+overwrite a file you wrote yourself, and **records** what it touched
+in `.clawtool.toml` so you can re-run safely. Each one wraps a
+maintained upstream — clawtool is the wizard, never the
+implementation.
+
+Prefer one shot? `clawtool recipe apply license holder="Jane Doe"`.
+Want Claude to set things up from inside a chat? Just say "set me
+up" — the `/clawtool` skill teaches the model to walk the same
+recipes via `mcp__clawtool__RecipeApply`.
 
 ## What's a toolset?
 
@@ -177,8 +228,13 @@ then the process env.
 
 ```
 clawtool serve                        Run as an MCP server (stdio).
-clawtool init                         Create ~/.config/clawtool/config.toml.
+clawtool init [--yes]                 Interactive setup wizard. --yes for
+                                      non-interactive Stable defaults.
 clawtool version                      Print the build version.
+
+clawtool recipe list [--category <c>] List project-setup recipes by category.
+clawtool recipe status [<name>]       Detect status for one or all recipes.
+clawtool recipe apply  <name> [k=v…]  Apply a single recipe.
 
 clawtool tools list                   List core tools and resolved enabled state.
 clawtool tools enable  <selector>     Enable a tool.
@@ -212,8 +268,8 @@ make changelog          # regenerate CHANGELOG.md from git history
 make release-snapshot   # GoReleaser dry-run (no publish)
 ```
 
-Test totals at v0.8.6: **134 Go unit + 57 e2e = 191 green** across
-8 packages.
+Test totals at v0.9: **~200 Go unit + 68 e2e green** across
+12 packages, race-clean.
 
 The release pipeline is fully automated:
 [Conventional Commits](https://www.conventionalcommits.org) on `main`
