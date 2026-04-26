@@ -170,6 +170,8 @@ func (a *App) Run(argv []string) int {
 		return a.runTools(argv[1:])
 	case "source":
 		return a.runSource(argv[1:])
+	case "agents":
+		return a.runAgents(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -320,6 +322,13 @@ Usage:
   clawtool source remove <instance>
   clawtool source set-secret <instance> <KEY> [--value <v>]
   clawtool source check     Verify required credentials per source.
+  clawtool agents claim <agent>
+                            Disable the agent's native Bash/Read/Edit/Write/
+                            Grep/Glob/WebFetch/WebSearch so only the
+                            mcp__clawtool__* equivalents are exposed.
+  clawtool agents release <agent>
+  clawtool agents status [<agent>]
+  clawtool agents list      List known agent adapters.
   clawtool version          Print the build version.
   clawtool help             Show this help.
 
