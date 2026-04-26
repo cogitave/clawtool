@@ -16,7 +16,7 @@ description: >
   "write file", "search files", "grep", "find files", "glob",
   "fetch URL", "download a page", "search the web", "find a tool",
   "discover tool", "list available tools".
-allowed-tools: mcp__clawtool__Bash mcp__clawtool__Read mcp__clawtool__Edit mcp__clawtool__Write mcp__clawtool__Grep mcp__clawtool__Glob mcp__clawtool__WebFetch mcp__clawtool__WebSearch mcp__clawtool__ToolSearch
+allowed-tools: mcp__clawtool__Bash mcp__clawtool__Read mcp__clawtool__Edit mcp__clawtool__Write mcp__clawtool__Grep mcp__clawtool__Glob mcp__clawtool__WebFetch mcp__clawtool__WebSearch mcp__clawtool__ToolSearch mcp__clawtool__RecipeList mcp__clawtool__RecipeStatus mcp__clawtool__RecipeApply
 ---
 
 # clawtool: prefer the canonical tool layer
@@ -54,6 +54,49 @@ appear with names like `mcp__clawtool__github__create_issue`. The wire
 form is `<instance>__<tool>` (two underscores between instance and tool
 per ADR-006). Treat them as first-class — they're configured by the
 user; they wouldn't be exposed otherwise.
+
+## Onboarding mode — when the user wants to "set things up"
+
+When the user says any of:
+- "set me up", "set this repo up", "kur şunu" (TR), "init", "configure clawtool"
+- "add github / slack / postgres support" (matches a catalog entry)
+- "make this repo [release-please / dependabot / goreleaser] ready"
+- "give me [a license / CODEOWNERS / commit format check]"
+
+Don't shell out to `clawtool init` — that's the TTY wizard. Run the
+**granular tools instead**, conversationally:
+
+1. **Snapshot first**: call `mcp__clawtool__RecipeList` (no args) and
+   `mcp__clawtool__RecipeStatus` to see what's already configured.
+   Summarize for the user in two short sentences.
+
+2. **Walk categories in order** (`governance → commits → release →
+   ci → quality → supply-chain → knowledge → agents → runtime`).
+   For each category with `Absent` recipes, ask the user which they
+   want — list one option per recipe with its description.
+
+3. **Apply one at a time**: call `mcp__clawtool__RecipeApply` with
+   the chosen `name` and any required `options`:
+   - `license` → `{ holder: "...", spdx: "MIT"|"Apache-2.0"|"BSD-3-Clause" }`
+   - `codeowners` → `{ owners: ["@me", "@team/maintainers"] }`
+   - others → no options needed
+   The tool returns `skipped`/`installed`/`manual_prereqs` —
+   surface manual hints (e.g. "install Obsidian", "set GITHUB_TOKEN")
+   verbatim so the user knows what to do next.
+
+4. **Sources & secrets** when the user asks for a specific service
+   (GitHub, Slack, Postgres, etc.) — reach for `clawtool source add
+   <name>` via `mcp__clawtool__Bash` (not a recipe), then prompt the
+   user for any required secret which you set via `clawtool source
+   set-secret`. Never echo a secret back; never call any tool that
+   would expose stored secret values.
+
+5. **Agents**: `clawtool agents claim <agent>` is the right verb;
+   call it via Bash for one-shot use, or `mcp__clawtool__RecipeApply`
+   with `name: "agent-claim"` for the recipe-tracked path.
+
+Stop after each step. The user steers; the wizard you're emulating
+is conversational, not a one-shot.
 
 ## When NOT to prefer clawtool
 
