@@ -19,28 +19,33 @@ func newApp(t *testing.T) (*App, *bytes.Buffer, *bytes.Buffer, string) {
 	return app, out, errb, path
 }
 
-func TestInit_WritesDefault(t *testing.T) {
+func TestInitConfig_WritesDefaultGlobalConfig(t *testing.T) {
+	// `clawtool init` is the project-setup wizard. The legacy
+	// "write a default user-global config.toml" behavior is now
+	// reachable via App.Init() as a programmatic helper — exposed
+	// separately so tests can exercise it without spawning the
+	// wizard. See `clawtool init` (cli_init_wizard.go) for the
+	// user-facing entrypoint.
 	app, out, _, path := newApp(t)
-	if rc := app.Run([]string{"init"}); rc != 0 {
-		t.Fatalf("init exit = %d, want 0", rc)
+	if err := app.Init(); err != nil {
+		t.Fatalf("Init: %v", err)
 	}
 	if !strings.Contains(out.String(), path) {
-		t.Errorf("init stdout did not echo path: %q", out.String())
+		t.Errorf("Init stdout did not echo path: %q", out.String())
 	}
-	// Second run should be a no-op (already exists).
 	out.Reset()
-	if rc := app.Run([]string{"init"}); rc != 0 {
-		t.Fatalf("init second run exit = %d, want 0", rc)
+	if err := app.Init(); err != nil {
+		t.Fatalf("Init second call: %v", err)
 	}
 	if !strings.Contains(out.String(), "already exists") {
-		t.Errorf("second init should report 'already exists'; got %q", out.String())
+		t.Errorf("second Init should report 'already exists'; got %q", out.String())
 	}
 }
 
 func TestToolsList_DefaultStateAfterInit(t *testing.T) {
 	app, out, _, _ := newApp(t)
-	if rc := app.Run([]string{"init"}); rc != 0 {
-		t.Fatalf("init exit %d", rc)
+	if err := app.Init(); err != nil {
+		t.Fatalf("Init: %v", err)
 	}
 	out.Reset()
 	if rc := app.Run([]string{"tools", "list"}); rc != 0 {

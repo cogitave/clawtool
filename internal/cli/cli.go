@@ -2,7 +2,7 @@
 //
 // Subcommand layout (ADR-004 §4):
 //
-//	clawtool init              write a default config if missing
+//	clawtool init              interactive wizard: pick recipes, apply to repo
 //	clawtool serve             run as MCP server (delegates to internal/server)
 //	clawtool version           print version
 //	clawtool help              print top-level usage
@@ -17,7 +17,6 @@ package cli
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -157,15 +156,7 @@ func (a *App) Run(argv []string) int {
 	}
 	switch argv[0] {
 	case "init":
-		fs := flag.NewFlagSet("init", flag.ContinueOnError)
-		fs.SetOutput(a.Stderr)
-		if err := fs.Parse(argv[1:]); err != nil {
-			return 2
-		}
-		if err := a.Init(); err != nil {
-			fmt.Fprintf(a.Stderr, "clawtool init: %v\n", err)
-			return 1
-		}
+		return a.runInit(argv[1:])
 	case "tools":
 		return a.runTools(argv[1:])
 	case "source":
@@ -312,7 +303,10 @@ const topUsage = `clawtool — canonical tool layer for AI coding agents
 
 Usage:
   clawtool serve            Run as an MCP server over stdio.
-  clawtool init             Write a default config to ~/.config/clawtool/config.toml.
+  clawtool init [--yes]     Interactive wizard: pick recipes per category
+                            (license, dependabot, release-please, etc.) and
+                            inject them into the current repo. --yes / non-TTY:
+                            apply Stable defaults non-interactively.
   clawtool tools list       List known tools and their resolved enabled state.
   clawtool tools enable <selector>
   clawtool tools disable <selector>
