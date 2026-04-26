@@ -131,3 +131,54 @@ func TestResolve_NilTemplateReturnsNil(t *testing.T) {
 		t.Errorf("nil template produced %v / %v, want nil/nil", got, missing)
 	}
 }
+
+func TestExpand_LiteralPassthrough(t *testing.T) {
+	s := &Store{Scopes: map[string]map[string]string{}}
+	got, missing := s.Expand("scope", "no-template-here")
+	if got != "no-template-here" {
+		t.Errorf("literal mutated: %q", got)
+	}
+	if len(missing) != 0 {
+		t.Errorf("missing should be empty for literal: %v", missing)
+	}
+}
+
+func TestExpand_SubstitutesScopeThenEnv(t *testing.T) {
+	t.Setenv("CLAWTOOL_TEST_FROM_ENV", "from-env")
+
+	s := &Store{Scopes: map[string]map[string]string{}}
+	s.Set("github", "GITHUB_TOKEN", "secret")
+
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"${GITHUB_TOKEN}", "secret"},
+		{"prefix-${GITHUB_TOKEN}-suffix", "prefix-secret-suffix"},
+		{"${CLAWTOOL_TEST_FROM_ENV}", "from-env"},
+		{"two ${GITHUB_TOKEN} ${GITHUB_TOKEN}", "two secret secret"},
+	}
+	for _, c := range cases {
+		got, missing := s.Expand("github", c.in)
+		if got != c.want {
+			t.Errorf("Expand(%q) = %q, want %q", c.in, got, c.want)
+		}
+		if len(missing) != 0 {
+			t.Errorf("Expand(%q) reported missing %v", c.in, missing)
+		}
+	}
+}
+
+func TestExpand_ReportsMissingDeduplicated(t *testing.T) {
+	s := &Store{Scopes: map[string]map[string]string{}}
+	t.Setenv("DEFINITELY_NOT_SET_ANYWHERE_ALPHA", "")
+	t.Setenv("DEFINITELY_NOT_SET_ANYWHERE_BETA", "")
+
+	out, missing := s.Expand("scope", "${DEFINITELY_NOT_SET_ANYWHERE_ALPHA} and ${DEFINITELY_NOT_SET_ANYWHERE_ALPHA} and ${DEFINITELY_NOT_SET_ANYWHERE_BETA}")
+	if out != " and  and " {
+		t.Errorf("expected unresolved refs to collapse to empty: %q", out)
+	}
+	if len(missing) != 2 {
+		t.Errorf("missing = %v, want 2 unique entries (alpha, beta)", missing)
+	}
+}

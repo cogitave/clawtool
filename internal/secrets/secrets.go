@@ -154,14 +154,20 @@ func (s *Store) Resolve(scope string, template map[string]string) (resolved map[
 
 var refRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-// expand resolves all ${VAR} references in v. Returns ok=false when any
-// reference could not be resolved. A non-template literal (no ${...})
-// always resolves to itself with ok=true.
-func (s *Store) expand(scope, v string) (string, bool) {
+// Expand resolves every ${VAR} reference in v against the secrets scope
+// first, then the "global" scope, then the process env, returning the
+// expanded string plus the list of variable names that could not be
+// resolved (in encounter order, deduplicated).
+//
+// A literal without any ${...} substring is returned verbatim with no
+// missing entries — this is the hot-path callers depend on so they
+// don't pay the regex cost on plain values.
+func (s *Store) Expand(scope, v string) (string, []string) {
 	if !strings.Contains(v, "${") {
-		return v, true
+		return v, nil
 	}
-	allOK := true
+	var missing []string
+	seen := map[string]bool{}
 	out := refRE.ReplaceAllStringFunc(v, func(match string) string {
 		name := match[2 : len(match)-1]
 		if val, ok := s.Get(scope, name); ok {
@@ -170,8 +176,18 @@ func (s *Store) expand(scope, v string) (string, bool) {
 		if env := os.Getenv(name); env != "" {
 			return env
 		}
-		allOK = false
+		if !seen[name] {
+			seen[name] = true
+			missing = append(missing, name)
+		}
 		return ""
 	})
-	return out, allOK
+	return out, missing
+}
+
+// expand is the bool-returning helper kept for backwards-compat with the
+// internal Resolve flow. New callers should reach for Expand instead.
+func (s *Store) expand(scope, v string) (string, bool) {
+	out, missing := s.Expand(scope, v)
+	return out, len(missing) == 0
 }

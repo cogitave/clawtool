@@ -242,3 +242,67 @@ func TestManager_StopReapsAll(t *testing.T) {
 		t.Errorf("AggregatedTools after Stop = %d, want 0", len(got))
 	}
 }
+
+// TestManager_SpecForExpandsArgs verifies that ${VAR} references in
+// command argv are substituted at spec-build time the same way env-map
+// references are. Without this, catalog entries like filesystem (whose
+// `args = ["${FILESYSTEM_ROOT}"]`) hand the literal placeholder string
+// to the spawned child.
+func TestManager_SpecForExpandsArgs(t *testing.T) {
+	t.Setenv("CLAWTOOL_TEST_FILESYSTEM_ROOT", "/tmp/probe-root")
+
+	cfg := config.Config{
+		Sources: map[string]config.Source{
+			"fs": {
+				Type:    "mcp",
+				Command: []string{"npx", "-y", "@example/server-fs", "${CLAWTOOL_TEST_FILESYSTEM_ROOT}"},
+				Env:     map[string]string{"PATH_HINT": "${CLAWTOOL_TEST_FILESYSTEM_ROOT}/sub"},
+			},
+		},
+	}
+	sec := &secrets.Store{Scopes: map[string]map[string]string{}}
+	mgr := NewManager(cfg, sec)
+
+	spec, missing := mgr.specFor("fs", cfg.Sources["fs"])
+
+	if len(missing) != 0 {
+		t.Errorf("missing = %v, want none (env supplies the var)", missing)
+	}
+	wantArgs := []string{"npx", "-y", "@example/server-fs", "/tmp/probe-root"}
+	if len(spec.Command) != len(wantArgs) {
+		t.Fatalf("command argv length mismatch: %v want %v", spec.Command, wantArgs)
+	}
+	for i := range wantArgs {
+		if spec.Command[i] != wantArgs[i] {
+			t.Errorf("argv[%d] = %q, want %q", i, spec.Command[i], wantArgs[i])
+		}
+	}
+	if spec.Env["PATH_HINT"] != "/tmp/probe-root/sub" {
+		t.Errorf("env interpolation broke: PATH_HINT = %q", spec.Env["PATH_HINT"])
+	}
+}
+
+func TestManager_SpecForReportsMissingArgVars(t *testing.T) {
+	cfg := config.Config{
+		Sources: map[string]config.Source{
+			"fs": {
+				Type:    "mcp",
+				Command: []string{"npx", "-y", "@example/server-fs", "${DEFINITELY_NOT_SET_INTEGRATION_TEST}"},
+			},
+		},
+	}
+	sec := &secrets.Store{Scopes: map[string]map[string]string{}}
+	mgr := NewManager(cfg, sec)
+
+	_, missing := mgr.specFor("fs", cfg.Sources["fs"])
+
+	hasIt := false
+	for _, k := range missing {
+		if k == "DEFINITELY_NOT_SET_INTEGRATION_TEST" {
+			hasIt = true
+		}
+	}
+	if !hasIt {
+		t.Errorf("missing should report unresolved arg var; got %v", missing)
+	}
+}

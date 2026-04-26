@@ -177,14 +177,40 @@ func (m *Manager) Health() []HealthReport {
 	return out
 }
 
-// specFor resolves the spec for one source — substituting secrets into the
-// env template, reporting any unresolved keys.
+// specFor resolves the spec for one source — substituting secrets into
+// both the env template AND command argv, reporting any unresolved keys.
+//
+// Argv substitution matters for catalog entries whose `args` reference
+// the same env vars they list in `required_env`. Example: filesystem's
+// catalog entry uses `args = ["${FILESYSTEM_ROOT}"]` so the path winds
+// up as a CLI argument to the npx-spawned server. Without this we'd
+// hand `${FILESYSTEM_ROOT}` to the child verbatim.
 func (m *Manager) specFor(name string, src config.Source) (Spec, []string) {
-	resolved, missing := m.secrets.Resolve(name, src.Env)
-	return Spec{
-		Command: append([]string{}, src.Command...),
-		Env:     resolved,
-	}, missing
+	resolved, missingEnv := m.secrets.Resolve(name, src.Env)
+
+	cmd := make([]string, len(src.Command))
+	missingArgs := map[string]bool{}
+	for i, arg := range src.Command {
+		expanded, missing := m.secrets.Expand(name, arg)
+		cmd[i] = expanded
+		for _, k := range missing {
+			missingArgs[k] = true
+		}
+	}
+
+	// Merge missing keys (env first, then argv-only). Dedup against env.
+	missing := append([]string{}, missingEnv...)
+	envSet := map[string]bool{}
+	for _, k := range missingEnv {
+		envSet[k] = true
+	}
+	for k := range missingArgs {
+		if !envSet[k] {
+			missing = append(missing, k)
+		}
+	}
+
+	return Spec{Command: cmd, Env: resolved}, missing
 }
 
 // SplitWireName parses a `<instance>__<tool>` selector back into its parts.
