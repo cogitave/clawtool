@@ -100,9 +100,9 @@ func CoreToolDocs() []search.Doc {
 		},
 		{
 			Name:        "Read",
-			Description: "Read a file with stable line cursors and deterministic line counts. Format-aware: text via stdlib, PDF via pdftotext when present, ipynb via native JSON cell parse.",
+			Description: "Read a file with stable line cursors and deterministic line counts. Format-aware: text, PDF (pdftotext), Jupyter (.ipynb), Word (.docx via pandoc), Excel (.xlsx via excelize), CSV/TSV, HTML (Mozilla Readability), and JSON/YAML/TOML/XML pass-through.",
 			Type:        "core",
-			Keywords:    []string{"file", "open", "cat", "view", "pdf", "ipynb", "notebook"},
+			Keywords:    []string{"file", "open", "cat", "view", "pdf", "docx", "word", "xlsx", "excel", "spreadsheet", "csv", "tsv", "html", "json", "yaml", "toml", "xml", "ipynb", "notebook", "office"},
 		},
 		{
 			Name:        "Glob",

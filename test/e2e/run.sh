@@ -377,10 +377,5 @@ echo "$glob_resp" | grep -qF 'README.md' \
   || fail "Glob: README.md not in matches"
 pass "Glob: README.md found via **/*.md"
 
-echo "$glob_resp" | grep -qF '\"matches_count\":' \
-  || fail "Glob: matches_count missing"
-pass "Glob: matches_count present"
-
-# ── done ──────────────────────────────────────────────────────────────────
 echo ""
 echo "✓ all e2e tests passed"

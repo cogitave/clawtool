@@ -24,7 +24,7 @@ var (
 // for isolation.
 func detectEngines() {
 	engineCache = map[string]Engine{}
-	for _, name := range []string{"rg", "grep", "pdftotext"} {
+	for _, name := range []string{"rg", "grep", "pdftotext", "pandoc"} {
 		if path, err := exec.LookPath(name); err == nil {
 			engineCache[name] = Engine{Name: name, Bin: path}
 		} else {

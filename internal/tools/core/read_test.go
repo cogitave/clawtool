@@ -25,7 +25,7 @@ func TestRead_TextWholeFile(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeRead(ctx, path, 1, 0)
+	res := executeRead(ctx, path, 1, 0, "")
 
 	if res.Format != "text" {
 		t.Errorf("format = %q, want text", res.Format)
@@ -52,7 +52,7 @@ func TestRead_TextLineRange(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeRead(ctx, path, 2, 4)
+	res := executeRead(ctx, path, 2, 4, "")
 
 	if res.TotalLines != 5 {
 		t.Errorf("total_lines = %d, want 5", res.TotalLines)
@@ -76,7 +76,7 @@ func TestRead_TextLineStartBeyondEOF(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeRead(ctx, path, 100, 200)
+	res := executeRead(ctx, path, 100, 200, "")
 
 	if res.TotalLines != 3 {
 		t.Errorf("total_lines = %d, want 3", res.TotalLines)
@@ -93,7 +93,7 @@ func TestRead_BinaryRejected(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeRead(ctx, path, 1, 0)
+	res := executeRead(ctx, path, 1, 0, "")
 
 	if res.Format != "binary-rejected" {
 		t.Errorf("format = %q, want binary-rejected", res.Format)
@@ -115,7 +115,7 @@ func TestRead_Ipynb(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeRead(ctx, path, 1, 0)
+	res := executeRead(ctx, path, 1, 0, "")
 
 	if res.Format != "ipynb" {
 		t.Errorf("format = %q, want ipynb", res.Format)
@@ -139,13 +139,12 @@ func TestRead_PDFWithoutEngine(t *testing.T) {
 		t.Skip("pdftotext is installed on this system; skipping the absent-engine test")
 	}
 	dir := t.TempDir()
-	// Just enough to be format-detected as PDF via magic bytes.
 	body := "%PDF-1.4\n... not a real pdf, only the header ...\n"
 	path := writeFile(t, dir, "doc.pdf", body)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeRead(ctx, path, 1, 0)
+	res := executeRead(ctx, path, 1, 0, "")
 
 	if res.Format != "pdf" {
 		t.Errorf("format = %q, want pdf", res.Format)
@@ -162,7 +161,7 @@ func TestRead_DirectoryRejected(t *testing.T) {
 	dir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeRead(ctx, dir, 1, 0)
+	res := executeRead(ctx, dir, 1, 0, "")
 	if res.ErrorReason == "" || !strings.Contains(res.ErrorReason, "directory") {
 		t.Errorf("expected directory rejection, got %q", res.ErrorReason)
 	}
