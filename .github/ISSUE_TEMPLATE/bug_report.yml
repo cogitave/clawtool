@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in clawtool behaves incorrectly.
+title: "fix: <one-line summary>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please don't file security-sensitive issues here — see [SECURITY.md](https://github.com/cogitave/clawtool/blob/main/SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: clawtool version
+      description: Output of `clawtool version`.
+      placeholder: clawtool 0.8.x
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - WSL
+        - Windows
+        - Other (describe in repro)
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Smallest commands or MCP request/response pair that demonstrates the bug.
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include any structured error_reason field from the tool result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Extra context
+      description: Engines installed (`rg --version`, `pandoc --version`), other MCP servers running, anything that might be relevant.

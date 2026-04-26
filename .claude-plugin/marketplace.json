@@ -1,0 +1,30 @@
+{
+  "name": "clawtool-marketplace",
+  "owner": {
+    "name": "Bahadır Arda",
+    "url": "https://github.com/bahadirarda"
+  },
+  "metadata": {
+    "description": "clawtool: the canonical tool layer for AI coding agents — by Bahadır Arda",
+    "version": "0.8.3"
+  },
+  "plugins": [
+    {
+      "name": "clawtool",
+      "source": {
+        "source": "github",
+        "repo": "cogitave/clawtool",
+        "ref": "main"
+      },
+      "description": "The canonical tool layer for AI coding agents. Auto-registers an MCP server on install (no claude mcp add-json), biases agent preference toward clawtool's structured-output / timeout-safe / format-aware tools via the loaded skill description, exposes /clawtool slash commands. Uninstall removes everything except user data and the binary itself.",
+      "version": "0.8.3",
+      "author": {
+        "name": "Bahadır Arda",
+        "url": "https://github.com/bahadirarda"
+      },
+      "homepage": "https://github.com/cogitave/clawtool",
+      "repository": "https://github.com/cogitave/clawtool",
+      "license": "MIT"
+    }
+  ]
+}

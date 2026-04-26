@@ -1,0 +1,8 @@
+# Default reviewer for every PR. Replace once additional maintainers
+# join.
+*       @bahadirarda
+
+# Areas with finer ownership can pin specific reviewers later, e.g.
+# /internal/sources/   @bahadirarda @<future-maintainer>
+# /wiki/decisions/     @bahadirarda
+# /.github/            @bahadirarda

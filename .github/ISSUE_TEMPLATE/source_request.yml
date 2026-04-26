@@ -1,0 +1,71 @@
+name: Source catalog entry
+description: Request a new entry in the built-in source catalog (clawtool source add <name>).
+title: "feat(catalog): add <name>"
+labels: ["enhancement", "catalog"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Catalog adds are fast-tracked. Provide the canonical install recipe and we'll wire it.
+
+  - type: input
+    id: name
+    attributes:
+      label: Catalog name
+      description: The bare name users will type (kebab-case, e.g. 'github', 'redis').
+    validations:
+      required: true
+
+  - type: input
+    id: package
+    attributes:
+      label: Package
+      placeholder: "@scope/server-foo or 'mcp-server-foo'"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options:
+        - npx
+        - node
+        - python (uvx)
+        - docker
+        - binary
+    validations:
+      required: true
+
+  - type: input
+    id: required_env
+    attributes:
+      label: Required env vars
+      description: Comma-separated list. Empty if none.
+      placeholder: "GITHUB_TOKEN"
+
+  - type: input
+    id: auth_hint
+    attributes:
+      label: Auth hint
+      description: One-line instruction for obtaining credentials.
+
+  - type: input
+    id: homepage
+    attributes:
+      label: Homepage / README URL
+    validations:
+      required: true
+
+  - type: dropdown
+    id: maintained
+    attributes:
+      label: Maintained by
+      options:
+        - anthropic
+        - openai
+        - community
+        - first-party (you / your org)
+        - other
+    validations:
+      required: true

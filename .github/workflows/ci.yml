@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref so a noisy PR doesn't hog the
+# matrix capacity.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned Go version. Bumped via dependabot or a deliberate `chore(ci)`
+  # commit — never silently. Keep in sync with go.mod's `go` directive.
+  GO_VERSION: "1.25.5"
+
+jobs:
+  # Static analysis — fast feedback so devs see formatting / vet errors
+  # before paying for the full test matrix.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: gofmt -d (no diff allowed)
+        run: |
+          out=$(gofmt -d -l ./...)
+          if [ -n "$out" ]; then
+            echo "::error::gofmt produced diff; run 'gofmt -w ./...'"
+            echo "$out"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+
+  # Test matrix. Linux + macOS cover the realistic clawtool target
+  # surface; Windows is best-effort and not enforced (process-group
+  # SIGKILL is unix-only in the Bash tool, so the timeout test would
+  # behave differently there).
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Linux runners ship ripgrep + grep already; macOS runners ship
+      # grep but not rg. We install rg explicitly on macOS so the Grep
+      # tool's preferred-engine code path gets exercised everywhere.
+      - name: Install ripgrep (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install ripgrep
+      - name: Install pandoc (universal — needed for Read .docx)
+        run: |
+          if [ "$(uname -s)" = "Linux" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq pandoc poppler-utils
+          else
+            brew install pandoc poppler
+          fi
+
+      - name: go test -race
+        run: go test -race -count=1 -timeout=120s ./...
+
+      - name: Build binary + stub-server
+        run: |
+          mkdir -p bin
+          go build -ldflags="-s -w" -o bin/clawtool ./cmd/clawtool
+          go build -o test/e2e/stub-server/stub-server ./test/e2e/stub-server
+
+      - name: End-to-end MCP integration
+        run: bash test/e2e/run.sh
+
+  # Cross-compile sanity check. Catches regressions in build tags
+  # (windows-only stubs, unix-only syscalls) before they reach release.
+  build-matrix:
+    name: Cross-compile sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - run: |
+          for os in linux darwin windows; do
+            for arch in amd64 arm64; do
+              echo "::group::GOOS=$os GOARCH=$arch"
+              GOOS=$os GOARCH=$arch go build -o /dev/null ./cmd/clawtool
+              echo "::endgroup::"
+            done
+          done
+
+  # Conventional Commits format check on the PR title (for squash-merge
+  # workflows) and on each new commit (for merge-commit workflows).
+  # Uses a built-in regex match so the workflow has no external action
+  # dependency that could be supply-chain-compromised.
+  commit-format:
+    name: Conventional Commits
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Validate PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|perf|refactor|docs|test|build|ci|chore|style|revert)(\([a-z0-9-]+\))?!?: .+'
+          if ! [[ "$TITLE" =~ $re ]]; then
+            echo "::error::PR title must follow Conventional Commits format (e.g. 'feat(tools): add Foo')."
+            echo "Got: $TITLE"
+            exit 1
+          fi

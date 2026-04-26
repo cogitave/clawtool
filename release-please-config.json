@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "go",
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "draft": false,
+  "prerelease": false,
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "package-name": "clawtool",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "internal/version/version.go"
+        },
+        {
+          "type": "generic",
+          "path": ".claude-plugin/plugin.json"
+        },
+        {
+          "type": "generic",
+          "path": ".claude-plugin/marketplace.json"
+        }
+      ]
+    }
+  },
+  "changelog-sections": [
+    { "type": "feat",     "section": "Features" },
+    { "type": "fix",      "section": "Fixes" },
+    { "type": "perf",     "section": "Performance" },
+    { "type": "refactor", "section": "Refactor" },
+    { "type": "docs",     "section": "Documentation" },
+    { "type": "test",     "section": "Tests" },
+    { "type": "build",    "section": "Build" },
+    { "type": "ci",       "section": "CI" },
+    { "type": "chore",    "section": "Chores",  "hidden": false },
+    { "type": "style",    "section": "Style",   "hidden": true },
+    { "type": "revert",   "section": "Reverts" }
+  ]
+}

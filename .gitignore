@@ -1,0 +1,165 @@
+# clawtool .gitignore — comprehensive baseline.
+#
+# Sourced from github/gitignore (Go + Global/macOS + Global/Linux +
+# Global/Windows + Global/JetBrains + Global/VisualStudioCode + Vim)
+# plus clawtool-specific entries (Obsidian wiki, build outputs,
+# release-please artifacts, secrets safety).
+#
+# Convention: each section is one paragraph; a comment on the first
+# line names the source. Don't add bare entries — they bit-rot.
+
+# ─────────────────────────────────────────────────────────────────────
+# Build outputs
+# ─────────────────────────────────────────────────────────────────────
+/bin/
+/dist/
+/test/e2e/stub-server/stub-server     # built on-demand by `make stub-server`
+*.test
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+
+# ─────────────────────────────────────────────────────────────────────
+# Test coverage
+# ─────────────────────────────────────────────────────────────────────
+coverage.txt
+coverage.html
+coverage/
+*.cov
+*.coverprofile
+
+# ─────────────────────────────────────────────────────────────────────
+# Release tooling artifacts
+# ─────────────────────────────────────────────────────────────────────
+# GoReleaser intermediate cache (created by `make release-snapshot`)
+.goreleaser-cache/
+# release-please writes a temporary manifest workspace during PR
+# creation; final manifest is committed.
+.release-please-cache/
+
+# ─────────────────────────────────────────────────────────────────────
+# Secrets / local config — must NEVER reach git
+# ─────────────────────────────────────────────────────────────────────
+# Direnv allows users a per-directory override file alongside the
+# committed .envrc; that file holds machine-local paths and tokens.
+.envrc.local
+# Common dotenv conventions
+.env
+.env.*
+!.env.example
+# Private keys / certificates
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+# clawtool's own secrets file lives at ~/.config/clawtool/secrets.toml
+# (per ADR-008). Catch any accidental copy that drifts into the repo.
+secrets.toml
+*.secrets.toml
+
+# ─────────────────────────────────────────────────────────────────────
+# Obsidian (wiki vault config)
+# ─────────────────────────────────────────────────────────────────────
+# workspace.json mutates every pane move; pollutes diffs. Same for
+# its mobile counterpart and the cache.
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.obsidian/types.json
+# Smart Connections embeddings cache + Obsidian-Git internal state.
+.smart-connections/
+.obsidian-git-data
+# Obsidian's user-level trash folder.
+.trash/
+
+# ─────────────────────────────────────────────────────────────────────
+# OS junk — macOS
+# ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# ─────────────────────────────────────────────────────────────────────
+# OS junk — Windows
+# ─────────────────────────────────────────────────────────────────────
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# ─────────────────────────────────────────────────────────────────────
+# OS junk — Linux
+# ─────────────────────────────────────────────────────────────────────
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ─────────────────────────────────────────────────────────────────────
+# Editor / IDE
+# ─────────────────────────────────────────────────────────────────────
+# VS Code
+.vscode/
+*.code-workspace
+
+# Cursor (VSCode-derived)
+.cursor/
+
+# JetBrains (GoLand, IntelliJ, …)
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Vim
+*.swp
+*.swo
+*.swn
+.netrwhist
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+Session.vim
+tags
+
+# Emacs
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Fleet (JetBrains)
+.fleet/
+
+# Zed
+.zed/
+
+# ─────────────────────────────────────────────────────────────────────
+# Logs & runtime
+# ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+.cache/
+*.pid
+*.seed
+*.pid.lock
