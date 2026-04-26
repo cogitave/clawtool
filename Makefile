@@ -57,6 +57,12 @@ clean: ## Remove build outputs.
 	@echo "✓ cleaned"
 
 # Cross-compile binaries for release. Run after tagging.
+.PHONY: changelog
+changelog: ## Regenerate CHANGELOG.md from git history (git-cliff + cliff.toml).
+	@command -v git-cliff >/dev/null 2>&1 || { echo "git-cliff not found; install via 'curl … releases/download/…/git-cliff-…musl.tar.gz' or 'brew install git-cliff'"; exit 1; }
+	git-cliff --output CHANGELOG.md
+	@echo "✓ CHANGELOG.md regenerated"
+
 .PHONY: dist
 dist: ## Build release binaries for linux/darwin amd64+arm64.
 	@mkdir -p $(DIST_DIR)

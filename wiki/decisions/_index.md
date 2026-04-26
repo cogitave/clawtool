@@ -9,7 +9,7 @@ tags:
   - adr
 status: developing
 subdomain_of: ""
-page_count: 8
+page_count: 9
 ---
 
 # Decisions (ADRs)
@@ -29,6 +29,7 @@ Architecture Decision Records. Numbered sequentially. Each captures: context, de
 - [[006 Instance scoping and tool naming]] — multi-instance support via kebab-case instance names (`github-personal`, `github-work`); wire form `<instance>__<tool>`, CLI selector `<instance>.<tool>`. Core tools use PascalCase (`Bash`, `Read`, `Edit`) matching Claude's native convention. No collision possible: disjoint charsets for instance vs tool.
 - [[007 Leverage best-in-class not reinvent]] — clawtool wraps mature engines (ripgrep, defuddle, OpenAI apply_patch format, doublestar, etc.) and adds the polish layer (timeout-safe, structured output, secret redaction, MCP correctness). Reimplement from scratch only when no upstream meets the bar. Engineering profile: distribution maintainer, not compiler author.
 - [[008 Curated source catalog]] — `clawtool source add github` resolves bare names against a built-in catalog (canonical package, required env, auth hint). Federation with Docker MCP Catalog / MCP Registry / Smithery as fallback. Long-form `--` invocation remains for unknown sources; not a gate. Secrets isolated to `~/.config/clawtool/secrets.toml` 0600.
+- [[009 Versioning policy and tooling]] — semver discipline (patch-level bumps until v1.0; v1.0 has explicit gating criteria); Conventional Commits format; `git-cliff` (wrapped, not reinvented) for changelog generation. Historical commits land in fallback buckets.
 
 ## Convention
 

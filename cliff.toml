@@ -1,0 +1,58 @@
+# git-cliff configuration for clawtool.
+#
+# We adopt the Conventional Commits format (per ADR-009). git-cliff
+# parses commit subject prefixes (feat:, fix:, chore: …) and groups
+# them into sections in CHANGELOG.md.
+#
+# Run: `make changelog` (or `git-cliff --output CHANGELOG.md`).
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to clawtool are documented here. Format adheres to
+[Conventional Commits](https://www.conventionalcommits.org/) and this
+project follows [Semantic Versioning](https://semver.org/) — see
+ADR-009 for the policy details.\n
+"""
+body = """
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
+{%- endfor -%}
+{% endfor %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+filter_commits = false
+tag_pattern = "v[0-9].*"
+sort_commits = "newest"
+commit_parsers = [
+    { message = "^feat",     group = "Features" },
+    { message = "^fix",      group = "Fixes" },
+    { message = "^perf",     group = "Performance" },
+    { message = "^refactor", group = "Refactor" },
+    { message = "^docs",     group = "Documentation" },
+    { message = "^test",     group = "Tests" },
+    { message = "^build",    group = "Build" },
+    { message = "^ci",       group = "CI" },
+    { message = "^chore",    group = "Chores" },
+    { message = "^style",    group = "Style" },
+    { message = "^revert",   group = "Reverts" },
+    # Pre-Conventional commits (everything in v0.8.0 and earlier) get
+    # bucketed by their natural prefixes so the historical changelog
+    # still reads coherently.
+    { message = "^v0\\.[0-9]+",            group = "Releases" },
+    { message = "^ADR-",                   group = "Decisions" },
+    { message = "^[Vv]\\d",                group = "Releases" },
+    { message = "^Initial",                group = "Genesis" },
+    { body = ".*",                         group = "Other" },
+]
+protect_breaking_commits = false

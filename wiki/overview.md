@@ -45,6 +45,7 @@ The project's value is being the shared, configurable tool layer underneath. Too
 - [[006 Instance scoping and tool naming]]
 - [[007 Leverage best-in-class not reinvent]]
 - [[008 Curated source catalog]]
+- [[009 Versioning policy and tooling]]
 
 ## Distinguishing identity
 
