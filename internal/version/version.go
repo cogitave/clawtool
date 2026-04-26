@@ -4,7 +4,7 @@ package version
 // x-release-please-start-version
 const (
 	Name    = "clawtool"
-	Version = "0.9.1" // x-release-please-version
+	Version = "0.9.2" // x-release-please-version
 )
 
 // x-release-please-end

@@ -5,6 +5,21 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
+## [0.9.2](https://github.com/cogitave/clawtool/compare/v0.9.1...v0.9.2) (2026-04-26)
+
+
+### Features
+
+* **bridges:** scaffold bridge install recipes for codex, opencode, gemini ([9fa4481](https://github.com/cogitave/clawtool/commit/9fa448189dfd757ff6ec89f2017bf81386113337))
+
+
+### Fixes
+
+* **ci:** correct gofmt invocation in lint step ([53496ea](https://github.com/cogitave/clawtool/commit/53496ea450d8202e8542164dd0980e60ac860db4))
+* **ci:** e2e script — detect timeout vs gtimeout for macOS runners ([d92106f](https://github.com/cogitave/clawtool/commit/d92106f7f3d2da2dad839eef064ea46ec7042912))
+* **ci:** install coreutils on macOS so gtimeout exists for e2e ([f0fc3ca](https://github.com/cogitave/clawtool/commit/f0fc3cae462815f5937e204647c45f907a66844a))
+* **ci:** macOS test failures + missing ripgrep on Ubuntu ([1181728](https://github.com/cogitave/clawtool/commit/1181728fde7bd3c922b48b7e79f4ae97f8bfe1e1))
+
 ## [0.9.1](https://github.com/cogitave/clawtool/compare/v0.9.0...v0.9.1) (2026-04-26)
 
 
