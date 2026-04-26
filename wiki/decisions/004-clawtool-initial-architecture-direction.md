@@ -151,6 +151,41 @@ GUI users redirected to mcp-router as complement, not competitor. clawtool ≠ m
 - Per-tool override UX (description / name overrides)
 - Middleware concept (kept as v2 extension; not in v1)
 
+### 6. Distribution & Usage Scenarios
+
+clawtool ships in **two layers**, used independently or together.
+
+#### Layer 1 — The binary (the actual product)
+
+- Single user-local executable installed via `npm i -g @clawtool/clawtool`, `brew install clawtool`, or `curl …/install.sh` (binary release).
+- Lives at `~/.local/bin/clawtool` (user-scope, no sudo) by default.
+- Speaks **MCP over stdio** (default) or **Streamable HTTP**.
+- Reads state from `~/.config/clawtool/config.toml` (global) + optional `.clawtoolrc` (project-scope, hot-reloaded).
+- Nothing about Layer 1 is agent-specific — it's a generic MCP server. Any MCP client can connect.
+
+#### Layer 2 — Per-agent plugins (convenience wrappers)
+
+- **Claude Code**: `claude plugin install clawtool@…` — auto-installs the binary if missing, registers the MCP server in CC's config, adds slash commands like `/clawtool-tools-enable`, `/clawtool-tools-status`.
+- **Codex CLI**: same pattern via Codex's plugin marketplace.
+- **Cursor / Windsurf / others**: future per-agent plugins follow the same recipe.
+- Plugins **do not fork state**. They are thin install + registration helpers. All agents continue to read from the single `~/.config/clawtool/`.
+
+#### Three usage scenarios
+
+| Scenario | Who | Steps |
+|---|---|---|
+| **A. Power-user / minimal** | Wants control, OK editing config files | `npm i -g @clawtool/clawtool` → edit `~/.config/clawtool/config.toml` → `claude mcp add clawtool …` (and/or `codex mcp add …`) once per agent |
+| **B. Claude-Code-only** | Wants zero-friction CC integration | `claude plugin install clawtool@…` → done. Plugin handles binary install + MCP registration + slash commands. |
+| **C. Multi-agent** | Uses CC + Codex + others in parallel | Install binary once (Scenario A's first step) → install per-agent plugin where available, fall back to manual `mcp add` elsewhere. **Single source of truth at `~/.config/clawtool/`.** |
+
+#### Key invariant
+
+State (which tools are enabled, profiles, groups, tag rules) lives in **one place per device**: `~/.config/clawtool/`. Agents are thin readers. Running `clawtool tools enable github.create_issue` from any terminal — or toggling via a plugin slash command in CC — propagates to **every** connected agent instantly via hot-reload.
+
+This is what "install once, use everywhere" means concretely: not "the binary is portable" (any binary is) but "the configuration is shared." Switching agents does not switch toolsets.
+
+---
+
 ## Alternatives Rejected
 
 - **Fork 1mcp-agent** — see decision 5.

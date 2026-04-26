@@ -17,6 +17,14 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### REFINE — ADR-004 Distribution & Usage Scenarios (section 6)
+
+- Added new "Distribution & Usage Scenarios" section to ADR-004.
+- **Two layers**: (1) standalone binary (the actual product, generic MCP server, npm/brew/curl install), (2) per-agent plugins (CC, Codex, ...) as thin install+registration wrappers with no state fork.
+- **Three usage scenarios** — power-user (manual `mcp add`), CC-only (plugin), multi-agent (shared config).
+- **Key invariant**: state lives in one place per device (`~/.config/clawtool/`). "Install once, use everywhere" = shared *config*, not just portable binary.
+- Updated [[004 clawtool initial architecture direction]], [[Hot]], this log.
+
 ### REFINE — ADR-004 Configuration UX: multi-level tool selectors
 
 - Added selector hierarchy to ADR-004: server (`github`), tool (`github.delete_repo`), tag (`tag:destructive`), group (`group:review-set`), profile (orthogonal).
@@ -46,11 +54,4 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ### SCAFFOLD — initial vault scaffold
 - Mode: Hybrid (standard + ADR-focused)
-- Created folder structure: `wiki/{sources,entities,concepts,decisions,comparisons,questions,meta}`, `_templates/`, `.raw/`, `.obsidian/snippets/`
-- Created [[Index]], [[Log]], [[Hot]], [[Overview]]
-- Pre-seeded decisions: [[001 Choose claude-obsidian as brain layer]], [[002 Vault on Windows filesystem]], [[003 Multi-account git via direnv and gh]]
-- Pre-seeded comparison: [[Memory Tools Evaluated]]
-- Pre-seeded entities: [[Bahadır Arda]], [[claude-obsidian]]
-- Pre-seeded concepts: [[Karpathy LLM Wiki Pattern]], [[Agent-Agnostic Toolset]], [[Hot Cache]]
-- CSS snippet `vault-colors.css` written; needs manual enable in Obsidian Settings → Appearance
-- CLAUDE.md written at vault root with project context
+- Created folder structure: `wiki
