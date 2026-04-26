@@ -1,0 +1,39 @@
+version: 2
+
+# Dependabot keeps Go modules and GitHub Actions updated weekly.
+# Conventional Commits is required by CI; we configure the commit
+# message prefix so dependabot-generated PRs pass the format check
+# without manual rewrites.
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    groups:
+      # Group all minor/patch dep bumps into one PR per week. Major
+      # bumps still get their own PR so they're easier to review.
+      go-deps:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+      - go
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+      include: scope
+    labels:
+      - dependencies
+      - ci
