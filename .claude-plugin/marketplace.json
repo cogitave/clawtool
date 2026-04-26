@@ -13,7 +13,7 @@
       "name": "clawtool",
       "source": {
         "source": "github",
-        "repo": "bahadirarda/clawtool",
+        "repo": "cogitave/clawtool",
         "ref": "main"
       },
       "description": "The canonical tool layer for AI coding agents. Auto-registers an MCP server on install (no claude mcp add-json), biases agent preference toward clawtool's structured-output / timeout-safe / format-aware tools via the loaded skill description, exposes /clawtool slash commands. Uninstall removes everything except user data and the binary itself.",
@@ -22,8 +22,8 @@
         "name": "Bahadır Arda",
         "url": "https://github.com/bahadirarda"
       },
-      "homepage": "https://github.com/bahadirarda/clawtool",
-      "repository": "https://github.com/bahadirarda/clawtool",
+      "homepage": "https://github.com/cogitave/clawtool",
+      "repository": "https://github.com/cogitave/clawtool",
       "license": "MIT"
     }
   ]

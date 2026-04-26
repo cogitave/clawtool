@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before opening, scan [the wiki ADRs](https://github.com/bahadirarda/clawtool/tree/main/wiki/decisions). If your idea touches a locked decision, propose a superseding ADR rather than a feature.
+        Before opening, scan [the wiki ADRs](https://github.com/cogitave/clawtool/tree/main/wiki/decisions). If your idea touches a locked decision, propose a superseding ADR rather than a feature.
 
   - type: textarea
     id: problem

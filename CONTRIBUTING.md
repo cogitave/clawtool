@@ -5,7 +5,7 @@ Thanks for considering a contribution. clawtool is a small focused tool — keep
 ## Quickstart
 
 ```bash
-git clone https://github.com/bahadirarda/clawtool
+git clone https://github.com/cogitave/clawtool
 cd clawtool
 make build      # build to ./bin/clawtool
 make test       # 'go test -race ./...'

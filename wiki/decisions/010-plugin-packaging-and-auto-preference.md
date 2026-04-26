@@ -70,8 +70,8 @@ Minimal shape, matching the convention from claude-obsidian:
   "version": "0.8.3",
   "description": "The canonical tool layer for AI coding agents — one config, every agent.",
   "license": "MIT",
-  "homepage": "https://github.com/bahadirarda/clawtool",
-  "repository": "https://github.com/bahadirarda/clawtool",
+  "homepage": "https://github.com/cogitave/clawtool",
+  "repository": "https://github.com/cogitave/clawtool",
   "keywords": ["mcp", "tools", "canonical", "bash", "search-first", "multi-agent"],
   "mcpServers": {
     "clawtool": {
@@ -91,7 +91,7 @@ ceremony.** Plugin uninstall removes the registration.
 Standard shape so the plugin is reachable via:
 
 ```bash
-claude plugin marketplace add bahadirarda/clawtool
+claude plugin marketplace add cogitave/clawtool
 claude plugin install clawtool@clawtool-marketplace
 ```
 
@@ -145,7 +145,7 @@ ingests them at session start and surfaces them as `/<name>` suggestions.
 
 ```bash
 # Install — one command, sets up everything.
-claude plugin marketplace add bahadirarda/clawtool
+claude plugin marketplace add cogitave/clawtool
 claude plugin install clawtool@clawtool-marketplace
 # After this:
 #   • bin downloaded (or built from source) by the install hook
@@ -169,7 +169,7 @@ claude plugin uninstall clawtool@clawtool-marketplace
 
 Same pattern, different host:
 
-- **Codex CLI**: `codex plugin marketplace add bahadirarda/clawtool` —
+- **Codex CLI**: `codex plugin marketplace add cogitave/clawtool` —
   Codex's plugin format is similar; we ship a single repo with both
   `.claude-plugin/` and `.codex-plugin/` folders. Codex's installer reads
   the right one.
