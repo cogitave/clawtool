@@ -10,6 +10,7 @@ package recipes
 
 import (
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/agentclaim"
+	_ "github.com/cogitave/clawtool/internal/setup/recipes/bridges"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/ci"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/commits"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/governance"

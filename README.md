@@ -7,17 +7,28 @@
 [![License](https://img.shields.io/github/license/cogitave/clawtool?color=brightgreen)](LICENSE)
 [![Conventional Commits](https://img.shields.io/badge/conventional--commits-1.0.0-yellow)](https://www.conventionalcommits.org)
 
-> **One install. Your repo and your AI are both ready in 30 seconds.**
+> **Define a toolset once. Use it in every AI coding agent.**
+> clawtool is the standard layer across Claude Code, Codex, and OpenCode.
 
-clawtool is the canonical toolset + setup layer for AI coding agents.
-A single binary that (1) gives every MCP-aware agent — Claude Code,
-Codex, OpenCode, Hermes Agent, OpenClaw — the same higher-quality
-`Bash` / `Read` / `Edit` /
-`Write` / `Grep` / `Glob` / `WebFetch` / `WebSearch` / `ToolSearch`,
-and (2) injects the canonical project-setup tools (release-please,
-GoReleaser, Conventional Commits CI, Dependabot, CODEOWNERS, an
-SPDX-licensed `LICENSE`, an Obsidian-backed memory layer) into your
-repo from one wizard.
+A single Go binary that does three things:
+
+1. **Canonical toolset.** Every MCP-aware agent gets the same
+   higher-quality `Bash` / `Read` / `Edit` / `Write` / `Grep` / `Glob` /
+   `WebFetch` / `WebSearch` / `ToolSearch` — wrapping ripgrep, pandoc,
+   poppler, doublestar, Mozilla Readability and friends. No more "your
+   agent's `Read` doesn't speak xlsx" or "Bash on this client times out
+   on the wrong signal."
+2. **Bridge layer.** `clawtool bridge add codex` installs the official
+   Codex Claude Code plugin; `clawtool bridge add gemini` / `bridge add
+   opencode` do the same for Gemini and OpenCode. `clawtool send
+   --agent <instance> "<prompt>"` then routes a single prompt to the
+   right CLI from inside Claude Code, from a CI hook, or over an HTTP
+   relay (v0.10 → v0.12; see [ADR-014](wiki/decisions/014-clawtool-relay-and-cli-multiplexer.md)).
+3. **Project-setup wizard.** `clawtool init` injects the canonical
+   project-setup tools (release-please, GoReleaser, Conventional
+   Commits CI, Dependabot, CODEOWNERS, an SPDX-licensed `LICENSE`, an
+   Obsidian-backed memory layer) — running each upstream's own init,
+   never re-implementing them.
 
 ```sh
 curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
