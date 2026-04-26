@@ -106,6 +106,9 @@ Recipes shipped today:
 | supply-chain | `dependabot` | GitHub Dependabot |
 | knowledge | `brain` | claude-obsidian + Obsidian app |
 | agents | `agent-claim` | `clawtool agents claim` per-agent |
+| agents | `caveman` | lackeyjb/caveman Claude Code skill (Beta) |
+| agents | `superclaude` | SuperClaude framework (slash commands + personas, Beta) |
+| agents | `claude-flow` | ruvnet/claude-flow multi-agent orchestration (Beta) |
 | runtime | `devcontainer` | containers.dev (Codespaces / Remote-SSH) |
 
 Every recipe **detects** before it touches anything, **refuses** to

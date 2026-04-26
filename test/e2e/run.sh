@@ -555,11 +555,11 @@ list_resp=$(printf '%s\n%s\n%s\n' \
 # the ToolSearch tests (§9): scope to the structuredContent line so
 # JSONRPC envelope's serverInfo.name doesn't leak into the match.
 recipe_payload=$(echo "$list_resp" | grep structuredContent)
-for r in conventional-commits-ci license codeowners dependabot release-please goreleaser agent-claim brain gh-actions-test prettier golangci-lint devcontainer; do
+for r in conventional-commits-ci license codeowners dependabot release-please goreleaser agent-claim brain gh-actions-test prettier golangci-lint devcontainer caveman superclaude claude-flow; do
   echo "$recipe_payload" | grep -qF "\"name\":\"$r\"" \
     || fail "RecipeList: recipe $r missing"
 done
-pass "RecipeList: all 12 v0.10 recipes present (governance/commits/release/ci/quality/supply-chain/knowledge/agents/runtime each populated)"
+pass "RecipeList: all 15 v0.10+ recipes present (governance/commits/release/ci/quality/supply-chain/knowledge/agents/runtime each populated; agents fattened with caveman/superclaude/claude-flow)"
 
 # Category strings are part of the v1.0 contract — every category
 # now has at least one recipe, so all 9 must surface.
