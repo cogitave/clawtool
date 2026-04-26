@@ -55,15 +55,32 @@ Per [[007 Leverage best-in-class not reinvent|ADR-007]], the first move on every
 
 ## Read
 
-| Engine | Notes |
-|---|---|
-| **stdlib `os.Open` + bufio.Scanner** | Plain text — single-pass line-walking. clawtool owns line counting (`total_lines` is deterministic) and pagination cursor (`line_start`/`line_end` are 1-indexed inclusive). **Adopted v0.3.** |
-| **`pdftotext` (poppler-utils) shell-out** | PDF extraction with `-layout` to preserve column structure. Detected via `LookupEngine("pdftotext")`; absence yields a structured error pointing to the apt/brew install command rather than a crash. **Adopted v0.3 (binary detected at runtime).** |
-| **Native ipynb JSON parse** | Cells walked, rendered as `# --- cell N (cell_type) ---` markers + body. Handles both legacy array-of-strings `source` and modern single-string form. **Adopted v0.3.** |
+Multi-format dispatcher: format detected by extension first (cheap), then 4 KiB content sniff for ambiguous cases. Each format has its own wrapper file under `internal/tools/core/read_*.go`.
 
-**Status (v0.3)**: Wired at `internal/tools/core/read.go`. Format detection ordered (extension first, then 4 KiB sniff for `%PDF-` magic and NUL bytes). Binary files refused with structured `format: "binary-rejected"` and helpful pointer to `Bash` + `xxd`/`hexdump`. Output cap 5 MiB protects context budget.
+| Format | Engine | License | Notes |
+|---|---|---|---|
+| Plain text | **stdlib `bufio`** | — | Single-pass line walk; deterministic `total_lines`; 1-indexed inclusive cursors. **v0.3.** |
+| `.pdf` | **`pdftotext` (poppler-utils)** shell-out | GPL (no Go linkage) | `-layout` preserves columns; absent-engine yields structured install-hint error. **v0.3.** |
+| `.ipynb` | Native JSON cell parse | — | `# --- cell N (type) ---` markers; legacy + modern `source` shapes. **v0.3.** |
+| `.docx` | **`pandoc`** shell-out | GPL (no Go linkage) | Universal office-format converter; covers tables/footnotes/lists/comments. Absent-engine error points at apt/brew install. **Adopted v0.6.** |
+| `.xlsx` | **`github.com/xuri/excelize/v2`** | BSD-3 | Pure-Go, no CGO, Microsoft / Alibaba / Oracle production-tested. Per-sheet rendering with TSV-style rows + workbook sheet list. **Adopted v0.6.** |
+| `.csv` / `.tsv` | stdlib `encoding/csv` | — | Header-aware preview, pipe-rendered data rows, total-rows footer. LazyQuotes + `FieldsPerRecord=-1` so ragged real-world files don't abort. **Adopted v0.6.** |
+| `.html` / `.htm` | **`github.com/go-shiori/go-readability`** | Apache-2.0 | Mozilla Readability port (the same algorithm Firefox Reader View uses); strips nav / ads / footer chrome and surfaces title + byline + article body. **Adopted v0.6.** |
+| `.json` / `.yaml` / `.toml` / `.xml` | text passthrough + format tag | — | Already human-readable; we only tag the format so the agent can branch. **v0.6.** |
+| Unknown binary | refused | — | Structured error pointing at `Bash` + `xxd`/`hexdump` for raw-byte access. **v0.3.** |
 
-**Open**: Markdown / HTML / structured-doc rendering. v0.4 candidates: `goldmark` for markdown lint, `github.com/PuerkitoBio/goquery` for HTML readability — but most of this belongs in `WebFetch`, not `Read`.
+**Polish layer (clawtool's own)**:
+- 5 MiB content cap protects agent context.
+- Stable line-based cursor (`line_start`, `line_end`) works across every format because each engine's output funnels through `applyLineRangeFromBuffer`.
+- `sheets[]` field on the result for spreadsheet formats — agent pages workbook with subsequent calls.
+- Engine field exposes which backend ran (`stdlib`, `pdftotext`, `pandoc`, `excelize`, `csv-stdlib`, `go-readability`, `ipynb-json`).
+
+**Open (v0.7+)**:
+- Markdown rendering with `yuin/goldmark` for callout / table-aware preview (today: passthrough as text).
+- OCR via `tesseract` shell-out for scanned PDFs / image-based docs.
+- Audio / video metadata via `ffprobe` shell-out.
+- Office formats `.pptx` / `.odt` / `.ods` (already work via pandoc but not yet plumbed).
+- Archive listing for `.zip` / `.tar.gz` (`archive/zip` + `archive/tar`).
 
 ## Edit
 

@@ -17,6 +17,28 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### V0.6 SHIPPED — Read expansion to 9 formats (docx, xlsx, csv/tsv, html, json/yaml/toml/xml)
+
+User-driven: "PDF değil çoklu format okumalı, big-firm-preferred paketlerden faydalanalım." Per ADR-007 we wrap, never reimplement. Big firms picked these specific engines and we adopt the same ones.
+
+- **`.docx` → pandoc** shell-out. Universal office-format converter (Word, OpenOffice, RTF, LaTeX, EPUB), used by Microsoft / NASA / academic publishers. GPL license but no Go linkage means clawtool's MIT stays clean. Absent-engine path returns a structured install-hint error mirroring our PDF pattern.
+- **`.xlsx` → `github.com/xuri/excelize/v2`** (BSD-3). Pure Go, no CGO. Used in Microsoft, Alibaba, Oracle production. New `sheet` argument lets the agent page through workbook structure; `Sheets []string` metadata surfaces the full sheet list. Default = first sheet. TSV-style row rendering preserves column boundaries.
+- **`.csv` / `.tsv` → stdlib `encoding/csv`**. Header-aware preview with `# columns (N): a | b | c`, pipe-spaced data rows for easy visual scan, `# total data rows: N` footer. `LazyQuotes` + `FieldsPerRecord=-1` for resilience to ragged real-world files.
+- **`.html` / `.htm` → `github.com/go-shiori/go-readability`** (Apache-2.0). Go port of Mozilla's Readability.js, the same algorithm Firefox Reader View uses. Strips nav/ads/footer chrome, returns title + byline + sitename + excerpt + article body. Also detected via content sniff for files without `.html` extension.
+- **`.json` / `.yaml` / `.toml` / `.xml`** — already human-readable, no engine needed. We just tag the format so agents can branch on `format` field.
+- Engine layer updated: `engines.go` now detects `pandoc` alongside `rg`/`grep`/`pdftotext`.
+- File layout split for clarity:
+  - `read.go` — public surface, format dispatch, ReadResult shape, text engine, format detection, line-range helper.
+  - `read_legacy.go` — pdf + ipynb (kept for compatibility).
+  - `read_office.go` — docx + xlsx.
+  - `read_structured.go` — csv + tsv.
+  - `read_html.go` — html.
+- `executeRead` signature gained one parameter (`sheet`); existing tests updated mechanically.
+- `CoreToolDocs` Read description + keywords expanded so ToolSearch ranks Read for "open spreadsheet", "extract docx", "parse csv", "html article" and similar queries.
+- Tests added: Xlsx (in-memory generated via excelize itself, multi-sheet, default + named + unknown-sheet error path), Docx-without-engine, CSV header-aware, TSV tab delimiter, JSON/YAML/TOML/XML passthrough w/ format tag (subtest-style table), HTML readability strips clutter, HTML extension-less sniff. Plus 8 e2e assertions covering HTML + CSV via real MCP stdio.
+- **Test totals**: **88 Go unit + 46 e2e = 134 green**. New deps: `xuri/excelize/v2`, `go-shiori/go-readability`. Both vetted MIT-compatible licenses.
+- [[Canonical Tool Implementations Survey 2026-04-26]] Read row expanded with the full format matrix.
+
 ### V0.5 SHIPPED — ToolSearch (bleve BM25) + Glob (doublestar)
 
 User-prioritised: ToolSearch first, because without a search-first brain the deferred-loading story across a 50+ tool catalog falls apart.

@@ -377,5 +377,82 @@ echo "$glob_resp" | grep -qF 'README.md' \
   || fail "Glob: README.md not in matches"
 pass "Glob: README.md found via **/*.md"
 
+echo "$glob_resp" | grep -qF '\"matches_count\":' \
+  || fail "Glob: matches_count missing"
+pass "Glob: matches_count present"
+
+# ── 11. Read multi-format coverage (HTML + CSV) ─────────────────────────
+echo ""
+echo "▶ test: Read multi-format (HTML + CSV)"
+
+HTMLFX="$TMPCFG/page.html"
+cat > "$HTMLFX" <<'EOF'
+<!DOCTYPE html>
+<html><head><title>E2E Article</title></head>
+<body>
+<header><nav>Home | About | Login | Subscribe Now</nav></header>
+<article>
+<h1>E2E Article</h1>
+<p>This article body contains real prose so the readability extractor has
+enough textual signal to identify it as the main content. Multiple
+sentences are required for the algorithm to score this region above the
+surrounding chrome.</p>
+<p>A second paragraph reinforces the article's content density.</p>
+</article>
+<footer>(c) 2026 Example</footer>
+</body></html>
+EOF
+
+html_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$HTMLFX")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$html_resp" | grep -qF '\"format\":\"html\"' \
+  || fail "Read HTML: format != html — got: $html_resp"
+pass "Read HTML: format == html"
+
+echo "$html_resp" | grep -qF '\"engine\":\"go-readability\"' \
+  || fail "Read HTML: engine != go-readability"
+pass "Read HTML: engine == go-readability"
+
+echo "$html_resp" | grep -qF 'readability extractor' \
+  || fail "Read HTML: article body missing"
+pass "Read HTML: article body preserved"
+
+# Nav clutter must be stripped.
+if echo "$html_resp" | grep -qF 'Subscribe Now'; then
+  fail "Read HTML: nav clutter leaked through (Subscribe Now)"
+fi
+pass "Read HTML: nav clutter correctly stripped"
+
+# CSV
+CSVFX="$TMPCFG/data.csv"
+printf 'name,city,score\nalpha,Istanbul,42\nbravo,Berlin,17\n' > "$CSVFX"
+csv_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$CSVFX")" \
+  | XDG_CONFIG_HOME="$TMPCFG" timeout 10 "$BIN" serve 2>/dev/null)
+
+echo "$csv_resp" | grep -qF '\"format\":\"csv\"' \
+  || fail "Read CSV: format != csv"
+pass "Read CSV: format == csv"
+
+echo "$csv_resp" | grep -qF '\"engine\":\"csv-stdlib\"' \
+  || fail "Read CSV: engine != csv-stdlib"
+pass "Read CSV: engine == csv-stdlib"
+
+echo "$csv_resp" | grep -qF 'columns (3): name | city | score' \
+  || fail "Read CSV: header preview missing"
+pass "Read CSV: header preview rendered"
+
+echo "$csv_resp" | grep -qF 'alpha | Istanbul | 42' \
+  || fail "Read CSV: data row missing"
+pass "Read CSV: data row rendered"
+
+# ── done ──────────────────────────────────────────────────────────────────
+
 echo ""
 echo "✓ all e2e tests passed"

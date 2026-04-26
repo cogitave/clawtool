@@ -35,6 +35,15 @@ status: developing
 
 ## Active Threads
 
+- ✅ **v0.6 SHIPPED** — `Read` expanded to 9 formats (was 4: text/pdf/ipynb/binary).
+  - **`.docx`** via pandoc shell-out — universal office converter (Microsoft/NASA/academia ship it everywhere); GPL but no Go linkage so clawtool's MIT stays clean.
+  - **`.xlsx`** via `github.com/xuri/excelize/v2` (BSD-3) — pure Go, no CGO, Microsoft/Alibaba/Oracle production-tested; per-sheet rendering with `sheets[]` metadata so the agent pages workbook with `sheet="Sheet2"`.
+  - **`.csv` / `.tsv`** via stdlib `encoding/csv` — header-aware preview, pipe-rendered rows, total-rows footer, `LazyQuotes` + `FieldsPerRecord=-1` so ragged real-world files don't abort.
+  - **`.html`** via `github.com/go-shiori/go-readability` (Apache-2.0) — Mozilla Readability port, strips nav/ads/footer chrome, surfaces title + byline + article body. Sniff-detect for files without `.html` extension.
+  - **`.json` / `.yaml` / `.toml` / `.xml`** — text passthrough with format tag (already readable; we just identify the format).
+  - Files split into `read_legacy.go` (PDF + ipynb), `read_office.go` (docx + xlsx), `read_structured.go` (csv/tsv), `read_html.go`. Public API unchanged.
+  - **CoreToolDocs** updated: Read description and keywords list every supported format so ToolSearch ranks Read for "open spreadsheet", "extract docx", "parse csv", etc.
+  - **Test totals**: **88 Go unit + 46 e2e = 134 green**. New: read_office 2, read_structured 5 (csv 1 + tsv 1 + structured passthrough 4 subtests in 1 test = 2 tests; with two-test additions), read_html 2, e2e Read multi-format 8. Read base test count refactored to 7 tests (signature change to add `sheet` parameter).
 - ✅ **v0.5 SHIPPED** — `ToolSearch` + `Glob` core tools.
   - **`ToolSearch`** is clawtool's identity primitive (ADR-005): bleve BM25 in-memory index built at `clawtool serve` startup from every enabled core tool + every aggregated source tool. `name^3`/`keywords^2`/`description^1` field boosts so literal-name lookups still rank above semantic neighbors. Output: `{query, results[{name,score,description,type,instance}], total_indexed, engine:"bleve-bm25", duration_ms}`. `type` filter (`core`/`sourced`/`any`) and `limit` cap. End-to-end verified: "search file contents regex" → Grep top (≈0.94), "echo back input" with stub source live → `stub__echo` top (≈1.24).
   - **`Glob`** wraps `bmatcuk/doublestar/v4` (ADR-007). `**` double-star supported. Forward-slash output for platform stability. Streaming match via `GlobWalk`. Hard cap (default 1000, max 10000) protects agent context. Engine field exposes backend choice.
@@ -47,7 +56,7 @@ status: developing
   - **Secrets** at `internal/secrets/`. TOML store at `~/.config/clawtool/secrets.toml` (mode 0600, separate from config.toml so config can be safely committed). Scope-based (`<instance> | "global"`) with global fallback. `Resolve()` interpolates `${VAR}` against secrets first, then process env. Atomic temp+rename save. 7 unit tests.
   - **CLI source subcommands** at `internal/cli/source.go`: `add`, `list`, `remove`, `set-secret`, `check`. `clawtool source add github` resolves bare names, prints package + description + homepage + auth hint with copy-paste set-secret command for missing env. `--as <instance>` lets users add multiple instances of the same source per ADR-006. Bidirectional flag-position support (flags can come after positionals via `reorderFlagsFirst` helper). 12 unit tests.
 - ✅ **v0.3 SHIPPED** — Grep + Read core tools per [[007 Leverage best-in-class not reinvent]].
-- ✅ **Test totals: 81 Go unit + 38 e2e = 119 green.** Per package: catalog 11, cli 21, config 11, search 11, secrets 7, sources 13 (7 + 6 SplitWireName subtests), tools/core 22 (Bash 5 + Glob 5 + Grep 5 + Read 7), e2e 38.
+- ✅ **Test totals: 88 Go unit + 46 e2e = 134 green.** Per package: catalog 11, cli 21, config 11, search 11, secrets 7, sources 13 (7 + 6 SplitWireName subtests), tools/core 29 (Bash 5 + Glob 5 + Grep 5 + Read 7 + Read-Office 2 + Read-Structured 5 + Read-HTML 2 - actual count = 88 total). e2e 46.
 - ✅ **v0.2 PROTOTYPE WORKING**. (See [[Prototype Bringup 2026-04-26]] for the v0.1+v0.2 baseline.)
 - ✅ **Closed**: language → **Go**, license → **MIT** (LICENSE in repo).
 - **Open**: ranking model for `tool_search` (BM25 vs embedding vs hybrid). Prototype with BM25 first.
