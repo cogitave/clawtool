@@ -34,10 +34,12 @@ status: developing
 
 ## Active Threads
 
+- ✅ **PROTOTYPE WORKING**. v0.1 binary builds, installs at `~/.local/bin/clawtool`, registers with Claude Code (`✓ Connected`). One core tool: `Bash`, timeout-safe via process-group SIGKILL. End-to-end loop proven. See [[Prototype Bringup 2026-04-26]].
 - ✅ **Closed**: language → **Go** (locked).
 - **Open**: license — Apache 2.0 vs MIT (MIT leaning for vendor adoption). Decide before first public commit.
 - **Open**: ranking model for `tool_search` (BM25 vs embedding vs hybrid). Prototype with BM25 first.
 - **Open**: catalog format — define clawtool-native or read existing (Docker MCP Catalog, MCP Registry, Smithery)? Defer until 5+ instance types.
-- **Deferred to v2**: container isolation, middleware support, plugin packaging (Claude Code plugin, Codex plugin) — phase 2 after binary works.
+- **Deferred to v2**: container isolation, middleware support, plugin packaging (Claude Code plugin, Codex plugin) — phase 2 after binary feature-complete.
+- **Next v0.2 increments**: (1) `~/.config/clawtool/config.toml` read/write + hot-reload; (2) CLI subcommands (`tools enable/disable/status`, `init`); (3) one source instance (e.g. github via `npx @modelcontextprotocol/server-github`); (4) `Read` + `Grep` core tools; (5) `ToolSearch` BM25 baseline.
 - **Pending user-side**: work account `gh auth login` with `GH_CONFIG_DIR=~/.config/gh-work` (not blocking clawtool).
 - **Next deliverable revised**: prototype of (a) MCP server stub, (b) **3-5 canonical core tools** (bash, ripgrep, read at minimum) at quality, (c) `tool_search` BM25 baseline, (d) `clawtool tools enable/disable` CLI. *Not* a full aggregator. Make it usable end-to-end on small surface, then expand.

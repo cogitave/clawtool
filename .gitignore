@@ -1,7 +1,24 @@
+# Obsidian
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
 .smart-connections/
 .obsidian-git-data
 .trash/
+
+# OS
 .DS_Store
 Thumbs.db
+
+# Go
+/bin/
+/dist/
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo

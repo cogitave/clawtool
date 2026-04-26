@@ -17,6 +17,17 @@ Append-only. Newest entries at the **top**. Never edit past entries.
 
 ## 2026-04-26
 
+### PROTOTYPE — v0.1 build, install, end-to-end verified
+
+- **Working binary**: `bin/clawtool` (7MB Go binary, Go 1.25.5).
+- **Module**: `github.com/cogitave/clawtool`. Layout: `cmd/clawtool/`, `internal/{server,version,tools/core}`.
+- **MCP SDK chosen**: `github.com/mark3labs/mcp-go v0.49.0` (community; mature, used in production).
+- **Single core tool registered**: `Bash` (PascalCase per [[006 Instance scoping and tool naming]]).
+- **Quality bar verified**: timeout-safe via process-group SIGKILL (`exec_unix.go`). 500ms timeout actually fires at 501ms even when bash spawned a 3-second sleep. Stdout up to the timeout is preserved.
+- **Installed** at `~/.local/bin/clawtool`. **Registered** with Claude Code at user scope. `claude mcp list` reports `clawtool: ... - ✓ Connected`.
+- Documented full bringup in [[Prototype Bringup 2026-04-26]] including tests, install commands, tool surface JSON, and explicit v0.1 scope cuts.
+- Cuts deferred to v0.2: other core tools, ToolSearch, config.toml, CLI subcommands, source instances, secret redaction.
+
 ### NAMING — ADR-006: instance scoping and tool naming convention
 
 - New ADR locking naming for the wire (MCP) and CLI surfaces:

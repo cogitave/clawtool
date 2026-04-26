@@ -18,6 +18,7 @@ Summary pages for documents and research outputs. Source documents themselves li
 ## Research outputs
 
 - [[Research Scope 2026-04-26]] — selection criteria + universe surveyed for [[004 clawtool initial architecture direction]]
+- [[Prototype Bringup 2026-04-26]] — v0.1 prototype build/install/test bringup notes
 
 ## External sources (pending ingest)
 
