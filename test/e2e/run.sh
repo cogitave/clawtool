@@ -790,9 +790,85 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' \
 [[ "$status" == "404" ]] || fail "unknown path: expected 404, got $status"
 pass "unknown path: 404"
 
+# 16i. /v1/recipes returns the catalog (Phase 4-bis).
+recipes=$(curl -sS -H "Authorization: Bearer $HTTP_TOKEN" "http://127.0.0.1:$HTTP_PORT/v1/recipes")
+echo "$recipes" | grep -qF '"recipes":' || fail "/v1/recipes body: $recipes"
+echo "$recipes" | grep -qF '"name":"license"' || fail "/v1/recipes should include license recipe"
+echo "$recipes" | grep -qF '"name":"codex-bridge"' || fail "/v1/recipes should include codex-bridge"
+pass "/v1/recipes: catalog enumerated (license + codex-bridge present)"
+
+# 16j. /v1/recipe/apply happy path against a tempdir.
+RECIPE_HTTP_TMP=$(mktemp -d)
+apply_status=$(curl -sS -w '%{http_code}' -o /tmp/clawtool_recipe_apply \
+  -H "Authorization: Bearer $HTTP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"conventional-commits-ci\",\"repo\":\"$RECIPE_HTTP_TMP\"}" \
+  "http://127.0.0.1:$HTTP_PORT/v1/recipe/apply")
+[[ "$apply_status" == "200" ]] || fail "/v1/recipe/apply: expected 200, got $apply_status (body: $(cat /tmp/clawtool_recipe_apply))"
+grep -qF '"verify_ok":true' /tmp/clawtool_recipe_apply \
+  || fail "/v1/recipe/apply: verify_ok != true"
+[[ -f "$RECIPE_HTTP_TMP/.github/workflows/commit-format.yml" ]] \
+  || fail "/v1/recipe/apply: workflow file not written"
+rm -rf "$RECIPE_HTTP_TMP" /tmp/clawtool_recipe_apply
+pass "/v1/recipe/apply: applies recipe + writes file on disk"
+
+# 16k. /v1/recipe/apply rejects missing repo.
+bad=$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer $HTTP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"license"}' \
+  "http://127.0.0.1:$HTTP_PORT/v1/recipe/apply")
+[[ "$bad" == "400" ]] || fail "/v1/recipe/apply missing repo: expected 400, got $bad"
+pass "/v1/recipe/apply: refuses missing repo"
+
 # Clean shutdown.
 kill $HTTP_PID 2>/dev/null
 wait $HTTP_PID 2>/dev/null || true
+
+# ── 17. clawtool serve --listen --mcp-http (MCP-over-HTTP transport) ─────
+echo ""
+echo "▶ test: --mcp-http StreamableHTTPServer"
+
+MCP_HTTP_PORT=$(awk 'BEGIN{srand(); print int(40000+rand()*20000)}')
+
+XDG_CONFIG_HOME="$TMPCFG" "$BIN" serve --listen ":$MCP_HTTP_PORT" --token-file "$HTTP_TOKEN_FILE" --mcp-http >/dev/null 2>&1 &
+MCP_HTTP_PID=$!
+trap 'kill $HTTP_PID 2>/dev/null || true; kill $MCP_HTTP_PID 2>/dev/null || true; rm -rf "$TMPCFG" "$RECIPE_TMP" 2>/dev/null || true' EXIT
+
+for _ in $(seq 1 50); do
+  if curl -sS -o /dev/null "http://127.0.0.1:$MCP_HTTP_PORT/v1/health" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+
+# 17a. /mcp endpoint exists when --mcp-http set; rejects unauth.
+status=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$MCP_HTTP_PORT/mcp")
+[[ "$status" == "401" ]] || fail "/mcp without auth: expected 401, got $status"
+pass "/mcp: rejects unauthenticated requests"
+
+# 17b. /mcp accepts an MCP initialize request when bearer token is supplied.
+# We don't speak the full JSON-RPC handshake here; just verify the endpoint
+# responds with something non-401/404 to the auth-stamped request.
+status=$(curl -sS -o /tmp/clawtool_mcp_resp -w '%{http_code}' \
+  -X POST \
+  -H "Authorization: Bearer $HTTP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"e2e","version":"0"}}}' \
+  "http://127.0.0.1:$MCP_HTTP_PORT/mcp")
+case "$status" in
+  200|202)
+    pass "/mcp: streamable-HTTP transport responds to authenticated initialize ($status)"
+    ;;
+  *)
+    fail "/mcp: expected 200/202 from auth'd initialize, got $status (body: $(cat /tmp/clawtool_mcp_resp))"
+    ;;
+esac
+rm -f /tmp/clawtool_mcp_resp
+
+kill $MCP_HTTP_PID 2>/dev/null || true
+wait $MCP_HTTP_PID 2>/dev/null || true
 
 # ── done ──────────────────────────────────────────────────────────────────
 

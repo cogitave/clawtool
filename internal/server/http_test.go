@@ -269,6 +269,151 @@ func TestServeHTTP_RefusesEmptyTokenFile(t *testing.T) {
 	}
 }
 
+// recipe handlers: separate mux so we can hit them without booting
+// the full MCP server, and so the token used here doesn't leak into
+// other tests.
+func newRecipeMux(token string) *http.ServeMux {
+	mux := http.NewServeMux()
+	authed := authMiddleware(token)
+	mux.Handle("/v1/recipes", authed(http.HandlerFunc(handleRecipes)))
+	mux.Handle("/v1/recipe/apply", authed(http.HandlerFunc(handleRecipeApply)))
+	return mux
+}
+
+func TestRecipes_ListReturnsRows(t *testing.T) {
+	srv := httptest.NewServer(newRecipeMux("t"))
+	defer srv.Close()
+	body := getJSON(t, srv.URL+"/v1/recipes", "t")
+	if body["recipes"] == nil {
+		t.Fatal("recipes field missing")
+	}
+	if c, _ := body["count"].(float64); int(c) <= 0 {
+		t.Errorf("count should be > 0; got %v", body["count"])
+	}
+}
+
+func TestRecipes_FilterByCategory(t *testing.T) {
+	srv := httptest.NewServer(newRecipeMux("t"))
+	defer srv.Close()
+	body := getJSON(t, srv.URL+"/v1/recipes?category=agents", "t")
+	if body["recipes"] == nil {
+		t.Fatal("recipes field missing")
+	}
+}
+
+func TestRecipes_RejectsUnknownCategory(t *testing.T) {
+	srv := httptest.NewServer(newRecipeMux("t"))
+	defer srv.Close()
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/recipes?category=nope", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for unknown category; got %d", resp.StatusCode)
+	}
+}
+
+func TestRecipeApply_RequiresName(t *testing.T) {
+	srv := httptest.NewServer(newRecipeMux("t"))
+	defer srv.Close()
+	req, _ := http.NewRequest("POST", srv.URL+"/v1/recipe/apply",
+		strings.NewReader(`{"repo":"/tmp/x"}`))
+	req.Header.Set("Authorization", "Bearer t")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400; got %d", resp.StatusCode)
+	}
+}
+
+func TestRecipeApply_RequiresRepo(t *testing.T) {
+	srv := httptest.NewServer(newRecipeMux("t"))
+	defer srv.Close()
+	req, _ := http.NewRequest("POST", srv.URL+"/v1/recipe/apply",
+		strings.NewReader(`{"name":"license"}`))
+	req.Header.Set("Authorization", "Bearer t")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400; got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "repo is required") {
+		t.Errorf("body should mention repo: %s", body)
+	}
+}
+
+func TestRecipeApply_UnknownNameErrors(t *testing.T) {
+	srv := httptest.NewServer(newRecipeMux("t"))
+	defer srv.Close()
+	req, _ := http.NewRequest("POST", srv.URL+"/v1/recipe/apply",
+		strings.NewReader(`{"name":"ghost-recipe","repo":"/tmp/x"}`))
+	req.Header.Set("Authorization", "Bearer t")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400; got %d", resp.StatusCode)
+	}
+}
+
+func TestRecipeApply_HappyPath(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(newRecipeMux("t"))
+	defer srv.Close()
+	body := strings.NewReader(`{"name":"conventional-commits-ci","repo":"` + dir + `"}`)
+	req, _ := http.NewRequest("POST", srv.URL+"/v1/recipe/apply", body)
+	req.Header.Set("Authorization", "Bearer t")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200; got %d (%s)", resp.StatusCode, raw)
+	}
+	var got map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := got["verify_ok"].(bool); !v {
+		t.Errorf("verify_ok should be true; got %v", got["verify_ok"])
+	}
+	// File must exist on disk after apply.
+	if _, err := os.Stat(filepath.Join(dir, ".github/workflows/commit-format.yml")); err != nil {
+		t.Errorf("recipe file not present after apply: %v", err)
+	}
+}
+
+func TestRecipes_RequiresAuth(t *testing.T) {
+	srv := httptest.NewServer(newRecipeMux("t"))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/v1/recipes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 unauth; got %d", resp.StatusCode)
+	}
+}
+
 // getJSON is a small helper for the auth-stamped read endpoints.
 func getJSON(t *testing.T, url, token string) map[string]any {
 	t.Helper()
