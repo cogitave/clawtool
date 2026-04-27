@@ -55,13 +55,17 @@ func TestCreate_AndCleanup(t *testing.T) {
 	if _, err := os.Stat(workdir); err != nil {
 		t.Fatalf("worktree dir missing: %v", err)
 	}
-	// Marker should be present.
+	// Marker should be present. macOS resolves /var → /private/var via
+	// symlink; resolve both sides before comparing so the test runs
+	// on Darwin and Linux without flapping.
 	marker, err := ReadMarker(workdir)
 	if err != nil {
 		t.Fatalf("ReadMarker: %v", err)
 	}
-	if marker.TaskID != "task-1" || marker.Agent != "codex" || marker.RepoRoot != repo {
-		t.Errorf("marker mismatch: %+v", marker)
+	wantRepo, _ := filepath.EvalSymlinks(repo)
+	gotRepo, _ := filepath.EvalSymlinks(marker.RepoRoot)
+	if marker.TaskID != "task-1" || marker.Agent != "codex" || gotRepo != wantRepo {
+		t.Errorf("marker mismatch: %+v (want repo=%s)", marker, wantRepo)
 	}
 	if marker.PID != os.Getpid() {
 		t.Errorf("marker PID: got %d, want %d", marker.PID, os.Getpid())
