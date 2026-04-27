@@ -355,5 +355,17 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"sandbox", "doctor", "engine", "diagnostic", "bwrap", "sandbox-exec", "docker"},
 		},
+		{
+			Name:        "SkillNew",
+			Description: "Scaffold a Claude Code skill (agentskills.io standard): SKILL.md with frontmatter + scripts/ + references/ + assets/. Same template the `clawtool skill new` CLI emits.",
+			Type:        "core",
+			Keywords:    []string{"skill", "scaffold", "new", "create", "agentskills", "skill-md", "claude-skill"},
+		},
+		{
+			Name:        "AgentNew",
+			Description: "Scaffold a Claude Code subagent persona — a user-defined dispatcher with allowed-tools, optional default clawtool instance, and model preference. Writes ~/.claude/agents/<name>.md (or ./.claude/agents/<name>.md). Mirror of `clawtool agent new`.",
+			Type:        "core",
+			Keywords:    []string{"agent", "subagent", "persona", "scaffold", "new", "create", "dispatcher", "claude-agent"},
+		},
 	}
 }

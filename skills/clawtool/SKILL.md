@@ -71,6 +71,8 @@ the routing-target provides.
 | Dispatch to another agent | (no native) | `SendMessage` (claude/codex/opencode/gemini); poll via `TaskGet` / `TaskWait` |
 | Discover a tool by intent | scan tools/list | `ToolSearch` (BM25; cheap before loading every schema) |
 | Set up a repo / "init me" | `Bash clawtool init` | `RecipeList` → `RecipeStatus` → `RecipeApply` (conversational) |
+| Scaffold a new Claude subagent | hand-edit `~/.claude/agents/*.md` | `AgentNew` (kebab-case name + description + allowed-tools + optional default instance) |
+| Scaffold a new Claude skill | hand-edit `~/.claude/skills/*/SKILL.md` | `SkillNew` (agentskills.io standard template) |
 
 If you don't see the intent here, fall back to `ToolSearch` —
 it ranks every loaded tool against a natural-language query and
