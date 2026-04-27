@@ -9,7 +9,9 @@ permissions:
   contents: write   # required for GitHub Releases publish
 
 env:
-  GO_VERSION: "1.25.5"
+  # 2026-04-27: bumped 1.25.5 → 1.26.0 to match ci.yml — chromedp
+  # (pulled by ADR-018 portal feature) requires Go 1.26.
+  GO_VERSION: "1.26.0"
 
 jobs:
   goreleaser:

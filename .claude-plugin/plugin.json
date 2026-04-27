@@ -1,6 +1,6 @@
 {
   "name": "clawtool",
-  "version": "0.8.6",
+  "version": "0.20.0",
   "description": "Tools. Agents. Wired. — the canonical tool layer that wires every AI coding agent (Claude Code / Codex / Opencode / Gemini) onto one timeout-safe, structured-output surface with multi-agent dispatch, sandbox profiles, and search-first discovery.",
   "author": {
     "name": "Bahadır Arda",
