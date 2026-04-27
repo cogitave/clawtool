@@ -149,16 +149,29 @@ cookies_json = '''
 > `chmod 600 ~/.config/clawtool/secrets.toml` if the file isn't
 > already locked down.
 
-### 4. (v0.16.2) Drive it
+### 4. Drive it
 
 ```sh
 clawtool portal use my-deepseek
 clawtool portal ask "Refactor README.md for clarity"
 ```
 
-In v0.16.1 the command returns a deferred-feature sentinel after
-validating the portal — useful to confirm your config + cookies
-parse correctly before the CDP driver lands.
+`clawtool portal ask` (and `PortalAsk` MCP) spawn `obscura serve --port 0`
+in the background, open a fresh CDP browser context (isolated cookie
+jar via `disposeOnDetach`), seed the cookies + extra headers, navigate
+to `start_url`, run `login_check` then `ready_predicate`, fill the
+input selector with the prompt, click submit (or fall back to Enter
+when no submit selector is configured), poll `response_done_predicate`
+every 250ms until it returns truthy, and return the last response
+selector's `innerText`. Progress lines stream to stderr; the captured
+answer goes to stdout.
+
+Inside `clawtool serve`, the same flow is wired through both the
+generic `PortalAsk` MCP tool **and** a per-portal alias
+`<name>__ask` (e.g. `my-deepseek__ask`). Aliases are computed at
+server boot, so adding a portal then restarting `serve` makes the
+new alias visible to the calling model — same lifecycle as
+`clawtool source` aggregation.
 
 ## Predicate vocabulary
 

@@ -233,11 +233,12 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	core.RegisterBrowserFetch(s)
 	core.RegisterBrowserScrape(s)
 
-	// Portal* — saved web-UI targets (ADR-018). Read-only surface
-	// in v0.16.1 (List / Use / Which / Unset / Remove); PortalAsk
-	// surfaces a deferred-feature sentinel until the v0.16.2 CDP
-	// driver lands. PortalAdd is CLI-only because it spawns $EDITOR.
+	// Portal* — saved web-UI targets (ADR-018). Generic surface
+	// (List / Use / Which / Unset / Remove / Ask) plus per-portal
+	// aliases `<name>__ask` so a model can call `my_deepseek__ask`
+	// directly. PortalAdd is CLI-only because it spawns $EDITOR.
 	core.RegisterPortalTools(s)
+	core.RegisterPortalAliases(s, cfg)
 
 	// SkillNew lets a model scaffold an agentskills.io-standard
 	// skill from inside a conversation. Same template the
