@@ -12,19 +12,27 @@ clear:
 
 ## Status
 
-- **Surface**: shipped in v0.16.4 — CLI subcommand + `Mcp*` MCP
-  tool names register today, ToolSearch indexes them, the noun
-  is locked.
-- **`clawtool mcp list`**: ships read-only (walker stub today,
-  upgrades when generated artifacts arrive).
-- **`clawtool mcp new / run / build / install`**: surface returns
-  a deferred-feature error until v0.17 — the same pattern v0.16.1
-  used for `portal ask` before the CDP driver landed in v0.16.2.
+**v0.17 shipped.** All five verbs are live:
 
-The full design lives in
-[ADR-019](../wiki/decisions/019-mcp-authoring-scaffolder.md). The
-walk-through below previews the v0.17 user experience so operators
-can stage their own work.
+- `clawtool mcp new <name> [--yes] [--output <dir>]` — interactive
+  wizard or `--yes` defaults. Generates a real, compilable
+  scaffold for the chosen language.
+- `clawtool mcp list [--root <dir>]` — walks `<root>` for
+  `.clawtool/mcp.toml` markers and prints one row per project.
+- `clawtool mcp run <path>` / `mcp build <path>` — shim through
+  the project's own `Makefile` (`make run` / `make build`).
+- `clawtool mcp install <path> [--as <instance>]` — reads the
+  marker, derives the launch command, writes
+  `[sources.<instance>]` into `~/.config/clawtool/config.toml`.
+
+MCP equivalents: `McpNew`, `McpList`. `McpRun` / `McpBuild` /
+`McpInstall` surface a hint to invoke the CLI shortcut instead
+(those touch the operator's filesystem + language toolchain, so
+the model giving advice is the natural pattern).
+
+Smoke-tested end-to-end: `mcp new --yes` → `go mod tidy` →
+`go build` → MCP `initialize` handshake responds correctly.
+The generated server actually talks the protocol on day one.
 
 ## What v0.17 will scaffold
 
@@ -112,24 +120,30 @@ For the marketplace mechanics, see Claude Code's plugin
 documentation:
 [claude.com/docs/claude-code/plugins](https://code.claude.com/docs/en/plugins).
 
-## Today (before v0.17 lands)
+## Today (production)
 
-- Hand-roll the MCP server using your language's canonical SDK
-  (`mark3labs/mcp-go` / `fastmcp` / `@modelcontextprotocol/sdk`).
-- Once it builds, register via:
-  ```sh
-  clawtool source add my-thing --command "/path/to/binary"
-  ```
-  This is exactly the path `mcp install` will write a shortcut
-  for in v0.17.
+```sh
+clawtool mcp new my-thing --yes              # scaffold with defaults
+cd my-thing && make build                    # compile / install / npm build
+clawtool mcp install . --as my-thing         # writes [sources.my-thing]
+# Edit internal/tools/<file> and add real logic.
+```
 
-## MCP tool names (registered now)
+Or run the wizard interactively (no `--yes`) to pick language,
+transport, packaging, plugin manifest, and your first tool.
+
+## MCP tool names
 
 For agents discovering the surface via `ToolSearch`:
 
-- `McpList` — read-only walker (ships today, empty until v0.17).
-- `McpNew` / `McpRun` / `McpBuild` / `McpInstall` — surface
-  visible; returns deferred-feature error until v0.17.
+- `McpNew` — full generator. Required args: `name`,
+  `description`, `language`. Optional: `transport`, `packaging`,
+  `tool_name`, `tool_description`, `output`, `plugin`.
+- `McpList` — walks for `.clawtool/mcp.toml` markers under
+  `root`.
+- `McpRun` / `McpBuild` / `McpInstall` — surface returns a hint
+  to use the CLI shortcut (these run in the operator's shell
+  because they touch language toolchains).
 
 ## Cross-references
 
