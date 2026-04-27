@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/lint"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -76,11 +77,33 @@ func runEdit(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	replaceAll := req.GetBool("replace_all", false)
 	cwd := req.GetString("cwd", "")
 
-	res := executeEdit(resolvePath(path, cwd), oldStr, newStr, replaceAll)
+	resolved := resolvePath(path, cwd)
+	if mgr := hooks.Get(); mgr != nil {
+		// pre_edit: block_on_error entries veto the write (e.g. a
+		// "no edits inside vendor/" guard).
+		if hookErr := mgr.Emit(ctx, hooks.EventPreEdit, map[string]any{
+			"path":        resolved,
+			"replace_all": replaceAll,
+		}); hookErr != nil {
+			return resultOf(EditResult{
+				BaseResult: BaseResult{Operation: "Edit", ErrorReason: hookErr.Error()},
+				Path:       resolved,
+			}), nil
+		}
+	}
+	res := executeEdit(resolved, oldStr, newStr, replaceAll)
 	if !res.IsError() && lintEnabled() {
 		if findings, _ := globalLintRunner.Lint(ctx, res.Path); len(findings) > 0 {
 			res.LintFindings = findings
 		}
+	}
+	if mgr := hooks.Get(); mgr != nil && !res.IsError() {
+		_ = mgr.Emit(ctx, hooks.EventPostEdit, map[string]any{
+			"path":          res.Path,
+			"replaced":      res.Replaced,
+			"size_after":    res.SizeBytesAfter,
+			"lint_findings": len(res.LintFindings),
+		})
 	}
 	return resultOf(res), nil
 }

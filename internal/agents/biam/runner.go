@@ -8,6 +8,8 @@ import (
 	"io"
 	"sync"
 	"time"
+
+	"github.com/cogitave/clawtool/internal/hooks"
 )
 
 // SendStream is the function shape the runner expects from Supervisor:
@@ -99,9 +101,21 @@ func (r *Runner) recordResult(prompt *Envelope, kind EnvelopeKind, body string, 
 		// callers don't block forever. The task row's last_message
 		// records the body via SetTaskStatus.
 		_ = r.store.SetTaskStatus(bg, prompt.TaskID, terminal, summary(body))
-		return
+	} else {
+		_ = r.store.SetTaskStatus(bg, prompt.TaskID, terminal, summary(body))
 	}
-	_ = r.store.SetTaskStatus(bg, prompt.TaskID, terminal, summary(body))
+	// on_task_complete hook (F3) fires after the task row settles so
+	// user scripts read a stable snapshot. The hook can't fail the
+	// task — it's already terminal — but errors surface via the hook
+	// manager's log path.
+	if mgr := hooks.Get(); mgr != nil {
+		_ = mgr.Emit(bg, hooks.EventOnTaskComplete, map[string]any{
+			"task_id": prompt.TaskID,
+			"agent":   prompt.To.InstanceID,
+			"kind":    string(kind),
+			"status":  string(terminal),
+		})
+	}
 }
 
 // summary trims the body to a one-line summary stored on the task row.

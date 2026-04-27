@@ -33,6 +33,34 @@ type Config struct {
 	Dispatch      Dispatch                   `toml:"dispatch,omitempty"`
 	Observability ObservabilityConfig        `toml:"observability,omitempty"`
 	AutoLint      AutoLintConfig             `toml:"auto_lint,omitempty"`
+	Hooks         HooksConfig                `toml:"hooks,omitempty"`
+}
+
+// HooksConfig wires user shell commands to clawtool lifecycle events
+// (ADR-014 F3, Claude Code parity). Each event accepts an ordered
+// list of HookEntry — when the event fires, every entry runs in
+// sequence; failures are logged but never abort the originating
+// operation. Empty events are a zero-cost no-op.
+//
+// Supported events (locked at v0.15):
+//
+//	pre_send / post_send         — Supervisor.dispatch wrap
+//	on_task_complete             — BIAM task hits a terminal state
+//	pre_edit / post_edit         — Edit/Write tool wrap
+//	pre_bridge_add / post_recipe_apply
+//	on_server_start / on_server_stop
+type HooksConfig struct {
+	Events map[string][]HookEntry `toml:"events,omitempty"`
+}
+
+// HookEntry is one shell command + ergonomics. The command runs with
+// JSON event metadata on stdin so user scripts can inspect the
+// payload (instance, task_id, file path, …) without parsing argv.
+type HookEntry struct {
+	Cmd        string   `toml:"cmd"`                      // shell snippet evaluated by /bin/sh -c
+	Argv       []string `toml:"argv,omitempty"`           // alternative: raw argv (skips the shell)
+	TimeoutMs  int      `toml:"timeout_ms,omitempty"`     // per-hook hard cap; default 5000
+	BlockOnErr bool     `toml:"block_on_error,omitempty"` // when true, hook failure errors out the originating op
 }
 
 // ObservabilityConfig drives the OpenTelemetry instrumentation that

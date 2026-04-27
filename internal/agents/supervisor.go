@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/observability"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -350,15 +351,39 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 			attribute.String("agent.family", a.Family),
 			attribute.String("agent.bridge", a.Bridge),
 		)
+		// pre_send hook (F3): block_on_error entries can veto the
+		// dispatch — useful for "no Anthropic calls outside business
+		// hours" type policies.
+		if mgr := hooks.Get(); mgr != nil {
+			if hookErr := mgr.Emit(sendCtx, hooks.EventPreSend, map[string]any{
+				"instance": a.Instance,
+				"family":   a.Family,
+				"prompt":   prompt,
+			}); hookErr != nil {
+				s.observer.RecordError(sendCtx, hookErr)
+				sendEnd()
+				release()
+				lastErr = fmt.Errorf("pre_send hook blocked dispatch to %q: %w", a.Instance, hookErr)
+				continue
+			}
+		}
+
 		rc, err := tr.Send(sendCtx, prompt, opts)
 		if err == nil {
 			// Don't end the child span here — let the caller end it
 			// when the stream closes. The release func also fires on
 			// Close so the concurrency slot is held for the full
-			// stream duration.
+			// stream duration. post_send hook fires on Close so the
+			// hook script sees the full lifetime.
 			return &observedReadCloser{ReadCloser: rc, end: func() {
 				sendEnd()
 				release()
+				if mgr := hooks.Get(); mgr != nil {
+					_ = mgr.Emit(context.Background(), hooks.EventPostSend, map[string]any{
+						"instance": a.Instance,
+						"family":   a.Family,
+					})
+				}
 			}}, nil
 		}
 		s.observer.RecordError(sendCtx, err)

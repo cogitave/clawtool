@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/lint"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -74,11 +75,33 @@ func runWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult
 	forced := req.GetString("line_endings", "")
 	cwd := req.GetString("cwd", "")
 
-	res := executeWrite(resolvePath(path, cwd), content, createParents, preserveEndings, LineEndings(forced))
+	resolved := resolvePath(path, cwd)
+	if mgr := hooks.Get(); mgr != nil {
+		if hookErr := mgr.Emit(ctx, hooks.EventPreEdit, map[string]any{
+			"path":  resolved,
+			"write": true,
+			"bytes": len(content),
+		}); hookErr != nil {
+			return resultOf(WriteResult{
+				BaseResult: BaseResult{Operation: "Write", ErrorReason: hookErr.Error()},
+				Path:       resolved,
+			}), nil
+		}
+	}
+	res := executeWrite(resolved, content, createParents, preserveEndings, LineEndings(forced))
 	if !res.IsError() && lintEnabled() {
 		if findings, _ := globalLintRunner.Lint(ctx, res.Path); len(findings) > 0 {
 			res.LintFindings = findings
 		}
+	}
+	if mgr := hooks.Get(); mgr != nil && !res.IsError() {
+		_ = mgr.Emit(ctx, hooks.EventPostEdit, map[string]any{
+			"path":          res.Path,
+			"created":       res.Created,
+			"bytes_written": res.BytesWritten,
+			"lint_findings": len(res.LintFindings),
+			"write":         true,
+		})
 	}
 	return resultOf(res), nil
 }
