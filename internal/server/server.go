@@ -27,6 +27,7 @@ import (
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/observability"
 	"github.com/cogitave/clawtool/internal/search"
 	"github.com/cogitave/clawtool/internal/secrets"
@@ -49,7 +50,16 @@ func ServeStdio(ctx context.Context) error {
 		return err
 	}
 	defer mgr.Stop()
-	if err := server.ServeStdio(s); err != nil {
+	err = server.ServeStdio(s)
+	// Always emit on_server_stop so user log/telemetry hooks see the
+	// shutdown even if ServeStdio errors out.
+	if mgr := hooks.Get(); mgr != nil {
+		_ = mgr.Emit(ctx, hooks.EventOnServerStop, map[string]any{
+			"version": version.Version,
+			"pid":     os.Getpid(),
+		})
+	}
+	if err != nil {
 		return fmt.Errorf("stdio serve: %w", err)
 	}
 	return nil
@@ -90,6 +100,15 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	if cfg.AutoLint.Enabled != nil {
 		core.SetAutoLintEnabled(*cfg.AutoLint.Enabled)
 	}
+
+	// Hooks subsystem (F3). Register the process-wide manager once
+	// so every callsite can emit without threading a handle through.
+	hookMgr := hooks.New(cfg.Hooks)
+	hooks.SetGlobal(hookMgr)
+	_ = hookMgr.Emit(ctx, hooks.EventOnServerStart, map[string]any{
+		"version": version.Version,
+		"pid":     os.Getpid(),
+	})
 
 	// BIAM Phase 1 (ADR-015): bring up the per-instance identity +
 	// SQLite store, register a process-wide async runner so
