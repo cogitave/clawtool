@@ -27,6 +27,15 @@ func (codexTransport) Send(ctx context.Context, prompt string, opts map[string]a
 		// `codex exec resume <sid> "<prompt>"` per developers.openai.com/codex/cli/features
 		args = []string{"exec", "resume", o.SessionID}
 	}
+
+	// --skip-git-repo-check: codex refuses to run in any directory it
+	// hasn't been invited to trust ("Not inside a trusted directory"
+	// safeguard) — same IDE-style guard Gemini ships and the same
+	// reasoning applies here: in the headless dispatch path the
+	// operator has explicitly chosen to run `clawtool send`, so the
+	// guard is redundant. Operators who need it can pass
+	// `extra_args = ["--no-skip-git-repo-check"]` per call.
+	args = append(args, "--skip-git-repo-check")
 	args = append(args, "--json") // stream-json equivalent for codex exec
 	args = append(args, o.ExtraArgs...)
 	args = append(args, prompt)
