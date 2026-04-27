@@ -38,13 +38,23 @@ func newBraveBackend(store *secrets.Store) (*braveBackend, error) {
 
 func (b *braveBackend) Name() string { return "brave" }
 
-func (b *braveBackend) Search(ctx context.Context, query string, limit int) ([]WebSearchHit, error) {
+func (b *braveBackend) Search(ctx context.Context, query string, limit int, opts SearchOptions) ([]WebSearchHit, error) {
 	if query == "" {
 		return nil, fmt.Errorf("empty query")
 	}
 	q := url.Values{}
 	q.Set("q", query)
 	q.Set("count", fmt.Sprintf("%d", limit))
+
+	// Brave-native filter mappings (ADR-021 phase B). Unsupported
+	// fields silently degrade — the caller's local domain filter
+	// in filterHitsByDomain is the safety net.
+	if opts.Country != "" {
+		q.Set("country", strings.ToLower(opts.Country))
+	}
+	if freshness := braveFreshness(opts.Recency); freshness != "" {
+		q.Set("freshness", freshness)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, braveBaseURL+"?"+q.Encode(), nil)
 	if err != nil {
@@ -117,4 +127,24 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max] + "…"
+}
+
+// braveFreshness maps clawtool's neutral "recency" vocabulary to
+// Brave's freshness query param. Brave only supports a coarse set
+// (pd / pw / pm / py); finer-grained values fall back to the
+// nearest bucket. Empty input yields empty output (no filter).
+func braveFreshness(recency string) string {
+	switch strings.ToLower(strings.TrimSpace(recency)) {
+	case "":
+		return ""
+	case "24h", "1d":
+		return "pd"
+	case "1w", "7d":
+		return "pw"
+	case "1m", "30d":
+		return "pm"
+	case "1y", "365d":
+		return "py"
+	}
+	return ""
 }
