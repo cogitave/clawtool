@@ -171,6 +171,8 @@ func (a *App) Run(argv []string) int {
 		return a.runBridge(argv[1:])
 	case "send":
 		return a.runSend(argv[1:])
+	case "worktree":
+		return a.runWorktree(argv[1:])
 	case "recipe":
 		return a.runRecipe(argv[1:])
 	case "doctor":
@@ -365,6 +367,11 @@ Usage:
                             adapter ownership for native tool replacement).
   clawtool agent which      Show the currently-resolved default agent.
   clawtool agent unset      Clear the sticky default.
+  clawtool worktree list    List isolated worktrees with marker info.
+  clawtool worktree show <taskID>
+                            Print path + marker JSON for one worktree.
+  clawtool worktree gc [--min-age 24h]
+                            Reap orphan worktrees (dead PID + age cutoff).
   clawtool recipe list [--category <c>]
                             List project-setup recipes (governance/commits/
                             release/ci/quality/supply-chain/knowledge/agents/

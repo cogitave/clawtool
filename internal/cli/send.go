@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"time"
 
 	"github.com/cogitave/clawtool/internal/agents"
+	"github.com/cogitave/clawtool/internal/agents/worktree"
 )
 
 const sendUsage = `Usage:
-  clawtool send [--agent <instance>] [--tag <label>] [--session <sid>] [--model <m>] [--format <f>] "<prompt>"
+  clawtool send [--agent <instance>] [--tag <label>] [--session <sid>] [--model <m>] [--format <f>] [--isolated [--keep-on-error]] "<prompt>"
                                 Stream a prompt to the resolved agent's
                                 upstream CLI. Output streams to stdout
                                 verbatim — wire format depends on the
@@ -28,6 +31,18 @@ Phase 4 dispatch policies (configured via [dispatch].mode in config.toml):
   tag-routed         — '--tag <label>' picks any callable instance whose
                        tags include the label (per-call --tag overrides
                        the configured mode).
+
+Isolation:
+  --isolated         — create an ephemeral git worktree under
+                       ~/.cache/clawtool/worktrees/, dispatch the
+                       upstream CLI with that as cwd, and clean up
+                       on completion. Safe parallel multi-agent
+                       fan-out without stepping on the operator's
+                       working tree.
+  --keep-on-error    — only meaningful with --isolated. Preserves
+                       the worktree when the dispatch fails so the
+                       operator can inspect it via 'clawtool
+                       worktree show <taskID>'.
 `
 
 // runSend is the dispatcher hooked into Run().
@@ -56,13 +71,15 @@ func (a *App) runSend(argv []string) int {
 }
 
 type sendArgs struct {
-	agent   string
-	session string
-	model   string
-	format  string
-	tag     string
-	prompt  string
-	list    bool
+	agent       string
+	session     string
+	model       string
+	format      string
+	tag         string
+	prompt      string
+	list        bool
+	isolated    bool
+	keepOnError bool
 }
 
 func parseSendArgs(argv []string) (sendArgs, error) {
@@ -102,6 +119,10 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 			}
 			out.tag = argv[i+1]
 			i++
+		case "--isolated":
+			out.isolated = true
+		case "--keep-on-error":
+			out.keepOnError = true
 		case "--help", "-h":
 			out.list = false
 			out.prompt = ""
@@ -136,13 +157,45 @@ func (a *App) Send(args sendArgs) error {
 	if args.tag != "" {
 		opts["tag"] = args.tag
 	}
+
+	// Worktree isolation per ADR-014 T5: when --isolated is set, we
+	// create an ephemeral git worktree, point the upstream CLI at it
+	// via opts["cwd"], dispatch, and clean up on success. With
+	// --keep-on-error the worktree survives a failure for inspection.
+	var cleanup func()
+	if args.isolated {
+		repoPath, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("--isolated: %w", err)
+		}
+		taskID := fmt.Sprintf("send-%d", time.Now().UnixNano())
+		mgr := worktree.New()
+		workdir, c, err := mgr.Create(context.Background(), repoPath, taskID, args.agent)
+		if err != nil {
+			return fmt.Errorf("--isolated: %w", err)
+		}
+		opts["cwd"] = workdir
+		cleanup = c
+		fmt.Fprintf(a.Stderr, "clawtool: isolated worktree at %s\n", workdir)
+	}
+
 	rc, err := sup.Send(context.Background(), args.agent, args.prompt, opts)
 	if err != nil {
+		if cleanup != nil && !args.keepOnError {
+			cleanup()
+		}
 		return err
 	}
 	defer rc.Close()
-	_, err = io.Copy(a.Stdout, rc)
-	return err
+	_, copyErr := io.Copy(a.Stdout, rc)
+	if cleanup != nil {
+		if copyErr != nil && args.keepOnError {
+			fmt.Fprintf(a.Stderr, "clawtool: keeping worktree at %s (use `clawtool worktree show` to inspect)\n", opts["cwd"])
+		} else {
+			cleanup()
+		}
+	}
+	return copyErr
 }
 
 // SendList prints the supervisor's agent registry — same shape as the
