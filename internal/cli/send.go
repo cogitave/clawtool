@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/agents"
+	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/agents/worktree"
 )
 
@@ -216,8 +217,21 @@ func (a *App) Send(args sendArgs) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		store, _ := ensureBIAMRunner()
+		var task *biam.Task
 		if store != nil {
-			_, _ = store.WaitForTerminal(ctx, taskID, 250*time.Millisecond)
+			task, _ = store.WaitForTerminal(ctx, taskID, 250*time.Millisecond)
+		}
+		// --async + --isolated: the runner goroutine kept the
+		// worktree busy until WaitForTerminal returned. Now reap
+		// it (or keep on error per the flag) so we don't leak
+		// ephemeral worktrees on every async dispatch.
+		if cleanup != nil {
+			failed := task != nil && task.Status != biam.TaskDone
+			if failed && args.keepOnError {
+				fmt.Fprintf(a.Stderr, "clawtool: keeping worktree at %s (use `clawtool worktree show` to inspect)\n", opts["cwd"])
+			} else {
+				cleanup()
+			}
 		}
 		return nil
 	}
@@ -229,16 +243,23 @@ func (a *App) Send(args sendArgs) error {
 		}
 		return err
 	}
-	defer rc.Close()
 	_, copyErr := io.Copy(a.Stdout, rc)
+	// Capture upstream non-zero exit instead of dropping it via
+	// defer. A swallowed ExitError used to make a crashed codex
+	// run look like an empty success.
+	closeErr := rc.Close()
+	finalErr := copyErr
+	if finalErr == nil {
+		finalErr = closeErr
+	}
 	if cleanup != nil {
-		if copyErr != nil && args.keepOnError {
+		if finalErr != nil && args.keepOnError {
 			fmt.Fprintf(a.Stderr, "clawtool: keeping worktree at %s (use `clawtool worktree show` to inspect)\n", opts["cwd"])
 		} else {
 			cleanup()
 		}
 	}
-	return copyErr
+	return finalErr
 }
 
 // SendList prints the supervisor's agent registry — same shape as the

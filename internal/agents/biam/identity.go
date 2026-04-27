@@ -19,6 +19,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gofrs/flock"
 )
 
 // Identity carries the Ed25519 keypair plus the human-friendly host /
@@ -33,6 +35,13 @@ type Identity struct {
 // LoadOrCreateIdentity reads the seed file at path; creates a new
 // keypair on first launch. The host_id and instance_id default to
 // the host's hostname + "default" when not set in the seed metadata.
+//
+// First-launch creation is guarded by a sibling .lock file (flock):
+// two clawtool processes starting in parallel must not race two
+// keypairs into the same path, with the last-write winner stranding
+// every envelope the loser had already signed. The lock is held only
+// over the create-and-publish window — readers on a healthy file
+// never touch it.
 func LoadOrCreateIdentity(path string) (*Identity, error) {
 	if path == "" {
 		path = DefaultIdentityPath()
@@ -40,14 +49,29 @@ func LoadOrCreateIdentity(path string) (*Identity, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("biam: mkdir identity dir: %w", err)
 	}
-	body, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return createIdentity(path)
-	}
-	if err != nil {
+	if body, err := os.ReadFile(path); err == nil {
+		return parseIdentity(body)
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("biam: read identity: %w", err)
 	}
-	return parseIdentity(body)
+
+	lock := flock.New(path + ".lock")
+	if err := lock.Lock(); err != nil {
+		return nil, fmt.Errorf("biam: lock identity: %w", err)
+	}
+	defer func() {
+		_ = lock.Unlock()
+		_ = os.Remove(path + ".lock")
+	}()
+
+	// Re-read under the lock — another racer may have written the
+	// file between our first ReadFile and the lock acquisition.
+	if body, err := os.ReadFile(path); err == nil {
+		return parseIdentity(body)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("biam: read identity: %w", err)
+	}
+	return createIdentity(path)
 }
 
 // DefaultIdentityPath honours XDG_CONFIG_HOME, falls back to HOME.

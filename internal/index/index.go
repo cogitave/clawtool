@@ -81,7 +81,7 @@ func New(repo string, opts Options) *Store {
 		opts.MaxFileBytes = 200 * 1024
 	}
 	if len(opts.Ignore) == 0 {
-		opts.Ignore = []string{".git/**", "node_modules/**", "vendor/**", "dist/**", "build/**", "*.min.js"}
+		opts.Ignore = defaultIgnore()
 	}
 	if opts.Provider == "" {
 		opts.Provider = "openai"
@@ -223,6 +223,14 @@ func (s *Store) collect(ctx context.Context) ([]chromem.Document, error) {
 		if err != nil || info.Size() > s.opts.MaxFileBytes {
 			return nil
 		}
+		// Last-resort secret guard: even if the operator overrode
+		// Ignore, never embed files whose basename matches a known
+		// secret pattern. Embedding leaks the contents to whichever
+		// provider the user picked; opt-out belongs at the boundary,
+		// not in user-config bookkeeping.
+		if isLikelySecret(filepath.Base(path)) {
+			return nil
+		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return nil
@@ -314,6 +322,49 @@ func shouldIgnore(repo, path string, patterns []string) bool {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+// defaultIgnore is the baseline directory / pattern set Build skips.
+// Includes secret-bearing locations alongside the usual build /
+// vendor / lockfile noise; isLikelySecret enforces a basename guard
+// for files an operator override might have re-included.
+func defaultIgnore() []string {
+	return []string{
+		".git/**", "node_modules/**", "vendor/**", "dist/**", "build/**",
+		"*.min.js",
+		// Secret-bearing dirs — operators often forget these are
+		// world-readable to a recursive walk.
+		".env", ".env.*",
+		"secrets/**", "credentials/**", ".aws/**", ".gnupg/**", ".ssh/**",
+	}
+}
+
+// isLikelySecret matches filename forms commonly used for credentials.
+// Cheap, allow-listy: anything that *might* be a secret stays out of
+// the embedding pipeline.
+func isLikelySecret(base string) bool {
+	low := strings.ToLower(base)
+	if low == ".env" || strings.HasPrefix(low, ".env.") || strings.HasSuffix(low, ".env") {
+		return true
+	}
+	switch {
+	case strings.HasSuffix(low, ".pem"),
+		strings.HasSuffix(low, ".key"),
+		strings.HasSuffix(low, ".crt"),
+		strings.HasSuffix(low, ".p12"),
+		strings.HasSuffix(low, ".pfx"),
+		strings.HasSuffix(low, ".kdbx"),
+		strings.HasSuffix(low, ".gpg"),
+		strings.HasSuffix(low, ".asc"):
+		return true
+	}
+	switch low {
+	case "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa",
+		"credentials", "secrets", "passwords",
+		"htpasswd", ".htpasswd", ".netrc", ".pgpass":
+		return true
 	}
 	return false
 }

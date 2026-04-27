@@ -61,7 +61,13 @@ func (a *App) runUpgrade(argv []string) int {
 		return 1
 	}
 
-	if currentVersion != "" && latest.LessOrEqual(currentVersion) {
+	// LessOrEqual parses the supplied string as semver and panics on
+	// non-semver input — `(devel)` / `(unknown)` from a `go build`
+	// without -ldflags='-X version.Version' would crash the upgrade
+	// path. Treat anything that isn't a real version as "always
+	// outdated" so devs on a hand-built binary still get to upgrade
+	// to the latest tagged release.
+	if isComparableVersion(currentVersion) && latest.LessOrEqual(currentVersion) {
 		fmt.Fprintf(a.Stdout, "clawtool is up to date (%s)\n", currentVersion)
 		return 0
 	}
@@ -91,6 +97,19 @@ func (a *App) runUpgrade(argv []string) int {
 	}
 	fmt.Fprintf(a.Stdout, "✓ upgraded to %s\n", latest.Version())
 	return 0
+}
+
+// isComparableVersion reports whether v looks like real semver-ish
+// version go-selfupdate's LessOrEqual can parse. The runtime debug
+// fallbacks "(devel)" and "(unknown)" must not reach the parser.
+func isComparableVersion(v string) bool {
+	if v == "" || v == "(devel)" || v == "(unknown)" {
+		return false
+	}
+	if v[0] == '(' {
+		return false
+	}
+	return true
 }
 
 // readBinaryVersion pulls the build version from runtime/debug. When

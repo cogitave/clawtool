@@ -241,26 +241,24 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 }
 
 // buildIndexDocs assembles search descriptors from every tool clawtool will
-// register. Disabled core tools are excluded from the index too — an agent
-// shouldn't discover a tool it can't call.
+// register. The nine gateable core tools (Bash / Edit / … / Write) honour
+// their config.IsEnabled flag; the always-on surface (SendMessage,
+// AgentList, Bridge*, Task*, Verify, SemanticSearch, …) is always
+// indexed so ToolSearch returns the full v0.15+ catalog. Without this,
+// adding a new always-on tool meant agents could call it but couldn't
+// find it via ToolSearch.
 func buildIndexDocs(cfg config.Config, mgr *sources.Manager) []search.Doc {
 	var docs []search.Doc
 
-	enabled := map[string]bool{
-		"Bash":       cfg.IsEnabled("Bash").Enabled,
-		"Edit":       cfg.IsEnabled("Edit").Enabled,
-		"Glob":       cfg.IsEnabled("Glob").Enabled,
-		"Grep":       cfg.IsEnabled("Grep").Enabled,
-		"Read":       cfg.IsEnabled("Read").Enabled,
-		"ToolSearch": cfg.IsEnabled("ToolSearch").Enabled,
-		"WebFetch":   cfg.IsEnabled("WebFetch").Enabled,
-		"WebSearch":  cfg.IsEnabled("WebSearch").Enabled,
-		"Write":      cfg.IsEnabled("Write").Enabled,
+	gateable := map[string]bool{
+		"Bash": true, "Edit": true, "Glob": true, "Grep": true, "Read": true,
+		"ToolSearch": true, "WebFetch": true, "WebSearch": true, "Write": true,
 	}
 	for _, d := range core.CoreToolDocs() {
-		if enabled[d.Name] {
-			docs = append(docs, d)
+		if gateable[d.Name] && !cfg.IsEnabled(d.Name).Enabled {
+			continue
 		}
+		docs = append(docs, d)
 	}
 
 	// Aggregated source tools. We index name + description from the child's
