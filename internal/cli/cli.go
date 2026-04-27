@@ -181,6 +181,8 @@ func (a *App) Run(argv []string) int {
 		return a.runOnboard(argv[1:])
 	case "hooks":
 		return a.runHooks(argv[1:])
+	case "portal":
+		return a.runPortal(argv[1:])
 	case "recipe":
 		return a.runRecipe(argv[1:])
 	case "doctor":
@@ -375,6 +377,13 @@ Usage:
                             adapter ownership for native tool replacement).
   clawtool agent which      Show the currently-resolved default agent.
   clawtool agent unset      Clear the sticky default.
+  clawtool portal add/list/remove/use/which/unset/ask
+                            Manage saved web-UI targets (ADR-018).
+                            A portal pairs a base URL with login cookies +
+                            selectors + a 'response done' predicate.
+                            v0.16.1 ships the read-only surface; the CDP
+                            driver behind 'ask' lands in v0.16.2.
+                            Full guide: docs/portals.md.
   clawtool worktree list    List isolated worktrees with marker info.
   clawtool worktree show <taskID>
                             Print path + marker JSON for one worktree.

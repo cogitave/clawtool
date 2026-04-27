@@ -253,5 +253,41 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"browser", "headless", "scrape", "bulk", "parallel", "spa", "obscura", "crawler", "harvest"},
 		},
+		{
+			Name:        "PortalList",
+			Description: "List configured web-UI portals (saved authenticated browser targets — ADR-018). A portal pairs a base URL with login cookies, selectors, and a 'response done' predicate so PortalAsk can drive the page through Obscura.",
+			Type:        "core",
+			Keywords:    []string{"portal", "portals", "list", "browser", "target", "saved", "config", "registry"},
+		},
+		{
+			Name:        "PortalWhich",
+			Description: "Resolve the sticky-default portal — env > sticky file > single-configured fallback.",
+			Type:        "core",
+			Keywords:    []string{"portal", "which", "default", "sticky"},
+		},
+		{
+			Name:        "PortalUse",
+			Description: "Set the sticky-default portal so PortalAsk calls without an explicit name route here.",
+			Type:        "core",
+			Keywords:    []string{"portal", "use", "sticky", "default", "set"},
+		},
+		{
+			Name:        "PortalUnset",
+			Description: "Clear the sticky-default portal.",
+			Type:        "core",
+			Keywords:    []string{"portal", "unset", "clear", "sticky"},
+		},
+		{
+			Name:        "PortalRemove",
+			Description: "Remove a portal stanza from config.toml. Cookies under [scopes.\"portal.<name>\"] in secrets.toml stay in place; clean manually if no longer needed.",
+			Type:        "core",
+			Keywords:    []string{"portal", "remove", "delete", "config"},
+		},
+		{
+			Name:        "PortalAsk",
+			Description: "Drive a saved portal with the given prompt and stream the response. v0.16.1 returns a deferred-feature error after validating the resolved portal — the CDP driver lands in v0.16.2.",
+			Type:        "core",
+			Keywords:    []string{"portal", "ask", "browser", "chat", "deepseek", "perplexity", "phind", "send", "drive", "automate"},
+		},
 	}
 }
