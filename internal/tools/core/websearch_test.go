@@ -62,7 +62,7 @@ func TestBraveBackend_HappyPath(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	hits, err := b.Search(ctx, "go language", 5)
+	hits, err := b.Search(ctx, "go language", 5, SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestBraveBackend_NonOKResponse(t *testing.T) {
 	store.Set("websearch", "BRAVE_API_KEY", "anything")
 	b, _ := newBraveBackend(store)
 
-	_, err := b.Search(context.Background(), "x", 5)
+	_, err := b.Search(context.Background(), "x", 5, SearchOptions{})
 	if err == nil {
 		t.Fatal("expected error on 403")
 	}
@@ -129,6 +129,72 @@ func TestStripHTML(t *testing.T) {
 	for in, want := range cases {
 		if got := stripHTML(in); got != want {
 			t.Errorf("stripHTML(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSplitFilterList(t *testing.T) {
+	cases := map[string][]string{
+		"":                              nil,
+		"go.dev":                        {"go.dev"},
+		"go.dev,docs.python.org":        {"go.dev", "docs.python.org"},
+		"go.dev\ndocs.python.org\n":     {"go.dev", "docs.python.org"},
+		"  Go.Dev , docs.python.org   ": {"go.dev", "docs.python.org"},
+	}
+	for in, want := range cases {
+		got := splitFilterList(in)
+		if len(got) != len(want) {
+			t.Errorf("splitFilterList(%q) = %v, want %v", in, got, want)
+			continue
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("splitFilterList(%q)[%d] = %q, want %q", in, i, got[i], want[i])
+			}
+		}
+	}
+}
+
+func TestFilterHitsByDomain(t *testing.T) {
+	hits := []WebSearchHit{
+		{URL: "https://docs.python.org/3/", Title: "py docs"},
+		{URL: "https://go.dev/blog/", Title: "go blog"},
+		{URL: "https://pinterest.com/foo", Title: "pinterest"},
+		{URL: "https://stackoverflow.com/q/1", Title: "so"},
+	}
+	// Include allow-list narrows.
+	got := filterHitsByDomain(hits, SearchOptions{IncludeDomains: []string{"go.dev"}})
+	if len(got) != 1 || got[0].Title != "go blog" {
+		t.Errorf("include filter wrong: %+v", got)
+	}
+	// Exclude deny-list drops.
+	got2 := filterHitsByDomain(hits, SearchOptions{ExcludeDomains: []string{"pinterest.com"}})
+	for _, h := range got2 {
+		if strings.Contains(h.URL, "pinterest") {
+			t.Errorf("exclude failed: %+v", h)
+		}
+	}
+	// Suffix matching: "python.org" allows docs.python.org.
+	got3 := filterHitsByDomain(hits, SearchOptions{IncludeDomains: []string{"python.org"}})
+	if len(got3) != 1 || got3[0].Title != "py docs" {
+		t.Errorf("suffix include wrong: %+v", got3)
+	}
+}
+
+func TestBraveFreshness_Mapping(t *testing.T) {
+	cases := map[string]string{
+		"":      "",
+		"24h":   "pd",
+		"1d":    "pd",
+		"1w":    "pw",
+		"7d":    "pw",
+		"1m":    "pm",
+		"1y":    "py",
+		"bogus": "",
+	}
+	for in, want := range cases {
+		if got := braveFreshness(in); got != want {
+			t.Errorf("braveFreshness(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
