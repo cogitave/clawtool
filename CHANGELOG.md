@@ -5,322 +5,280 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.9.2](https://github.com/cogitave/clawtool/compare/v0.9.1...v0.9.2) (2026-04-26)
-
-
-### Features
-
-* **bridges:** scaffold bridge install recipes for codex, opencode, gemini ([9fa4481](https://github.com/cogitave/clawtool/commit/9fa448189dfd757ff6ec89f2017bf81386113337))
-
-
-### Fixes
-
-* **ci:** correct gofmt invocation in lint step ([53496ea](https://github.com/cogitave/clawtool/commit/53496ea450d8202e8542164dd0980e60ac860db4))
-* **ci:** e2e script — detect timeout vs gtimeout for macOS runners ([d92106f](https://github.com/cogitave/clawtool/commit/d92106f7f3d2da2dad839eef064ea46ec7042912))
-* **ci:** install coreutils on macOS so gtimeout exists for e2e ([f0fc3ca](https://github.com/cogitave/clawtool/commit/f0fc3cae462815f5937e204647c45f907a66844a))
-* **ci:** macOS test failures + missing ripgrep on Ubuntu ([1181728](https://github.com/cogitave/clawtool/commit/1181728fde7bd3c922b48b7e79f4ae97f8bfe1e1))
-
-## [0.9.1](https://github.com/cogitave/clawtool/compare/v0.9.0...v0.9.1) (2026-04-26)
-
-
-### Fixes
-
-* **ci:** vet unreachable-code + gofmt across the tree ([1830ee2](https://github.com/cogitave/clawtool/commit/1830ee21d151f6d839da96cd6c92b0553b6da3be))
-
-## [0.9.0](https://github.com/cogitave/clawtool/compare/v0.8.6...v0.9.0) (2026-04-26)
-
-
-### ⚠ BREAKING CHANGES
-
-* **tools:** split MCP output — pretty text + structuredContent
+## [unreleased]
 
 ### Features
 
-* **agents:** hermes-agent + openclaw adapters ([b59b1d0](https://github.com/cogitave/clawtool/commit/b59b1d000b6611562e4c397ea55e2199e4ff3ac5))
-* claude-md + agents-md recipes + clawtool no-args TUI menu ([4124290](https://github.com/cogitave/clawtool/commit/41242904d09f08329fd918dc6968aa5ed127915c))
-* **cli:** clawtool doctor — one-command diagnostic ([4607fc4](https://github.com/cogitave/clawtool/commit/4607fc4642a20b4713e4a14f15c3ba4afbcf4527))
-* **cli:** clawtool init — interactive wizard via charmbracelet/huh ([4cc54af](https://github.com/cogitave/clawtool/commit/4cc54af77b7f2c8f1dd47ec91584991e865cd311))
-* **cli:** clawtool recipe list/status/apply ([a6ec288](https://github.com/cogitave/clawtool/commit/a6ec2885f491cd040572f091584e675d9cd22a93))
-* **cli:** clawtool source catalog (alias 'available') — browse before adding ([e0d1cd9](https://github.com/cogitave/clawtool/commit/e0d1cd981c63cb27781a2460f27d87ece659cfae))
-* **cli:** wizard asks before overwriting unmanaged files ([b6b7d0e](https://github.com/cogitave/clawtool/commit/b6b7d0ee1dac80b8d45e5ba790a5688252eb4dff))
-* **cli:** wizard install prompts + brain promoted to Stable ([db88a7f](https://github.com/cogitave/clawtool/commit/db88a7f4db317797dd52bf2deb9d279b5934c511))
-* dual-scope init wizard + RecipeList/Status/Apply MCP tools ([7da0632](https://github.com/cogitave/clawtool/commit/7da06329861039449f69cbe970b24a39bfc66791))
-* **install:** add curl one-liner installer ([aa20331](https://github.com/cogitave/clawtool/commit/aa203315fd98423b0d9cfd4dc1767b79d1cbcdd1))
-* **setup:** --force flag for recipe apply (overwrite unmanaged) ([0fe9e8d](https://github.com/cogitave/clawtool/commit/0fe9e8d0bb83c61c86e50bcd916f228f69d29d4b))
-* **setup:** agent-claim recipe + fix marker reconciliation ([86df90e](https://github.com/cogitave/clawtool/commit/86df90e5074106b61d66023f927154a45cf0d327))
-* **setup:** brain recipe — claude-obsidian wrapper ([07863a6](https://github.com/cogitave/clawtool/commit/07863a6e1197b799f8a82952185851343722acbe))
-* **setup:** caveman + superclaude + claude-flow Claude-Code plugin recipes ([115b7e6](https://github.com/cogitave/clawtool/commit/115b7e69e877a91402971e6f4ebac3044040c30b))
-* **setup:** devcontainer — first runtime-category recipe ([bfc14d3](https://github.com/cogitave/clawtool/commit/bfc14d366a35a9f0700e66807818d6bf1eb2caa5))
-* **setup:** foundation for clawtool init — recipes, runner, repo-config ([1afde74](https://github.com/cogitave/clawtool/commit/1afde74dcfbe2ad08d681da2ab224d96416817b3))
-* **setup:** gh-actions-test — first ci-category recipe ([b283198](https://github.com/cogitave/clawtool/commit/b283198a3c9378ada97c209f42270429c2fbc42d))
-* **setup:** lefthook + commitlint recipe — close release-please loop locally ([f6bbb41](https://github.com/cogitave/clawtool/commit/f6bbb41ace0b1c60b4e357cc416affcc4f585dab))
-* **setup:** license — add AGPL-3.0 SPDX option ([6e1b491](https://github.com/cogitave/clawtool/commit/6e1b4915543b7c558b99d57c38f0d2fce1d9085c))
-* **setup:** prettier + golangci-lint — open the quality category ([70701aa](https://github.com/cogitave/clawtool/commit/70701aad9a48a9be258ded76dad13fa6c944fdc3))
-* **setup:** release-please + goreleaser recipes ([04bb010](https://github.com/cogitave/clawtool/commit/04bb010533c972b7ed4d1d02e1feaf964edaaed9))
-* **setup:** skill recipe pattern + Karpathy LLM Wiki ([860166b](https://github.com/cogitave/clawtool/commit/860166bf63879a3b85df9e8e1c12276629a88f28))
-* **setup:** three more recipes — license, codeowners, dependabot ([f3edfe7](https://github.com/cogitave/clawtool/commit/f3edfe78c73d27889c28065090641f8ede1630ea))
-* **skill:** clawtool skill new/list/path + SkillNew MCP tool ([2cc78de](https://github.com/cogitave/clawtool/commit/2cc78de5dc71399c9fb37e83ea39035629ff802d))
-* **tools:** split MCP output — pretty text + structuredContent ([c45192d](https://github.com/cogitave/clawtool/commit/c45192d487c065a7feb6bbd487d068d8227c9f5c))
-* **version:** update-check + 6 new catalog entries ([d08cb57](https://github.com/cogitave/clawtool/commit/d08cb57a70d1e8fbf98cee5e42ab9dd02fcfaa0d))
-
-
+- **task:** `clawtool task watch` — stream BIAM transitions to Monitor (ADR-026) (e057ba9)
+- **supervisor:** Sandbox dispatch integration (#163 closes) (0c362c4)
 ### Fixes
 
-* **agents:** claim/release write to permissions.deny, not disabledTools ([7eebd9f](https://github.com/cogitave/clawtool/commit/7eebd9f0cfb5d532dda1bd7adad36a66da14942b))
-* **ci:** bump orhun/git-cliff-action v3 to v4 ([cf4daf8](https://github.com/cogitave/clawtool/commit/cf4daf8768093c117d1822301e1d53ef1ddf6cbc))
-* **doctor:** quieter output + 5m update-cache (was 24h) ([8107321](https://github.com/cogitave/clawtool/commit/8107321324f6861695dfc5e9065bea082a0f6483))
-* **sources:** expand ${VAR} in command argv, not just env ([60c931b](https://github.com/cogitave/clawtool/commit/60c931bf9b6cbf7b69f82d618222ec45c311688f))
+- **surface:** Skill allowed-tools covers manifest + plugin includes hermes (abec5aa)## [0.21.0] - 2026-04-27
 
+### Chores
 
-### Documentation
+- **release:** V0.21.0 — Tool Manifest Registry + A2A phase 1 + release plumbing (dcc85ca)
+### Features
 
-* **contributing:** three-tier testing strategy (unit / e2e / integration) ([daf90c6](https://github.com/cogitave/clawtool/commit/daf90c6760d8ab6b299e864186d33b3014b22885))
-* **readme:** pitch v0.9 — wizard + recipes lead the README ([a1a7c69](https://github.com/cogitave/clawtool/commit/a1a7c6997f07a97692fae02a2f4f6fe7f70c5d68))
-* **readme:** reposition narrative around the toolset concept ([a31ed68](https://github.com/cogitave/clawtool/commit/a31ed687bc1fb879e13cd41214d16593bc39635f))
-* **skill:** onboarding mode — Claude can run init from a conversation ([b449881](https://github.com/cogitave/clawtool/commit/b44988199140f841002ef59993d66d9ecc95fc11))
-* strip internal ADR pointers from user-facing surfaces ([a97ba57](https://github.com/cogitave/clawtool/commit/a97ba57a9f405115ec4bd04818aeddc2c85e27c0))
-
-
+- **registry:** Step 4 — server.go flip + 30/30 tools manifest-driven (#173 closes) (1f0fb64)
+- **registry:** Step 3a — 12 individual-Register tools join the manifest (#173) (a0dccc4)
+- **registry:** Step 2 — typed manifest entries for 6 newest tools (#173) (bcf6a9e)
+- **registry:** Typed ToolSpec manifest — Step 1 of #173 (Codex's #1 ROI refactor) (8206450)
+- **a2a:** Phase 1 — Agent Card serializer + `clawtool a2a card` (ADR-024) (c35328a)
 ### Tests
 
-* **cli:** wizard helpers + dispatch + claim-diff coverage ([dcf58c2](https://github.com/cogitave/clawtool/commit/dcf58c2352d9962413204579e3aa814a85895906))
-* **e2e:** assert all 12 v0.10 recipes + all 9 categories present ([1b07c80](https://github.com/cogitave/clawtool/commit/1b07c80444836d1371c0156dc11a6c5440176f74))
-* **e2e:** cover the Recipe* MCP surface end-to-end ([c5a296c](https://github.com/cogitave/clawtool/commit/c5a296cbf3b4255414faaf08035ebe6942032199))
-* **integration:** multi-instance soak against real upstream MCP servers ([0cbb747](https://github.com/cogitave/clawtool/commit/0cbb747b09a42a52e37ed862f9dfc75c9fdf0b61))
+- **version:** Release pipeline regression tests (2952842)## [0.20.2] - 2026-04-27
 
-
-### Build
-
-* **install:** post-install cleanup — drop duplicate manual MCP registration ([bef3c3e](https://github.com/cogitave/clawtool/commit/bef3c3ed39d0946407e1e43dc15b23b14d6a8585))
-* **integration:** make integration target + nightly workflow ([68f3ef9](https://github.com/cogitave/clawtool/commit/68f3ef94db99e0a5f3c4f2d6a72493358463137f))
-
-
-### Chores
-
-* **release:** finish version sync to 0.8.6 ([9f64b24](https://github.com/cogitave/clawtool/commit/9f64b24d8c4d1fe95844e4dc180e30df35b942f9))
-* **release:** sync version refs to 0.8.6 + tighten release-please policy ([2283563](https://github.com/cogitave/clawtool/commit/228356393aa61c93e596cb863cbde17ab43ab735))
-* **repo:** privatize wiki/.obsidian/_templates/.envrc/CLAUDE.md ([4b3c1b6](https://github.com/cogitave/clawtool/commit/4b3c1b65d26c39f71f40bd5f746a90ed2a3a424d))
-
-## [0.8.4] - 2026-04-26
-
-### Features
-
-- **agents:** Add 'clawtool agents claim/release/status' for hard native-tool replacement (ADR-011) (468a082)## [0.8.3] - 2026-04-26
-
-### Features
-
-- **plugin:** Add Claude Code plugin packaging (ADR-010) (86dd403)
-### Other
-
-- Auto backup 2026-04-26 18:18:52 (d01990a)## [0.8.2] - 2026-04-26
-
-### Build
-
-- **ci:** Add GitHub Actions matrix + GoReleaser pipeline (d4f04c8)
-### Chores
-
-- **github:** Add CODEOWNERS + Dependabot config (615ac42)
-### Documentation
-
-- Add CONTRIBUTING + SECURITY + issue/PR templates (7770140)
 ### Fixes
 
-- **changelog:** Guard cliff.toml template against unreleased-commit null version (e3df3cd)## [0.8.1] - 2026-04-26
+- **release:** V0.20.2 — go-selfupdate compat + retire Release Please (0f36d89)## [0.20.1] - 2026-04-27
 
 ### Documentation
 
-- **adr-009:** Adopt versioning policy + git-cliff for changelog (1ad7798)## [0.8.0] - 2026-04-26
+- **readme:** Drop dead ADR links — wiki/ is gitignored (d071f3d)
+### Fixes
 
-### Decisions
+- **release:** V0.20.1 — gitignore BODY.md so GoReleaser stops tripping (4b2e677)## [0.20.0] - 2026-04-27
 
-- Instance scoping and tool naming convention (75479bd)
-- Positioning — replace native agent tools (98b7101)
-- ADR-004 add Distribution & Usage Scenarios
+### CI
 
-Define the two-layer model:
-- Layer 1: standalone binary (~/.local/bin/clawtool) via npm/brew/curl,
-  generic MCP server, the actual product
-- Layer 2: per-agent plugins (Claude Code, Codex, ...) as thin
-  install+registration wrappers; no state fork
+- Bump Go to 1.26.0 (chromedp dep requires it) (4ab2eaf)
+### Chores
 
-Three usage scenarios:
-A) power-user manual mcp add
-B) CC-only plugin (zero friction)
-C) multi-agent shared state via single ~/.config/clawtool/
+- **release:** V0.20.0 — multi-agent supervisor + checkpoint + rules + unattended (bd4a704)
+### Documentation
 
-Key invariant: 'install once, use everywhere' means *shared config*,
-not just a portable binary. State lives in one place per device;
-agents are thin readers; hot-reload propagates to all clients. (961aa43)
-- ADR-004 refine: multi-level tool selectors
-
-Add server, tag, and group selectors alongside per-tool dot-notation.
-Define precedence (tool > group > tag > server) with deny-wins
-at same level. New CLI commands: clawtool group create,
-clawtool tools status <selector> for resolution debugging.
-
-Addresses real-workflow gap: docker-mcp-gateway forces one-tool-at-a-time
-and 1mcp-agent only does server-level. Tags exploit the
-annotations.clawtool.tags field already spec'd in decision 3.
-
-Updated hot.md and log.md to reflect the change. (a8b3a7b)
+- **readme:** Full rewrite — "Tools. Agents. Wired." tagline + complete tool table (bb3811f)
+- **plugin:** Adopt 'Tools. Agents. Wired.' tagline (1099ae5)
+- **plugin:** Refresh About — canonical tool layer + multi-agent supervisor (ee17735)
+- Three-plane feature shipping contract + SKILL.md routing map (cf43c92)
+- **http:** Add docs/http-api.md + README link — Postman & cURL recipes (c45132c)
+- **readme:** V0.14 / v0.15 surface — BIAM, bridges, send --async, worktree, upgrade (498a241)
 ### Features
 
-- **tools:** Add Edit and Write core tools (canonical core complete) (8ab46fd)
-### Genesis
+- **unattended:** --unattended flag + per-repo trust + JSONL audit (ADR-023 phase 1) (474fa97)
+- **checkpoint:** Commit core tool — Conventional Commits + Co-Authored-By block + rules gate (ADR-022 phase 1) (a9452be)
+- **rules:** Predicate-based invariant engine + RulesCheck tool (9421e8c)
+- **bridges:** Hermes-agent — fifth supported family (NousResearch, MIT, 120K stars) (16313bf)
+- **agent:** User-defined personas — `clawtool agent new` + AgentNew tool (12c701c)
+- **biam:** TaskNotify — edge-triggered fan-in completion push (9152d3d)
+- **bash:** Background mode + BashOutput / BashKill (ADR-021 phase B) (3e9a055)
+- **websearch:** Provider-neutral filter shape — domains / recency / country / topic (1ea710d)
+- **v0.18.6:** Core tools polish phase B — Glob .gitignore + WebFetch SSRF guard (ab1647c)
+- **v0.18.1:** Bwrap engine real Wrap — Profile→argv compiler + live sandbox enforcement (01cd88e)
+- **v0.18.4:** Core tools polish phase A — Read hashes, Write Read-before-Write, Edit diff (ADR-021) (ec2dd44)
+- Dockerize clawtool — 15MB distroless static image + Compose stack (0713937)
+- **v0.18:** Clawtool sandbox surface + ADR-020 (bwrap/sandbox-exec/docker) (8c81e37)
+- Clawtool uninstall — full footprint cleanup (ce9bed7)
+- **v0.17:** Clawtool mcp generator — Go / Python / TypeScript scaffolds (b6a3359)
+- **v0.16.4:** Clawtool mcp authoring noun + surface (ADR-019) (8301353)
+- **v0.16.3:** Portal add interactive wizard (chromedp + Chrome) (3532ffa)
+- **v0.16.2:** Portal CDP driver — Ask flow + per-portal MCP aliases (8067955)
+- **v0.16.1:** Portal feature — saved web-UI targets (ADR-018) (0171284)
+- **v0.16:** BrowserFetch + BrowserScrape — Obscura-backed JS render (6cbec23)
+- **v0.15:** F5 telemetry + F6 hooks CLI + F7 process-group reaping + README (9096d7b)
+- **v0.15:** F3 hooks subsystem + F4 clawtool onboard wizard (71334d8)
+- **v0.15:** Per-instance rate limiter (F1) + clawtool upgrade subcommand (F2) (9b74041)
+- **biam:** Ship ADR-015 Phase 1 (async dispatch + signed envelopes + SQLite store) + 3 polish fixes (42b4889)
+- **v0.14:** T3 mem0 + T5 git-worktree isolation + T6 SemanticSearch (148f001)
+- **v0.14:** T1 OTel + T2 auto-lint + T4 Verify MCP tool (22994f7)
+- **serve:** POST /v1/recipe/apply + GET /v1/recipes + --mcp-http transport, plus claude/gemini transport fixes from live smoke (4b843ba)
+- **supervisor:** Ship Phase 4 of ADR-014 — dispatch policies (round-robin, failover, tag-routed) (d806663)
+- **relay:** Ship Phase 3 of ADR-014 — Docker image + clawtool-relay recipe (94130c2)
+- **serve:** Ship Phase 2 of ADR-014 — clawtool serve --listen HTTP gateway (be91f9f)
+- **agents:** Ship Phase 1 of ADR-014 — Transport, Supervisor, send/bridge CLI, MCP tools (c875a54)
+### Fixes
 
-- Initial vault scaffold — clawtool brain layer
+- **test:** Allowlist clawtool-unattended.md as CLI-verb-only (e7c3c91)
+- Fix(e2e) + feat(grep): repair CI + Grep context/multi-pattern/truncation
 
-- Standard wiki structure (sources, entities, concepts, decisions, comparisons, questions, meta)
-- Pre-seeded ADRs (001-003) for choices made today
-- Memory tools comparison + key entities and concepts
-- _templates/ for each note type
-- vault-colors.css for Obsidian
-- CLAUDE.md with project context
+Two things in one commit because the e2e fix unblocks CI and the
+Grep upgrades land cleanly together.
 
-Built on AgriciDaniel/claude-obsidian Karpathy LLM Wiki pattern. (22b7910)
+CI repair:
+  test/e2e/run.sh asserted `Glob: engine == doublestar` literal,
+  but the v0.18.6 .gitignore-aware path tags the engine as
+  `doublestar+git-ls-files` when cwd is a Git worktree (which CI
+  always is). Loosened the assertion to a regex that accepts
+  either label. Local e2e + go test pass; CI should follow.
+
+Grep upgrades (ADR-021 phase B continuation):
+
+- context_before / context_after MCP args (default 0, hard cap 50)
+  emit `rg -B` / `-A` and parse the resulting `context` events
+  into per-match Before / After string slices. Codex called this
+  "table stakes for code search".
+- patterns MCP arg (newline-separated) OR's with the primary
+  pattern via repeated `-e` flags so an agent can find both a
+  function and its callers in one tool turn.
+- Smart truncation footer now hints at the cap:
+  "truncated at N (raise max_matches up to 10000 for more)"
+  instead of just "truncated".
+- Render gained context-aware output: lines before the match
+  print as `path-N-: text`, the match keeps the conventional
+  `path:line:col: text`, lines after also use the dash form,
+  separator `--` between match groups (mirrors ripgrep CLI).
+
+The rg-JSON parser had to be reworked because rg emits Before-
+context events BEFORE the corresponding match, not after. New
+loop buffers context events as they arrive, flushes them as
+either Before of the next match (line < match.line) or After
+of the previous match (line > match.line). Tail flush attaches
+trailing context to the last match.
+
+Tests:
+- TestGrep_ContextLines drives a 5-line file through executeGrep
+  with context_before=2, context_after=2, asserts both slices
+  populate and contain the expected lines.
+- TestGrep_MultiPattern asserts two patterns OR'd in one call
+  return both matches.
+- TestGrep_TruncationMessageMentionsHardCap pure-function check
+  that the new render footer hints at the cap.
+- All 8 Grep tests + 7 Glob tests + full suite race-clean. (c5f704f)
+- **biam:** Surface NDJSON turn.failed/error events as TaskFailed (39a3b93)
+- **v0.15:** MEDIUM polish — TaskGet/TaskWait surface MessagesFor errors; store decode failures stop silently dropping rows (758aea3)
+- **v0.15:** Polish-worker HIGH+MEDIUM batch — limiter/round-robin singleton, BIAM Close errors, identity race, secret-aware index (deb19a1)
+- **worktree:** EvalSymlinks comparison for macOS /var → /private/var (e0f2987)
+- **agents:** Codex --skip-git-repo-check + transport closes stdin explicitly (aa52402)
+- **ci:** Make e2e EXIT trap tolerate already-dead background process (4b4b269)
+### Refactor
+
+- **portal:** Swap hand-rolled CDP for chromedp (ADR-007) (e6af0f2)
+### Style
+
+- Gofmt -w . — fix drift in 7 files (c95a8f8)
+### Tests
+
+- **server:** Surface drift detection — three-plane contract enforced (f96de85)
+- **portal:** Add Ask integration test (fake Browser + tagged real-Chrome) (5935e20)## [0.9.2] - 2026-04-26
+
+### Chores
+
+- **main:** Release 0.9.2 (60b1e58)
+### Features
+
+- **bridges:** Scaffold bridge install recipes for codex, opencode, gemini (9fa4481)
+### Fixes
+
+- **ci:** Install coreutils on macOS so gtimeout exists for e2e (f0fc3ca)
+- **ci:** E2e script — detect timeout vs gtimeout for macOS runners (d92106f)
+- **ci:** MacOS test failures + missing ripgrep on Ubuntu (1181728)
+- **ci:** Correct gofmt invocation in lint step (53496ea)
 ### Other
 
-- Auto backup 2026-04-26 18:03:51 (4c6c977)
-- Auto backup 2026-04-26 17:48:50 (b7f68f1)
-- Auto backup 2026-04-26 17:33:49 (5f387cf)
-- Auto backup 2026-04-26 17:18:49 (511a37a)
-- Remove accidentally-committed stub-server binary
+- Merge pull request #8 from cogitave/release-please--branches--main--components--clawtool
 
-The test fixture binary was committed in the v0.4 turn 2 commit. It's
-build output, not source. Add to .gitignore (rebuild via 'make
-stub-server'). The source at test/e2e/stub-server/main.go remains
-tracked. (48b472d)
-- Auto backup 2026-04-26 17:03:47 (35d3b21)
-- Auto backup 2026-04-26 16:48:46 (1ac4968)
-- Auto backup 2026-04-26 16:33:45 (4a9b619)
-- Auto backup 2026-04-26 16:18:44 (ba50dd4)
-- Fix Obsidian wikilink resolution
+chore(main): release 0.9.2 (644d29a)## [0.9.1] - 2026-04-26
 
-Add aliases frontmatter to all ADRs and key comparisons so
-title-form wikilinks (e.g. [[004 clawtool initial architecture
-direction]]) resolve to kebab-case filenames. Without aliases,
-Obsidian creates empty stub files at vault root.
+### Chores
 
-Removed one such stub created earlier.
+- **main:** Release 0.9.1 (9c09b6c)
+- **main:** Release 0.9.1 (28ad4f6)
+- Chore(ci)(deps): bump googleapis/release-please-action from 4 to 5
 
-Pattern: each file gets aliases for its full title and a short
-ADR-NNN form for quick references. (0b8d52c)
-- Auto backup 2026-04-26 16:03:43 (9f24ce5)
-- Research phase round 1 — universal-toolset survey + ADR-004
+Dependabot PR. release-please-action@v5 picks up newer manifest
+schema validation + faster Conventional Commits parsing. Our
+existing config (release-please-config.json with bump-minor-pre-major
++ bump-patch-for-minor-pre-major) is forward-compatible. (5d3f774)
+- Chore(ci)(deps): Bump googleapis/release-please-action from 4 to 5
 
-Surveyed 4 candidate projects (mcp-router, 1mcp-agent, metamcp,
-docker-mcp-gateway) and filed each as a wiki entity. Synthesis in
-Universal Toolset Projects Comparison identifies search-first /
-deferred tool loading as the universally-uncovered gap.
+Bumps [googleapis/release-please-action](https://github.com/googleapis/release-please-action) from 4 to 5.
+- [Release notes](https://github.com/googleapis/release-please-action/releases)
+- [Changelog](https://github.com/googleapis/release-please-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/googleapis/release-please-action/compare/v4...v5)
 
-ADR-004 locks initial architecture direction:
-- MCP-native single user-local binary, no Docker requirement
-- Search-first = deferred loading + semantic discovery
-- Tool manifest extends MCP schema via annotations.clawtool namespace
-- CLI dot-notation config + declarative file + hot-reload
-- Build new (not fork 1mcp-agent), borrow shamelessly
+---
+updated-dependencies:
+- dependency-name: googleapis/release-please-action
+  dependency-version: '5'
+  dependency-type: direct:production
+  update-type: version-update:semver-major
+...
 
-Open: language, license, ranking model, catalog source — deferred
-to prototype phase.
+Signed-off-by: dependabot[bot] <support@github.com> (4db1ea8)
+- Chore(ci)(deps): bump actions/setup-go from 5 to 6
 
-Index, log, hot cache, and per-folder _index files updated to reflect
-the new pages. (222cd03)
-### Releases
+Dependabot PR. setup-go@v6 brings Go 1.22+ defaults + fixes for
+the v5 deprecated cache-key shape. No other behavioral change in
+the workflows we ship; all matrix jobs continue to use 'go-version: stable'. (bacbac4)
+- Chore(ci)(deps): Bump actions/setup-go from 5 to 6
 
-- WebFetch + WebSearch (web tier) (d9afc35)
-- Read expanded to 9 formats (docx, xlsx, csv/tsv, html, +structured) (71891c9)
-- ToolSearch (bleve BM25) + Glob (doublestar) (92fe210)
-- V0.4 turn 2: MCP client/server proxy
+Bumps [actions/setup-go](https://github.com/actions/setup-go) from 5 to 6.
+- [Release notes](https://github.com/actions/setup-go/releases)
+- [Commits](https://github.com/actions/setup-go/compare/v5...v6)
 
-ADR-008's runtime substance: clawtool now spawns each configured source
-as a child MCP server, aggregates its tools under wire-form
-<instance>__<tool> names per ADR-006, and routes tools/call.
+---
+updated-dependencies:
+- dependency-name: actions/setup-go
+  dependency-version: '6'
+  dependency-type: direct:production
+  update-type: version-update:semver-major
+...
 
-- internal/sources/{instance,manager}.go: lifecycle manager built on
-  mark3labs/mcp-go/client.NewStdioMCPClient. Per-instance Status
-  (Starting/Running/Down/Unauthenticated) with reason strings.
-  Non-fatal start: one source failing does not block others.
-- internal/server/server.go: ServeStdio loads config + secrets, builds
-  Manager, starts sources, registers core tools (filtered by
-  config.IsEnabled), then registers aggregated source tools. Stop on
-  shutdown.
-- test/e2e/stub-server/main.go: tiny Go MCP server (echo tool) used
-  as a deterministic test fixture for both unit and e2e suites — no
-  external npm/pip dependencies needed.
-- Makefile: e2e now depends on stub-server; new 'make stub-server'
-  target.
-- internal/sources/manager_test.go: 7 unit tests + 6 SplitWireName
-  subtests. Spawns the real stub-server subprocess to exercise the
-  full stdio + protocol + lifecycle path.
-- test/e2e/run.sh: 6 new proxy assertions. Verifies stub__echo gets
-  aggregated alongside core tools, wire form uses double underscore,
-  tools/call routes correctly, and config core_tools disable still
-  works alongside source tools.
-- Smoke: clawtool serve with [sources.stub] exposes Bash/Grep/Read +
-  stub__echo; tools/call stub__echo {text: hello-routing} returns
-  echo:hello-routing routed through the proxy end-to-end.
+Signed-off-by: dependabot[bot] <support@github.com> (81f7952)
+### Fixes
 
-Tests: 65 Go unit + 29 e2e = 94 green. New: sources 7, e2e proxy 6. (5cc6ba0)
-- V0.4 turn 1: source catalog + secrets store + source CLI
+- **ci:** Vet unreachable-code + gofmt across the tree (1830ee2)## [0.9.0] - 2026-04-26
 
-Implements ADR-008's user-facing UX. Sources are config-only this
-turn — actual MCP client/server proxy spawn lands in turn 2.
+### Build
 
-Built-in catalog (internal/catalog/builtin.toml, embedded via go:embed):
-12 entries — github, slack, postgres, sqlite, filesystem, fetch,
-brave-search, google-maps, memory, sequentialthinking, time, git.
-Per-runtime command synthesis (npx/uvx/docker/binary), env templates,
-bidirectional fuzzy SuggestSimilar.
+- **install:** Post-install cleanup — drop duplicate manual MCP registration (bef3c3e)
+- **integration:** Make integration target + nightly workflow (68f3ef9)
+### Chores
 
-Secrets store (internal/secrets) at ~/.config/clawtool/secrets.toml
-mode 0600, separate from config.toml so config can be committed.
-Scope-based (instance | global), atomic save, ${VAR} interpolation
-against secrets-first then process env.
+- **main:** Release 0.9.0 (33b5790)
+- **main:** Release 0.9.0 (746af63)
+- **release:** Finish version sync to 0.8.6 (9f64b24)
+- **release:** Sync version refs to 0.8.6 + tighten release-please policy (2283563)
+- **repo:** Privatize wiki/.obsidian/_templates/.envrc/CLAUDE.md (4b3c1b6)
+### Documentation
 
-CLI subcommands (internal/cli/source.go):
-- source add <name> [--as <instance>]: catalog lookup, write config,
-  print copy-paste set-secret command for missing env
-- source list: auth status per instance
-- source remove <instance>
-- source set-secret <instance> <KEY> [--value V]: stdin fallback
-- source check: verify required env per source
+- **readme:** Pitch v0.9 — wizard + recipes lead the README (a1a7c69)
+- **skill:** Onboarding mode — Claude can run init from a conversation (b449881)
+- Strip internal ADR pointers from user-facing surfaces (a97ba57)
+- **contributing:** Three-tier testing strategy (unit / e2e / integration) (daf90c6)
+- **readme:** Reposition narrative around the toolset concept (a31ed68)
+### Features
 
-Fixed stdlib-flag-doesn't-intersperse via reorderFlagsFirst helper
-so 'source add github --as github-work' parses correctly.
+- **cli:** Clawtool source catalog (alias 'available') — browse before adding (e0d1cd9)
+- **setup:** Lefthook + commitlint recipe — close release-please loop locally (f6bbb41)
+- **agents:** Hermes-agent + openclaw adapters (b59b1d0)
+- Claude-md + agents-md recipes + clawtool no-args TUI menu (4124290)
+- **skill:** Clawtool skill new/list/path + SkillNew MCP tool (2cc78de)
+- **setup:** Skill recipe pattern + Karpathy LLM Wiki (860166b)
+- **setup:** Caveman + superclaude + claude-flow Claude-Code plugin recipes (115b7e6)
+- **version:** Update-check + 6 new catalog entries (d08cb57)
+- **cli:** Clawtool doctor — one-command diagnostic (4607fc4)
+- **cli:** Wizard asks before overwriting unmanaged files (b6b7d0e)
+- **setup:** --force flag for recipe apply (overwrite unmanaged) (0fe9e8d)
+- **setup:** License — add AGPL-3.0 SPDX option (6e1b491)
+- **cli:** Wizard install prompts + brain promoted to Stable (db88a7f)
+- **setup:** Devcontainer — first runtime-category recipe (bfc14d3)
+- **setup:** Prettier + golangci-lint — open the quality category (70701aa)
+- **setup:** Gh-actions-test — first ci-category recipe (b283198)
+- **setup:** Brain recipe — claude-obsidian wrapper (07863a6)
+- Dual-scope init wizard + RecipeList/Status/Apply MCP tools (7da0632)
+- **cli:** Clawtool init — interactive wizard via charmbracelet/huh (4cc54af)
+- **setup:** Release-please + goreleaser recipes (04bb010)
+- **setup:** Agent-claim recipe + fix marker reconciliation (86df90e)
+- **cli:** Clawtool recipe list/status/apply (a6ec288)
+- **setup:** Three more recipes — license, codeowners, dependabot (f3edfe7)
+- **tools:** Split MCP output — pretty text + structuredContent (c45192d)
+- **setup:** Foundation for clawtool init — recipes, runner, repo-config (1afde74)
+- **install:** Add curl one-liner installer (aa20331)
+### Fixes
 
-Tests: 58 Go unit + 23 e2e = 81 green. New: catalog 11, secrets 7,
-cli source 13.
+- **doctor:** Quieter output + 5m update-cache (was 24h) (8107321)
+- **agents:** Claim/release write to permissions.deny, not disabledTools (7eebd9f)
+- **sources:** Expand ${VAR} in command argv, not just env (60c931b)
+- **ci:** Bump orhun/git-cliff-action v3 to v4 (cf4daf8)
+### Tests
 
-Naming + invariants from ADR-006 enforced: instance kebab-case,
-multi-instance forces --as, secrets scoped per instance with
-global fallback. Long-form 'source add custom -- <command>' and
-proxy spawning are turn 2. (813773c)
-- Grep (ripgrep) + Read (stdlib/pdftotext/ipynb) + ADR-008 (f9eb60e)
-- Tests + config + CLI + ADR-007 leverage-best-in-class (fee08d0)
-- V0.1 prototype: working clawtool MCP server with Bash tool
+- **e2e:** Assert all 12 v0.10 recipes + all 9 categories present (1b07c80)
+- **e2e:** Cover the Recipe* MCP surface end-to-end (c5a296c)
+- **cli:** Wizard helpers + dispatch + claim-diff coverage (dcf58c2)
+- **integration:** Multi-instance soak against real upstream MCP servers (0cbb747)## [0.8.6] - 2026-04-26
 
-End-to-end loop proven: build → install → register with Claude Code →
-tools/list shows Bash → tools/call returns structured JSON.
+### Features
 
-Stack:
-- Go 1.25.5, github.com/mark3labs/mcp-go v0.49.0
-- module github.com/cogitave/clawtool
-- cmd/clawtool/main.go entrypoint with serve/version/help
-- internal/server, internal/version, internal/tools/core
-
-Bash tool quality bar (ADR-005):
-- timeout-safe via process-group SIGKILL (Setpgid + Kill -PGID)
-- stdout preserved on timeout
-- structured result JSON: stdout/stderr/exit_code/duration_ms/timed_out/cwd
-- 500ms timeout test with 'sleep 3' returns at 501ms
-
-Naming (ADR-006):
-- PascalCase 'Bash' for core tool
-- Wire form mcp__clawtool__Bash
-
-Installed at ~/.local/bin/clawtool; registered with claude mcp
-add-json at user scope; claude mcp list reports Connected.
-
-Documented in wiki/sources/prototype-bringup-2026-04-26.md.
-Deferred to v0.2: other core tools, ToolSearch, config.toml,
-CLI subcommands, source instances, secret redaction. (f9c3b03)
+- Initial public 0.8.6 release of clawtool (313a183)

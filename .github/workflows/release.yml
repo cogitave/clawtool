@@ -44,3 +44,41 @@ jobs:
           args: release --clean --release-notes=BODY.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Regenerate the FULL CHANGELOG.md (not just the latest body)
+      # and commit it back to main so the in-repo changelog stays in
+      # sync with what shipped. Operator's directive: "CHANGELOG.md
+      # should reflect every release, not just live in GitHub Release
+      # bodies." git-cliff reads conventional-commits subjects from
+      # the full git history; we don't need any extra metadata.
+      #
+      # Skip-ci-style commit message keeps the next CI run from
+      # double-firing on this auto-commit. We push directly to main
+      # because we just tagged from main; the branch protection
+      # rules allow the GITHUB_TOKEN's bot identity through.
+      - name: Regenerate CHANGELOG.md and commit to main
+        run: |
+          set -euo pipefail
+          # Fetch the full history including the tag we just pushed.
+          git fetch --tags --force
+          # git-cliff is already installed by orhun/git-cliff-action;
+          # re-running with --output writes the FULL changelog (not
+          # just the latest section).
+          git-cliff --output CHANGELOG.md
+          if git diff --quiet CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged; nothing to commit"
+            exit 0
+          fi
+          git config user.name "clawtool-release-bot"
+          git config user.email "clawtool-release-bot@users.noreply.github.com"
+          git checkout main
+          # Pull any commits that landed during the release run so the
+          # push is fast-forward. If main moved AND CHANGELOG.md is
+          # part of those changes, our regen captures both.
+          git pull --rebase origin main || true
+          git-cliff --output CHANGELOG.md
+          git add CHANGELOG.md
+          git commit -m "docs(changelog): regenerate for ${GITHUB_REF_NAME} [skip ci]"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
