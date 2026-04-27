@@ -1,7 +1,7 @@
 {
   "name": "clawtool",
   "version": "0.8.6",
-  "description": "Canonical tool layer + multi-agent supervisor for AI coding agents. Replaces native Bash/Read/Edit/Write/Grep/Glob with timeout-safe, structured-output, format-aware equivalents; dispatches to Claude Code / Codex / Opencode / Gemini via async BIAM (bidirectional inter-agent messaging) with edge-triggered TaskNotify fan-in; aggregates configurable MCP source servers; bundles sandbox profiles (bwrap / sandbox-exec / docker), saved web-UI portals, an MCP scaffolder, and a search-first ToolSearch for deferred tool discovery. Ships as a Claude Code marketplace plugin — install once, use everywhere.",
+  "description": "Tools. Agents. Wired. — the canonical tool layer that wires every AI coding agent (Claude Code / Codex / Opencode / Gemini) onto one timeout-safe, structured-output surface with multi-agent dispatch, sandbox profiles, and search-first discovery.",
   "author": {
     "name": "Bahadır Arda",
     "url": "https://github.com/bahadirarda"
