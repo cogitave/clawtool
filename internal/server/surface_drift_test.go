@@ -164,12 +164,15 @@ func TestSurfaceDrift_SlashCommandsHaveBackingTool(t *testing.T) {
 	}
 
 	// Top-level slash commands that aren't bound to a single MCP
-	// tool — they orchestrate a flow or render a status panel.
+	// tool — they orchestrate a flow, render a status panel, or
+	// surface a CLI verb (`clawtool unattended grant`, etc.) that
+	// has no MCP-tool counterpart.
 	topLevel := map[string]bool{
 		"clawtool-search.md":      true,
 		"clawtool-source-add.md":  true,
 		"clawtool-source-list.md": true,
 		"clawtool-tools-list.md":  true,
+		"clawtool-unattended.md":  true, // CLI verb — `clawtool unattended <grant|revoke|...>`
 	}
 
 	known := map[string]bool{}
