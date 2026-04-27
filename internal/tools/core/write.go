@@ -14,9 +14,11 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cogitave/clawtool/internal/hooks"
@@ -24,6 +26,72 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
+
+// guardReadBeforeWrite enforces ADR-021's Read-before-Write
+// invariant. Returns nil to proceed, or a descriptive error the
+// caller surfaces verbatim. Never panics; never reads the
+// existing file body — only os.Stat for existence + the session
+// registry for the prior-Read record.
+func guardReadBeforeWrite(ctx context.Context, path, mode string, mustNotExist, unsafeOverwrite bool) error {
+	exists := false
+	if info, err := os.Stat(path); err == nil {
+		if info.IsDir() {
+			// Let executeWrite emit the directory error.
+			return nil
+		}
+		exists = true
+	}
+
+	switch mode {
+	case "create":
+		if exists {
+			return fmt.Errorf("Write mode=\"create\" but %q already exists; use mode=\"overwrite\" or pick a different path", path)
+		}
+		return nil
+	case "", "overwrite":
+		// fall through to the overwrite branch below.
+	default:
+		return fmt.Errorf("Write mode must be \"\" | \"create\" | \"overwrite\" (got %q)", mode)
+	}
+
+	if mustNotExist && exists {
+		return fmt.Errorf("Write must_not_exist=true but %q already exists", path)
+	}
+
+	if !exists {
+		// Brand-new file via the implicit overwrite path. We
+		// allow it (matches pre-ADR-021 behaviour) but the
+		// agent is encouraged to use mode="create" for clarity.
+		return nil
+	}
+
+	if unsafeOverwrite {
+		return nil // explicit opt-out, loud at call site
+	}
+
+	sid := SessionKeyFromContext(ctx)
+	rec, ok := Sessions.ReadOf(sid, path)
+	if !ok {
+		return errors.New(
+			"Write refused: this session has not Read " + path + " — Read it first " +
+				"(or pass mode=\"create\" for a brand-new file, or " +
+				"unsafe_overwrite_without_read=true to bypass the ADR-021 guardrail).",
+		)
+	}
+	currentHash, err := HashFile(path)
+	if err != nil {
+		return fmt.Errorf("hash %q: %w", path, err)
+	}
+	if currentHash != rec.FileHash {
+		return errors.New(
+			"Write refused: " + path + " changed since this session Read it " +
+				"(file_hash mismatch — likely an external edit). Re-Read the " +
+				"file before overwriting, or pass " +
+				"unsafe_overwrite_without_read=true to bypass.",
+		)
+	}
+	return nil
+}
 
 // WriteResult is the uniform shape returned to the agent.
 type WriteResult struct {
@@ -57,6 +125,12 @@ func RegisterWrite(s *server.MCPServer) {
 			mcp.Description("Force a specific style: lf | crlf | cr. Overrides preserve_line_endings.")),
 		mcp.WithString("cwd",
 			mcp.Description("Working directory for relative paths. Defaults to $HOME.")),
+		mcp.WithString("mode",
+			mcp.Description("\"create\" to require the file does NOT exist (brand-new file flow); \"overwrite\" to require a prior Read on the same MCP session of an existing file. Default \"overwrite\". ADR-021 Read-before-Write guardrail.")),
+		mcp.WithBoolean("must_not_exist",
+			mcp.Description("Companion of mode=\"create\": if true, fail when the path already exists. Default false (legacy passthrough; mode=\"create\" implies true).")),
+		mcp.WithBoolean("unsafe_overwrite_without_read",
+			mcp.Description("Bypass the Read-before-Write check. Loud, opt-in. Use only when the operator has confirmed they intend to overwrite a file the agent has not Read this session. ADR-021.")),
 	)
 	s.AddTool(tool, runWrite)
 }
@@ -74,8 +148,20 @@ func runWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult
 	preserveEndings := req.GetBool("preserve_line_endings", true)
 	forced := req.GetString("line_endings", "")
 	cwd := req.GetString("cwd", "")
+	mode := strings.ToLower(strings.TrimSpace(req.GetString("mode", "")))
+	mustNotExist := req.GetBool("must_not_exist", false)
+	unsafeOverwrite := req.GetBool("unsafe_overwrite_without_read", false)
 
 	resolved := resolvePath(path, cwd)
+
+	// ADR-021 Read-before-Write guardrail.
+	if guardErr := guardReadBeforeWrite(ctx, resolved, mode, mustNotExist, unsafeOverwrite); guardErr != nil {
+		return resultOf(WriteResult{
+			BaseResult: BaseResult{Operation: "Write", ErrorReason: guardErr.Error()},
+			Path:       resolved,
+		}), nil
+	}
+
 	if mgr := hooks.Get(); mgr != nil {
 		if hookErr := mgr.Emit(ctx, hooks.EventPreEdit, map[string]any{
 			"path":  resolved,

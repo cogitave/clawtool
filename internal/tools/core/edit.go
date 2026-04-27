@@ -37,6 +37,17 @@ type EditResult struct {
 	SizeBytesAfter      int64          `json:"size_bytes_after"`
 	LineEndings         string         `json:"line_endings"`
 	LintFindings        []lint.Finding `json:"lint_findings,omitempty"`
+
+	// HashBefore / HashAfter let the model verify exactly what
+	// changed (ADR-021). Both are SHA-256 hex of the file's raw
+	// bytes — pre-edit and post-edit.
+	HashBefore string `json:"hash_before,omitempty"`
+	HashAfter  string `json:"hash_after,omitempty"`
+
+	// DiffUnified is a tiny `diff -u`-style patch of the change.
+	// Always populated on a successful edit; empty when the edit
+	// was a no-op or failed.
+	DiffUnified string `json:"diff_unified,omitempty"`
 }
 
 // RegisterEdit adds the Edit tool to the given MCP server.
@@ -195,6 +206,8 @@ func executeEdit(path, oldStr, newStr string, replaceAll bool) EditResult {
 		res.DurationMs = time.Since(start).Milliseconds()
 		return res
 	}
+	res.HashBefore = hashBytes(raw)
+	rawBefore := raw
 
 	bom, body := detectBOM(raw)
 	endings := detectLineEndings(body)
@@ -247,6 +260,75 @@ func executeEdit(path, oldStr, newStr string, replaceAll bool) EditResult {
 	}
 	res.Replaced = true
 	res.SizeBytesAfter = int64(len(final))
+	res.HashAfter = hashBytes(final)
+	res.DiffUnified = unifiedDiff(path, rawBefore, final)
 	res.DurationMs = time.Since(start).Milliseconds()
 	return res
+}
+
+// unifiedDiff produces a small `diff -u`-style patch between
+// before and after. We don't shell out to /usr/bin/diff because
+// the change is one substring replacement — a tiny line-by-line
+// walk is sufficient and produces no extra dependency. Output
+// header carries the path so the diff renders correctly when
+// piped through `patch` or surfaced in chat.
+func unifiedDiff(path string, before, after []byte) string {
+	if string(before) == string(after) {
+		return ""
+	}
+	beforeLines := strings.Split(strings.TrimRight(string(before), "\n"), "\n")
+	afterLines := strings.Split(strings.TrimRight(string(after), "\n"), "\n")
+	common := lcsLen(beforeLines, afterLines)
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "--- a/%s\n+++ b/%s\n", path, path)
+	// Single hunk covering the whole file. Cheap; for one-shot
+	// substring edits the change region is small. For large
+	// rewrites the model still gets the context.
+	fmt.Fprintf(&b, "@@ -1,%d +1,%d @@\n", len(beforeLines), len(afterLines))
+
+	// Walk in lock-step; emit `-`/`+` for diverging lines, ` `
+	// for matching ones. Caps at ~200 lines of output so a giant
+	// multi-line edit doesn't bloat the response.
+	const maxOut = 200
+	written := 0
+	i, j := 0, 0
+	for i < len(beforeLines) && j < len(afterLines) {
+		if written > maxOut {
+			b.WriteString("…\n")
+			break
+		}
+		if beforeLines[i] == afterLines[j] {
+			fmt.Fprintf(&b, " %s\n", beforeLines[i])
+			i++
+			j++
+			written++
+			continue
+		}
+		fmt.Fprintf(&b, "-%s\n", beforeLines[i])
+		fmt.Fprintf(&b, "+%s\n", afterLines[j])
+		i++
+		j++
+		written += 2
+	}
+	for ; i < len(beforeLines) && written <= maxOut; i++ {
+		fmt.Fprintf(&b, "-%s\n", beforeLines[i])
+		written++
+	}
+	for ; j < len(afterLines) && written <= maxOut; j++ {
+		fmt.Fprintf(&b, "+%s\n", afterLines[j])
+		written++
+	}
+	_ = common // reserved for a future LCS-driven diff if we want better hunks
+	return b.String()
+}
+
+// lcsLen is a placeholder for a future LCS-based diff. Today the
+// caller only consults the line counts; we keep the helper around
+// so the signature for the v2 algorithm is already exported.
+func lcsLen(a, b []string) int {
+	if len(a) < len(b) {
+		return len(a)
+	}
+	return len(b)
 }
