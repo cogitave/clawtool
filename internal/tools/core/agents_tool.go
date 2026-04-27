@@ -18,9 +18,19 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/agents"
+	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
+
+// biamStore is the process-wide BIAM SQLite handle shared with the
+// agents/biam runner. Server boot calls SetBiamStore once init
+// succeeds; the Task* MCP tools read from it. Nil store → tools
+// return a "not configured" error.
+var biamStore *biam.Store
+
+// SetBiamStore registers the process-wide BIAM store. Idempotent.
+func SetBiamStore(s *biam.Store) { biamStore = s }
 
 const sendMessageBufferCapBytes = 5 * 1024 * 1024 // 5 MB cap on returned content
 
@@ -32,11 +42,17 @@ type sendMessageResult struct {
 	Family    string `json:"family"`
 	Content   string `json:"content"`
 	Truncated bool   `json:"truncated,omitempty"`
+	TaskID    string `json:"task_id,omitempty"`
+	Bidi      bool   `json:"bidi,omitempty"`
 }
 
 func (r sendMessageResult) Render() string {
 	if r.IsError() {
 		return r.ErrorLine(r.Instance)
+	}
+	if r.Bidi {
+		return r.SuccessLine(fmt.Sprintf("submitted task %s · %s", r.TaskID, r.Instance),
+			"async (use TaskGet / TaskWait to poll)")
 	}
 	var b strings.Builder
 	b.WriteString(r.HeaderLine(fmt.Sprintf("%s · %s", r.Instance, r.Family)))
@@ -112,6 +128,8 @@ func RegisterAgentTools(s *server.MCPServer) {
 				mcp.Description("Working directory for the upstream CLI. Defaults to current process cwd.")),
 			mcp.WithString("tag",
 				mcp.Description("Tag-routed dispatch (Phase 4). When set, picks any callable instance whose tags include this label. Overrides the configured dispatch.mode for this call.")),
+			mcp.WithBoolean("bidi",
+				mcp.Description("ADR-015 BIAM async mode. When true, returns a task_id immediately + persists the upstream stream into the BIAM store; pair with TaskGet / TaskWait. Default false (synchronous, buffered single payload).")),
 		),
 		runSendMessage,
 	)
@@ -143,6 +161,7 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	format := req.GetString("format", "")
 	cwd := req.GetString("cwd", "")
 	tag := req.GetString("tag", "")
+	bidi := req.GetBool("bidi", false)
 
 	start := time.Now()
 	out := sendMessageResult{BaseResult: BaseResult{Operation: "SendMessage", Engine: "supervisor"}}
@@ -179,6 +198,19 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 	if tag != "" {
 		opts["tag"] = tag
+	}
+
+	if bidi {
+		taskID, err := sup.SubmitAsync(ctx, agentName, prompt, opts)
+		if err != nil {
+			out.ErrorReason = err.Error()
+			out.DurationMs = time.Since(start).Milliseconds()
+			return resultOf(out), nil
+		}
+		out.TaskID = taskID
+		out.Bidi = true
+		out.DurationMs = time.Since(start).Milliseconds()
+		return resultOf(out), nil
 	}
 
 	rc, err := sup.Send(ctx, agentName, prompt, opts)

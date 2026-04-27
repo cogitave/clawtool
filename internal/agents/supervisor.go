@@ -47,6 +47,13 @@ type Supervisor interface {
 	Agents(ctx context.Context) ([]Agent, error)
 	Send(ctx context.Context, instance, prompt string, opts map[string]any) (io.ReadCloser, error)
 	Resolve(ctx context.Context, requested string) (Agent, error)
+
+	// SubmitAsync persists the prompt + spawns a background dispatch,
+	// returning a task_id immediately. Callers poll / wait via the
+	// BIAM TaskGet / TaskWait surfaces. Errors out when the BIAM
+	// runner isn't wired (e.g. a test or server boot that skipped
+	// BIAM init).
+	SubmitAsync(ctx context.Context, instance, prompt string, opts map[string]any) (string, error)
 }
 
 // supervisor is the default Supervisor implementation. Composed of:
@@ -59,6 +66,7 @@ type supervisor struct {
 	stickyPath string                  // override for tests; default is computed
 	rrState    *roundRobinState        // round-robin counters; one supervisor = one rotation state
 	observer   *observability.Observer // optional; nil → no instrumentation
+	biam       BiamRunner              // optional; nil → SubmitAsync errors out
 }
 
 // globalObserver is the process-wide OTel observer NewSupervisor
@@ -74,6 +82,23 @@ var globalObserver *observability.Observer
 // disable. Idempotent.
 func SetGlobalObserver(obs *observability.Observer) { globalObserver = obs }
 
+// globalBiamRunner is the process-wide BIAM runner NewSupervisor wires
+// async dispatches through. Server boot calls SetGlobalBiamRunner; the
+// CLI/MCP/HTTP send paths pick it up implicitly via the supervisor.
+var globalBiamRunner BiamRunner
+
+// BiamRunner is the small subset of *biam.Runner the agents package
+// needs. Defining it as an interface here lets us avoid an import
+// cycle (biam imports agents indirectly through the runner glue) and
+// makes the Supervisor testable without a real SQLite store.
+type BiamRunner interface {
+	Submit(ctx context.Context, instance, prompt string, opts map[string]any) (string, error)
+}
+
+// SetGlobalBiamRunner registers the process-wide async runner. Pass
+// nil to disable async submission (callers fall back to streaming).
+func SetGlobalBiamRunner(r BiamRunner) { globalBiamRunner = r }
+
 // NewSupervisor wires the default supervisor. Tests inject custom
 // loaders / transports.
 func NewSupervisor() Supervisor {
@@ -87,7 +112,19 @@ func NewSupervisor() Supervisor {
 		},
 		rrState:  &roundRobinState{},
 		observer: globalObserver,
+		biam:     globalBiamRunner,
 	}
+}
+
+// SubmitAsync routes through the global BIAM runner. The runner does
+// its own dispatch (which calls back into Supervisor.Send) so the
+// caller gets a task_id immediately and the upstream stream is
+// persisted to SQLite.
+func (s *supervisor) SubmitAsync(ctx context.Context, instance, prompt string, opts map[string]any) (string, error) {
+	if s.biam == nil {
+		return "", errors.New("biam: async runner not configured (server boot did not init BIAM)")
+	}
+	return s.biam.Submit(ctx, instance, prompt, opts)
 }
 
 // NewSupervisorWithObserver wires the default supervisor and attaches
@@ -110,7 +147,13 @@ func defaultLoadConfig() (config.Config, error) {
 //     `clawtool bridge add codex` flow yields one usable instance
 //     without further config).
 func (s *supervisor) Agents(_ context.Context) ([]Agent, error) {
-	cfg, _ := s.loadConfig()
+	cfg, err := s.loadConfig()
+	if err != nil {
+		// Don't silently swallow a malformed config and pretend the
+		// registry is empty — surface so the operator sees the parse
+		// error and fixes ~/.config/clawtool/config.toml.
+		return nil, fmt.Errorf("load config: %w", err)
+	}
 	out := make([]Agent, 0, len(cfg.Agents)+4)
 	configuredFamilies := map[string]bool{}
 

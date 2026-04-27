@@ -58,7 +58,7 @@ echo "$list_response" | grep -q '"name":"Bash"' \
   || fail "tools/list: Bash tool missing"
 pass "tools/list: Bash tool registered (PascalCase per ADR-006)"
 
-for t in Glob ToolSearch WebFetch WebSearch Edit Write SendMessage AgentList BridgeList BridgeAdd BridgeRemove BridgeUpgrade Verify SemanticSearch; do
+for t in Glob ToolSearch WebFetch WebSearch Edit Write SendMessage AgentList BridgeList BridgeAdd BridgeRemove BridgeUpgrade Verify SemanticSearch TaskGet TaskWait TaskList; do
   if ! echo "$list_response" | grep -q "\"name\":\"$t\""; then
     fail "tools/list: $t missing"
   fi

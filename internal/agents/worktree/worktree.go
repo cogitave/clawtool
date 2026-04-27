@@ -31,6 +31,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -149,13 +150,11 @@ func (m *manager) Create(ctx context.Context, repoPath, taskID, agent string) (s
 		return "", nil, fmt.Errorf("worktree: write marker: %w", err)
 	}
 
-	cleaned := false
+	var once sync.Once
 	cleanup := func() {
-		if cleaned {
-			return
-		}
-		cleaned = true
-		_ = removeWorktree(ctx, repoRoot, workdir, m.lockDir)
+		once.Do(func() {
+			_ = removeWorktree(ctx, repoRoot, workdir, m.lockDir)
+		})
 	}
 	return workdir, cleanup, nil
 }

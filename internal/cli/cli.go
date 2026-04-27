@@ -173,6 +173,8 @@ func (a *App) Run(argv []string) int {
 		return a.runSend(argv[1:])
 	case "worktree":
 		return a.runWorktree(argv[1:])
+	case "task":
+		return a.runTask(argv[1:])
 	case "recipe":
 		return a.runRecipe(argv[1:])
 	case "doctor":
