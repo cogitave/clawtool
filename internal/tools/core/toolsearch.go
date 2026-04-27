@@ -224,6 +224,24 @@ func CoreToolDocs() []search.Doc {
 			Keywords:    []string{"upgrade", "update", "bridge", "plugin", "refresh"},
 		},
 		{
+			Name:        "RecipeList",
+			Description: "List clawtool's project-setup recipes (governance, commits, release, CI, quality, supply-chain, knowledge, agents, runtime). Each recipe injects a canonical config slice so a fresh repo gets the operator's standards in one apply.",
+			Type:        "core",
+			Keywords:    []string{"recipe", "recipes", "list", "init", "setup", "scaffold", "release-please", "dependabot", "codeowners", "license"},
+		},
+		{
+			Name:        "RecipeStatus",
+			Description: "Report which recipes are already applied vs absent for the current repo. Use BEFORE RecipeApply to avoid re-installing or to surface drift.",
+			Type:        "core",
+			Keywords:    []string{"recipe", "status", "detect", "absent", "applied", "drift"},
+		},
+		{
+			Name:        "RecipeApply",
+			Description: "Apply one project-setup recipe by name (license, codeowners, conventional-commits, release-please, dependabot, brain, ...). Idempotent — re-applying is safe.",
+			Type:        "core",
+			Keywords:    []string{"recipe", "apply", "install", "init", "setup", "scaffold"},
+		},
+		{
 			Name:        "Verify",
 			Description: "Run a repo's tests / lints / typechecks via whichever runner it declares (Make / pnpm / npm / go / pytest / ruby / cargo / just). Returns one structured pass/fail per check. Buffered single payload — for streaming output use Bash.",
 			Type:        "core",
