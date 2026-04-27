@@ -172,6 +172,21 @@ func ParseCookies(raw string) ([]Cookie, error) {
 	return nil, fmt.Errorf("portal: cookies_json must be a JSON array or object")
 }
 
+// MarshalCookies serialises the cookies to the JSON array shape the
+// secrets.toml `cookies_json` field stores. Mirror of ParseCookies
+// — round-trips cleanly. Returns the JSON as a string because
+// secrets.Store.Set takes string values.
+func MarshalCookies(cookies []Cookie) (string, error) {
+	if len(cookies) == 0 {
+		return "[]", nil
+	}
+	b, err := json.MarshalIndent(cookies, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("portal: marshal cookies: %w", err)
+	}
+	return string(b), nil
+}
+
 // AssertAuthCookies checks that every name in want exists in have.
 // Used after ParseCookies to catch a cookies.json export that's
 // missing the actual session cookie (common: user copied a single
