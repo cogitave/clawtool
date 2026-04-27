@@ -40,6 +40,12 @@ func (geminiTransport) Send(ctx context.Context, prompt string, opts map[string]
 		format = "text"
 	}
 	args = append(args, "--output-format", format)
+	if o.Unattended {
+		// Gemini's elevation flag — bypass tool-call confirmation
+		// prompts. Operator opted in via `clawtool send --unattended`
+		// (ADR-023); the audit log already records the intent.
+		args = append(args, "--yolo")
+	}
 	args = append(args, o.ExtraArgs...)
 
 	// Gemini has no native session-resume; SessionID is ignored at

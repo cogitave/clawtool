@@ -47,6 +47,17 @@ type SendOptions struct {
 	Cwd       string   // working directory for the upstream CLI
 	ExtraArgs []string // raw passthrough argv appended to the upstream command
 
+	// Unattended is true when the dispatch is running under
+	// `clawtool send --unattended` (ADR-023). Each transport
+	// translates this into its upstream's elevation flag
+	// (--dangerously-skip-permissions for claude,
+	// --dangerously-bypass-approvals-and-sandbox for codex,
+	// --yolo for gemini / opencode, etc.) so the model actually
+	// gets the permissions the audit log claims it has. Without
+	// this flag the upstream CLI will still prompt for tool
+	// approval — defeating the entire feature.
+	Unattended bool
+
 	// Sandbox is the resolved sandbox.Profile to wrap the upstream
 	// process in (ADR-020). When non-nil, startStreamingExec
 	// applies the host-native sandbox.Engine.Wrap on the spawned
@@ -90,6 +101,12 @@ func ParseOptions(opts map[string]any) SendOptions {
 	// the contract loose for callers that don't care.
 	if v, ok := opts["sandbox"].(*sandbox.Profile); ok {
 		out.Sandbox = v
+	}
+	// Unattended marker (ADR-023). Set by send.go when
+	// `--unattended | --yolo` is passed; transports translate it
+	// into upstream-specific elevation flags.
+	if v, ok := opts["unattended"].(bool); ok {
+		out.Unattended = v
 	}
 	return out
 }
