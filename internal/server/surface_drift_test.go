@@ -244,6 +244,81 @@ func TestSurfaceDrift_AllowlistEntries(t *testing.T) {
 	}
 }
 
+// TestSurfaceDrift_SkillAllowedToolsCoversManifest asserts every
+// tool in the manifest also appears in skills/clawtool/SKILL.md's
+// frontmatter `allowed-tools` whitelist (with the mcp__clawtool__
+// prefix). Without this, the SKILL routing-map can recommend a
+// tool that the agent's runtime then refuses to call.
+//
+// Codex's pass-2 review (BIAM task 4538329f) flagged this as a
+// concrete hostile-contributor failure mode: "add a tool + routing
+// table entry but leave it unusable because SKILL.md frontmatter
+// allowed-tools isn't checked — current test passes anyway."
+func TestSurfaceDrift_SkillAllowedToolsCoversManifest(t *testing.T) {
+	root := repoRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, "skills", "clawtool", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read SKILL.md: %v", err)
+	}
+	src := string(body)
+
+	// Locate the `allowed-tools:` frontmatter line (single line per
+	// agentskills.io convention; whitespace-separated entries).
+	allowedLine := ""
+	for _, line := range strings.Split(src, "\n") {
+		if strings.HasPrefix(line, "allowed-tools:") {
+			allowedLine = strings.TrimPrefix(line, "allowed-tools:")
+			break
+		}
+	}
+	if allowedLine == "" {
+		t.Fatal("SKILL.md missing `allowed-tools:` frontmatter line")
+	}
+	allowedSet := map[string]bool{}
+	for _, tok := range strings.Fields(allowedLine) {
+		allowedSet[strings.TrimPrefix(tok, "mcp__clawtool__")] = true
+	}
+
+	// SKILL allowlist exemptions: native (non-MCP) tools that the
+	// SKILL declares but aren't shipped through clawtool's MCP
+	// server. These never need a manifest entry.
+	skillAllowlistExempt := map[string]bool{
+		// Recipes invoke `Bash` / `Read` / `Edit` etc. natively when
+		// clawtool's tools are gated off; the SKILL allowlist intentionally
+		// stays narrow to clawtool's surface.
+	}
+
+	var missing []string
+	for _, doc := range core.CoreToolDocs() {
+		if surfaceAllowlist[doc.Name] != "" {
+			// Same exemptions the SKILL routing-row test honours —
+			// agent-facing primitives that don't need an explicit
+			// allowed-tools entry. Re-using the existing allowlist
+			// keeps the policy consistent.
+			//
+			// These are agent-facing primitives where the SKILL routing
+			// row is enough; some don't need to appear in the
+			// allowlist if Claude Code auto-grants them. But to be
+			// safe, we still want them all listed.
+		}
+		if skillAllowlistExempt[doc.Name] {
+			continue
+		}
+		if !allowedSet[doc.Name] {
+			missing = append(missing, doc.Name)
+		}
+	}
+	if len(missing) > 0 {
+		t.Errorf(
+			"%d core tool(s) missing from SKILL.md frontmatter `allowed-tools`: %v\n"+
+				"The SKILL routing-map can recommend these tools but the agent's\n"+
+				"runtime will refuse the call. Add them to the `allowed-tools` line\n"+
+				"with the `mcp__clawtool__` prefix, OR add an exemption to\n"+
+				"skillAllowlistExempt with a justification.",
+			len(missing), missing)
+	}
+}
+
 // TestCamelToKebab covers the slug helper.
 func TestCamelToKebab(t *testing.T) {
 	cases := map[string]string{
