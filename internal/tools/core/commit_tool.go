@@ -160,21 +160,39 @@ func runCommit(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResul
 		return resultOf(out), nil
 	}
 
-	// Load rules and evaluate at pre_commit. Loading is best-
-	// effort: a missing rules.toml means "no rules", not an
-	// error — operator's rules are opt-in.
+	// Validate message FIRST — message-shape problems are cheap
+	// to detect and don't need any git state.
+	if err := checkpoint.ValidateMessage(message, opts); err != nil {
+		out.ErrorReason = err.Error()
+		out.DurationMs = time.Since(start).Milliseconds()
+		return resultOf(out), nil
+	}
+
+	// Stage BEFORE rules evaluation so the rules engine's
+	// `changed(glob)` predicate has a populated ChangedPaths
+	// from `git diff --name-only --cached`. The previous order
+	// (rules → validate → stage) meant every rule referencing
+	// changed() saw an empty list under direct Commit invocations
+	// — Codex pass-2 review flagged this as 'declared capability
+	// ahead of enforcement'.
+	if err := checkpoint.Stage(opts.Cwd, opts.Files, opts.AutoStageAll); err != nil {
+		out.ErrorReason = err.Error()
+		out.DurationMs = time.Since(start).Milliseconds()
+		return resultOf(out), nil
+	}
+
+	// Load rules + populate ChangedPaths from the staged index,
+	// then evaluate at pre_commit. Loading is best-effort:
+	// a missing rules.toml means "no rules", not an error —
+	// operator's rules are opt-in.
 	if loaded, _, _, lerr := rules.LoadDefault(); lerr == nil && len(loaded) > 0 {
+		stagedPaths, _ := checkpoint.StagedFiles(opts.Cwd)
 		ctxRules := rules.Context{
 			Event:         rules.EventPreCommit,
 			CommitMessage: message,
+			ChangedPaths:  stagedPaths,
 			Now:           time.Now(),
 		}
-		// Best-effort changed-paths discovery via `git diff --name-only --cached`
-		// would go here; v1 keeps Context lean and lets explicit callers
-		// (the future autocommit hook) populate ChangedPaths via a
-		// separate code path. The operator's rules referencing
-		// `changed(glob)` will see an empty list under direct Commit
-		// invocations until the supervisor wires that signal in.
 		v := rules.Evaluate(loaded, ctxRules)
 		out.RuleViolations = append(out.RuleViolations, v.Blocked...)
 		out.RuleViolations = append(out.RuleViolations, v.Warnings...)
@@ -183,19 +201,6 @@ func runCommit(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResul
 			out.DurationMs = time.Since(start).Milliseconds()
 			return resultOf(out), nil
 		}
-	}
-
-	if err := checkpoint.ValidateMessage(message, opts); err != nil {
-		out.ErrorReason = err.Error()
-		out.DurationMs = time.Since(start).Milliseconds()
-		return resultOf(out), nil
-	}
-
-	// Stage first, then optionally check post-stage dirtiness.
-	if err := checkpoint.Stage(opts.Cwd, opts.Files, opts.AutoStageAll); err != nil {
-		out.ErrorReason = err.Error()
-		out.DurationMs = time.Since(start).Milliseconds()
-		return resultOf(out), nil
 	}
 	if !opts.AllowDirty {
 		// After staging, a remaining dirty status means there are

@@ -156,6 +156,30 @@ func IsClean(cwd string) (bool, error) {
 	return strings.TrimSpace(string(out)) == "", nil
 }
 
+// StagedFiles returns the list of staged paths (relative to cwd,
+// forward-slash). Empty when the index is clean. Used by the
+// Commit tool to populate rules.Context.ChangedPaths so
+// `changed(glob)` predicates see what's actually about to land.
+func StagedFiles(cwd string) ([]string, error) {
+	out, err := runGit(cwd, "diff", "--name-only", "--cached")
+	if err != nil {
+		return nil, fmt.Errorf("git diff --cached: %w", err)
+	}
+	body := strings.TrimSpace(string(out))
+	if body == "" {
+		return nil, nil
+	}
+	lines := strings.Split(body, "\n")
+	paths := make([]string, 0, len(lines))
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if l != "" {
+			paths = append(paths, l)
+		}
+	}
+	return paths, nil
+}
+
 // CurrentBranch returns the symbolic branch name (or empty when
 // detached). Used in CommitResult for the operator's render.
 func CurrentBranch(cwd string) string {
