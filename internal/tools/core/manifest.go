@@ -23,6 +23,7 @@
 package core
 
 import (
+	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/cogitave/clawtool/internal/tools/registry"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -239,6 +240,277 @@ func BuildManifest() *registry.Manifest {
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterSkillNew(s)
 		},
+	})
+
+	// ─── Step 4: Runtime-dependent + multi-tool wrappers ───────
+	//
+	// Two patterns at play:
+	//
+	// 1) Tools that need a Runtime field (ToolSearch / WebSearch).
+	//    The Register fn closes over rt.Index / rt.Secrets and
+	//    delegates to the existing RegisterX(s, dep) signature.
+	//
+	// 2) Multi-tool wrappers (Recipe / Bridge / Agent / Task /
+	//    Portal / Mcp / Sandbox) where a single RegisterX call
+	//    registers N tools at once. Pattern: the FIRST spec for
+	//    the bundle has Register set; the others have Register=nil
+	//    so manifest.Apply skips them. Search docs still pick
+	//    every spec up because SearchDocs walks every entry. This
+	//    keeps the manifest shape "1 tool = 1 spec" without
+	//    forcing us to split the wrapper functions.
+	//
+	// ToolSearch — bleve BM25 over the full catalog. Closes over
+	// rt.Index built at boot.
+	m.Append(registry.ToolSpec{
+		Name:        "ToolSearch",
+		Description: "Find tools by natural-language query. BM25 ranking via bleve. Use this first when you have a large catalog.",
+		Keywords:    []string{"discover", "find", "search", "query", "tools"},
+		Category:    registry.CategoryDiscovery,
+		Gate:        "ToolSearch",
+		Register: func(s *server.MCPServer, rt registry.Runtime) {
+			RegisterToolSearch(s, rt.Index)
+		},
+	})
+
+	// WebSearch — backend selection + API key from rt.Secrets.
+	// Adapter casts our slim SecretsStore interface back to
+	// *secrets.Store via type assertion; the real wiring in
+	// server.go always supplies the concrete pointer.
+	m.Append(registry.ToolSpec{
+		Name:        "WebSearch",
+		Description: "Run a web search via the configured backend (default Brave). Returns ranked {title, url, snippet}. API key in secrets[scope=websearch].",
+		Keywords:    []string{"search", "web", "google", "brave", "tavily", "duckduckgo", "results", "query", "engine"},
+		Category:    registry.CategoryWeb,
+		Gate:        "WebSearch",
+		Register: func(s *server.MCPServer, rt registry.Runtime) {
+			// rt.Secrets is `any`; the caller (server.go) always
+			// passes *secrets.Store, so a nil assertion here would
+			// be a programmer error worth a typed nil at the call
+			// site rather than a silent skip.
+			store, _ := rt.Secrets.(*secrets.Store)
+			RegisterWebSearch(s, store)
+		},
+	})
+
+	// ─── Recipe* bundle (RegisterRecipeTools registers all 3) ──
+	m.Append(registry.ToolSpec{
+		Name:        "RecipeList",
+		Description: "List clawtool's project-setup recipes (governance, commits, release, CI, quality, supply-chain, knowledge, agents, runtime). Each recipe injects a canonical config slice so a fresh repo gets the operator's standards in one apply.",
+		Keywords:    []string{"recipe", "recipes", "list", "init", "setup", "scaffold", "release-please", "dependabot", "codeowners", "license"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		// First spec in bundle invokes the wrapper.
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterRecipeTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "RecipeStatus",
+		Description: "Report which recipes are already applied vs absent for the current repo. Use BEFORE RecipeApply to avoid re-installing or to surface drift.",
+		Keywords:    []string{"recipe", "status", "detect", "absent", "applied", "drift"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		// Register=nil — companion to RecipeList; the bundle
+		// is registered exactly once by RecipeList's spec.
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "RecipeApply",
+		Description: "Apply one project-setup recipe by name (license, codeowners, conventional-commits, release-please, dependabot, brain, ...). Idempotent — re-applying is safe.",
+		Keywords:    []string{"recipe", "apply", "install", "init", "setup", "scaffold"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+	})
+
+	// ─── Bridge* bundle ────────────────────────────────────────
+	m.Append(registry.ToolSpec{
+		Name:        "BridgeList",
+		Description: "List installable bridges to other coding-agent CLIs (codex, opencode, gemini, hermes) with current install state.",
+		Keywords:    []string{"bridges", "plugins", "install", "available", "codex", "opencode", "gemini", "hermes", "list"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterBridgeTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "BridgeAdd",
+		Description: "Install the canonical bridge for a family (codex / opencode / gemini / hermes). Wraps the upstream's Claude Code plugin or built-in subcommand. Idempotent.",
+		Keywords:    []string{"install", "bridge", "plugin", "add", "codex", "opencode", "gemini", "hermes", "setup"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "BridgeRemove",
+		Description: "Remove the bridge for a family. v0.10 ships as a manual hint; full uninstall lands in v0.10.x.",
+		Keywords:    []string{"uninstall", "remove", "bridge", "plugin"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "BridgeUpgrade",
+		Description: "Re-run the bridge install (idempotent; pulls the latest plugin version).",
+		Keywords:    []string{"upgrade", "update", "bridge", "plugin", "refresh"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+	})
+
+	// ─── Agent* bundle (SendMessage + AgentList) ───────────────
+	m.Append(registry.ToolSpec{
+		Name:        "SendMessage",
+		Description: "Forward a prompt to another AI coding-agent CLI (claude / codex / opencode / gemini / hermes) and stream its reply. clawtool wraps each upstream's published headless mode; the bridge plugin must be installed first via BridgeAdd.",
+		Keywords:    []string{"dispatch", "delegate", "forward", "prompt", "agent", "claude", "codex", "opencode", "gemini", "hermes", "relay", "ask", "ai"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterAgentTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "AgentList",
+		Description: "Snapshot of the supervisor's agent registry — every configured instance with family, bridge, callable status, and auth scope.",
+		Keywords:    []string{"list", "agents", "instances", "registry", "available", "callable"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+	})
+
+	// ─── Task* bundle (TaskGet + TaskWait + TaskList; TaskNotify
+	//     already shipped above as its own RegisterTaskNotify) ──
+	m.Append(registry.ToolSpec{
+		Name:        "TaskGet",
+		Description: "Snapshot of one BIAM task: status + every message persisted under task_id. Pair with SendMessage --bidi to dispatch async and poll without blocking.",
+		Keywords:    []string{"task", "biam", "async", "poll", "result", "snapshot"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterTaskTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "TaskWait",
+		Description: "Block until a BIAM task reaches a terminal state. Use when the caller has nothing else to do until the upstream finishes.",
+		Keywords:    []string{"task", "biam", "wait", "block", "result", "terminal"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "TaskList",
+		Description: "Recent BIAM tasks (default 50). Use to find task_ids when the caller forgot one mid-conversation.",
+		Keywords:    []string{"task", "biam", "list", "recent", "history"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+	})
+
+	// ─── Portal* bundle (RegisterPortalTools registers 6) ──────
+	m.Append(registry.ToolSpec{
+		Name:        "PortalList",
+		Description: "List configured web-UI portals (saved authenticated browser targets). A portal pairs a base URL with login cookies, selectors, and a 'response done' predicate so PortalAsk can drive the page through Obscura.",
+		Keywords:    []string{"portal", "portals", "list", "browser", "target", "saved", "config", "registry"},
+		Category:    registry.CategoryWeb,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterPortalTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "PortalAsk",
+		Description: "Drive a saved portal with the given prompt and return the rendered response. Spawns Obscura's CDP server, seeds cookies + extra headers, navigates to start_url, runs login_check + ready_predicate, fills the input selector, clicks submit (or dispatches Enter), polls response_done_predicate, and extracts the last response selector's innerText.",
+		Keywords:    []string{"portal", "ask", "browser", "chat", "deepseek", "perplexity", "phind", "send", "drive", "automate", "cdp"},
+		Category:    registry.CategoryWeb,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "PortalUse",
+		Description: "Set the sticky-default portal so PortalAsk calls without an explicit name route here.",
+		Keywords:    []string{"portal", "use", "sticky", "default", "set"},
+		Category:    registry.CategoryWeb,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "PortalWhich",
+		Description: "Resolve the sticky-default portal — env > sticky file > single-configured fallback.",
+		Keywords:    []string{"portal", "which", "default", "sticky"},
+		Category:    registry.CategoryWeb,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "PortalUnset",
+		Description: "Clear the sticky-default portal.",
+		Keywords:    []string{"portal", "unset", "clear", "sticky"},
+		Category:    registry.CategoryWeb,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "PortalRemove",
+		Description: "Remove a portal stanza from config.toml. Cookies under [scopes.\"portal.<name>\"] in secrets.toml stay in place; clean manually if no longer needed.",
+		Keywords:    []string{"portal", "remove", "delete", "config"},
+		Category:    registry.CategoryWeb,
+		Gate:        "",
+	})
+
+	// ─── Mcp* bundle (RegisterMcpTools registers 5) ────────────
+	m.Append(registry.ToolSpec{
+		Name:        "McpList",
+		Description: "List MCP server projects under a root path (default cwd). Detects via the .clawtool/mcp.toml marker the v0.17 generator writes. Sister of `clawtool skill list` for MCP authoring.",
+		Keywords:    []string{"mcp", "scaffold", "author", "list", "projects", "server", "build"},
+		Category:    registry.CategoryAuthoring,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterMcpTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "McpNew",
+		Description: "Scaffold a new MCP server project (Go via mcp-go, Python via FastMCP, TypeScript via @modelcontextprotocol/sdk). Wizard asks for description / language / transport / packaging / tools.",
+		Keywords:    []string{"mcp", "scaffold", "new", "create", "generate", "author", "go", "python", "typescript"},
+		Category:    registry.CategoryAuthoring,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "McpRun",
+		Description: "Run an MCP server project in dev mode (stdio).",
+		Keywords:    []string{"mcp", "run", "dev", "stdio"},
+		Category:    registry.CategoryAuthoring,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "McpBuild",
+		Description: "Build / package an MCP server project (binary, npm, pypi, or Docker image).",
+		Keywords:    []string{"mcp", "build", "compile", "package", "docker"},
+		Category:    registry.CategoryAuthoring,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "McpInstall",
+		Description: "Build + register a local MCP server project as [sources.<instance>] in config.toml — same surface as `clawtool source add` but auto-discovers the launch command from the project's `.clawtool/mcp.toml`.",
+		Keywords:    []string{"mcp", "install", "register", "source", "local"},
+		Category:    registry.CategoryAuthoring,
+		Gate:        "",
+	})
+
+	// ─── Sandbox* bundle (RegisterSandboxTools registers 3) ────
+	m.Append(registry.ToolSpec{
+		Name:        "SandboxList",
+		Description: "List configured sandbox profiles. Each profile constrains a `clawtool send` dispatch — paths, network, env, resource limits. Engines: bwrap (Linux), sandbox-exec (macOS), docker (anywhere fallback).",
+		Keywords:    []string{"sandbox", "list", "profiles", "isolation", "security", "bwrap", "sandbox-exec", "docker"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterSandboxTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "SandboxShow",
+		Description: "Render a parsed sandbox profile — paths, network policy, env allow/deny, resource limits — plus the engine that would run it on this host. Use BEFORE recommending a profile so the constraints are explicit.",
+		Keywords:    []string{"sandbox", "show", "profile", "isolation", "constraints"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "SandboxDoctor",
+		Description: "Report which sandbox engines are available on this host (bwrap / sandbox-exec / docker). Use to recommend the right engine to install when none is available.",
+		Keywords:    []string{"sandbox", "doctor", "engine", "diagnostic", "bwrap", "sandbox-exec", "docker"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
 	})
 
 	return m

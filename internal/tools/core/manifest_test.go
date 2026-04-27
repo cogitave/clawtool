@@ -129,34 +129,36 @@ func TestBuildManifest_Step3aSpecs(t *testing.T) {
 	}
 }
 
-// TestBuildManifest_NoStep4ToolsYet documents the deferral: the
-// tools that need additional Runtime dependencies (ToolSearch
-// needs *search.Index; WebSearch needs *secrets.Store) and the
-// multi-tool wrappers (Recipe* / Bridge* / Agent* / Task* /
-// Portal* / Mcp* / Sandbox*) are EXPLICITLY not in Step 2/3a.
-// They land in Step 4 alongside the server.go hookup.
-//
-// If a future commit accidentally adds them before the hookup
-// is ready, this test fires so the author knows to land them
-// together with the server.go flip.
-func TestBuildManifest_NoStep4ToolsYet(t *testing.T) {
-	deferred := []string{
-		"ToolSearch", "WebSearch", // need Runtime additions
-		"RecipeList", "RecipeStatus", "RecipeApply", // multi-tool wrapper RegisterRecipeTools
-		"BridgeList", "BridgeAdd", "BridgeRemove", "BridgeUpgrade", // RegisterBridgeTools
-		"SendMessage", "AgentList", // RegisterAgentTools
-		"TaskGet", "TaskWait", "TaskList", // RegisterTaskTools
-		"PortalList", "PortalAsk", "PortalUse", "PortalWhich", "PortalUnset", "PortalRemove", // RegisterPortalTools
-		"McpList", "McpNew", "McpRun", "McpBuild", "McpInstall", // RegisterMcpTools
-		"SandboxList", "SandboxShow", "SandboxDoctor", // RegisterSandboxTools
+// TestBuildManifest_Step4FullCatalog asserts the manifest now
+// covers every shipped tool — Step 4 of #173 landed (server.go
+// flipped, multi-tool wrappers migrated, ToolSearch + WebSearch
+// wired through Runtime). The number of specs must match the
+// catalog; missing entries surface here.
+func TestBuildManifest_Step4FullCatalog(t *testing.T) {
+	want := []string{
+		// Step 2 (newest 6)
+		"Commit", "RulesCheck", "AgentNew",
+		"BashOutput", "BashKill", "TaskNotify",
+		// Step 3a (12 individual-Register tools)
+		"Bash", "Grep", "Read", "Glob", "WebFetch", "Edit", "Write",
+		"Verify", "SemanticSearch", "BrowserFetch", "BrowserScrape", "SkillNew",
+		// Step 4: Runtime-dependent + multi-tool wrappers
+		"ToolSearch", "WebSearch",
+		"RecipeList", "RecipeStatus", "RecipeApply",
+		"BridgeList", "BridgeAdd", "BridgeRemove", "BridgeUpgrade",
+		"SendMessage", "AgentList",
+		"TaskGet", "TaskWait", "TaskList",
+		"PortalList", "PortalAsk", "PortalUse", "PortalWhich", "PortalUnset", "PortalRemove",
+		"McpList", "McpNew", "McpRun", "McpBuild", "McpInstall",
+		"SandboxList", "SandboxShow", "SandboxDoctor",
 	}
 	got := map[string]bool{}
 	for _, s := range BuildManifest().Specs() {
 		got[s.Name] = true
 	}
-	for _, name := range deferred {
-		if got[name] {
-			t.Errorf("%q is in BuildManifest but documented as Step 4 — verify the server.go hookup landed in the same commit; if so, remove the name from this test's deferred list", name)
+	for _, name := range want {
+		if !got[name] {
+			t.Errorf("manifest missing %q — Step 4 should cover every shipped tool", name)
 		}
 	}
 }
