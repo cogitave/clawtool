@@ -3,24 +3,15 @@
 // resurrected for the operator's "I want to see what every agent
 // is doing" directive.
 //
-// What ships now (v1):
-//
-//	Pane 1 — Dispatches: BIAM tasks (active first, then recent)
-//	Pane 2 — Agents:     supervisor.Agents() snapshot
-//	Pane 3 — Stats:      counters (total / done / failed / active)
-//
-// Refresh is via 1s poll over the BIAM SQLite store; real-time
-// push hook (biam.Notifier subscription when launched alongside
-// `clawtool serve`) lands in v1.1 alongside #185 (Unix socket
-// push). Polling has the same negligible-cost SQLite WAL profile
-// `clawtool task watch` uses.
-//
-// Keybindings:
-//
-//	q / esc / ctrl+c   exit
-//	r                   force refresh (don't wait for tick)
-//	tab                 cycle focused pane (cosmetic; v2 will
-//	                    allow scroll inside the focused pane)
+// v1.1 fixes (operator feedback): the tick chain was breaking
+// after the first refresh because tickCmd only fired AFTER a
+// successful refresh. Now the tick runs on its own cadence
+// independent of refresh completion, so the dashboard stays live
+// even during transient SQLite hiccups. Plus: every pane respects
+// the terminal viewport — rows beyond the visible area are
+// truncated with a "(…N more)" tail line, and the layout adapts
+// to the operator's terminal height instead of overflowing the
+// scrollback.
 package tui
 
 import (
@@ -35,8 +26,11 @@ import (
 	"github.com/cogitave/clawtool/internal/agents/biam"
 )
 
-// Model is the Bubble Tea state. One per `clawtool dashboard`
-// invocation; shut down on quit.
+// pollInterval is the tick cadence. 1 s is the floor that feels
+// live without dominating the render loop.
+const pollInterval = 1 * time.Second
+
+// Model is the Bubble Tea state.
 type Model struct {
 	store *biam.Store
 	sup   agents.Supervisor
@@ -44,33 +38,30 @@ type Model struct {
 	width  int
 	height int
 
-	tasks  []biam.Task
-	agents []agents.Agent
-	loaded bool
-	err    error
+	tasks       []biam.Task
+	agents      []agents.Agent
+	loaded      bool
+	err         error
+	lastRefresh time.Time
 
-	focused int // 0=dispatches 1=agents 2=stats
-	cursor  int // row cursor inside focused pane
+	focused int
+	cursor  int
 }
 
-// New constructs a Model with the supplied BIAM store and
-// supervisor. Call New(...).Run() from the CLI verb. A nil store
-// yields a model that renders an empty Pane 1 — useful when the
-// operator hasn't dispatched anything yet, so the CLI doesn't
-// crash on first launch.
 func New(store *biam.Store, sup agents.Supervisor) Model {
 	return Model{store: store, sup: sup}
 }
 
-// Init kicks off the first refresh.
+// Init kicks off the FIRST refresh AND starts the tick loop.
+// Both are independent commands so the tick stays alive even if
+// a refresh fails.
 func (m Model) Init() tea.Cmd {
-	return refreshCmd(m.store, m.sup)
+	return tea.Batch(
+		refreshCmd(m.store, m.sup),
+		tickCmd(),
+	)
 }
 
-// Update handles incoming messages. Three event sources:
-//   - tea.WindowSizeMsg          — terminal resize
-//   - tea.KeyMsg                  — operator keystrokes
-//   - refreshMsg                  — async refresh result
 type refreshMsg struct {
 	tasks  []biam.Task
 	agents []agents.Agent
@@ -103,8 +94,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "down", "j":
-			max := m.paneRowCount()
-			if m.cursor < max-1 {
+			if max := m.paneRowCount(); m.cursor < max-1 {
 				m.cursor++
 			}
 			return m, nil
@@ -115,35 +105,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agents = msg.agents
 		m.err = msg.err
 		m.loaded = true
-		return m, tickCmd()
+		m.lastRefresh = time.Now()
+		// Do NOT chain a tickCmd here — tick is independent.
+		return m, nil
 
 	case tickMsg:
-		return m, refreshCmd(m.store, m.sup)
+		// Each tick fires a refresh AND schedules the next tick.
+		// v1's bug: tick chained after refresh, so a single
+		// refresh error stopped the whole loop. Now tick is
+		// independent of refresh outcome.
+		return m, tea.Batch(
+			refreshCmd(m.store, m.sup),
+			tickCmd(),
+		)
 	}
 
 	return m, nil
 }
 
-// View is the render entry point.
-func (m Model) View() string {
-	if !m.loaded {
-		return banner() + "\nloading…"
-	}
-	if m.err != nil {
-		return banner() + "\nerror: " + m.err.Error()
-	}
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		banner(),
-		paneDispatches(m.tasks, m.focused == 0, m.cursor, m.width),
-		paneAgents(m.agents, m.focused == 1, m.cursor, m.width),
-		paneStats(m.tasks, m.agents, m.focused == 2, m.width),
-		footer(),
-	)
-	return body
-}
-
-// paneRowCount returns the row count in the currently-focused
-// pane so up/down keys clamp correctly.
 func (m Model) paneRowCount() int {
 	switch m.focused {
 	case 0:
@@ -153,6 +132,52 @@ func (m Model) paneRowCount() int {
 	default:
 		return 0
 	}
+}
+
+// View renders the model. Layout is height-aware: each pane gets
+// a budget so the total fits the terminal viewport.
+func (m Model) View() string {
+	if !m.loaded {
+		return banner(m.lastRefresh) + "\nloading…\n"
+	}
+	if m.err != nil {
+		return banner(m.lastRefresh) + "\nerror: " + m.err.Error() + "\n"
+	}
+
+	totalH := m.height
+	if totalH <= 0 {
+		totalH = 30
+	}
+	// Per-pane chrome budget tuned to NormalBorder + Padding(0,1)
+	// + MarginBottom(1) + header line. Stats is always 1 data
+	// row; remaining rows split 2:1 dispatches:agents.
+	chrome := 4*3 + 2 + 1 + 1
+	dataBudget := totalH - chrome
+	if dataBudget < 8 {
+		dataBudget = 8
+	}
+	statsRows := 1
+	remaining := dataBudget - statsRows
+	if remaining < 4 {
+		remaining = 4
+	}
+	dispRows := remaining * 2 / 3
+	agentsRows := remaining - dispRows
+	if dispRows < 2 {
+		dispRows = 2
+	}
+	if agentsRows < 2 {
+		agentsRows = 2
+	}
+
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		banner(m.lastRefresh),
+		paneDispatches(m.tasks, m.focused == 0, m.cursor, m.width, dispRows),
+		paneAgents(m.agents, m.focused == 1, m.cursor, m.width, agentsRows),
+		paneStats(m.tasks, m.agents, m.focused == 2, m.width),
+		footer(),
+	)
+	return body
 }
 
 // ─── render helpers ─────────────────────────────────────────────
@@ -183,9 +208,13 @@ var (
 	statusFailed = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 )
 
-func banner() string {
-	return titleStyle.Render("clawtool dashboard") +
-		dimStyle.Render(" — Tools. Agents. Wired.")
+func banner(lastRefresh time.Time) string {
+	live := dimStyle.Render(" — Tools. Agents. Wired.")
+	if !lastRefresh.IsZero() {
+		age := time.Since(lastRefresh).Round(time.Second)
+		live = dimStyle.Render(fmt.Sprintf(" — live · refreshed %s ago", age))
+	}
+	return titleStyle.Render("clawtool dashboard") + live
 }
 
 func footer() string {
@@ -193,58 +222,99 @@ func footer() string {
 		"q quit · r refresh · tab cycle pane · ↑/↓ navigate")
 }
 
-func paneDispatches(tasks []biam.Task, focused bool, cursor, width int) string {
-	style := paneStyle
-	if focused {
-		style = focusedPaneStyle
-	}
+// renderPaneRows takes the rendered rows + height budget and
+// returns a single block of text capped at maxRows. When more
+// rows exist than fit, a dim "(…N more)" tail line replaces
+// the cut-off rows. Cursor is followed: scrolling past the
+// visible window slides it.
+func renderPaneRows(headerLine string, rows []string, maxRows int, focused bool, cursor int) string {
 	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("Dispatches (%d)", len(tasks))))
-	b.WriteString("\n")
-	if len(tasks) == 0 {
-		b.WriteString(dimStyle.Render("(no dispatches yet — run `clawtool send --async <prompt>`)"))
-		return style.Width(maxWidth(width)).Render(b.String())
+	b.WriteString(headerStyle.Render(headerLine))
+	b.WriteByte('\n')
+
+	if maxRows < 1 {
+		maxRows = 1
 	}
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-10s %-12s %-15s %-10s %s",
-		"STATUS", "AGENT", "TASK_ID", "MSGS", "LAST")))
-	b.WriteString("\n")
-	for i, t := range tasks {
+	visible := len(rows)
+	tail := ""
+	if visible > maxRows {
+		visible = maxRows - 1
+		if visible < 1 {
+			visible = 1
+		}
+		tail = dimStyle.Render(fmt.Sprintf("    (… %d more — narrow terminal)", len(rows)-visible))
+	}
+
+	start := 0
+	if cursor >= visible {
+		start = cursor - visible + 1
+	}
+	if start+visible > len(rows) {
+		start = len(rows) - visible
+		if start < 0 {
+			start = 0
+		}
+	}
+	end := start + visible
+	if end > len(rows) {
+		end = len(rows)
+	}
+
+	for i := start; i < end; i++ {
 		marker := "  "
 		if focused && i == cursor {
 			marker = "▸ "
 		}
+		b.WriteString(marker)
+		b.WriteString(rows[i])
+		b.WriteByte('\n')
+	}
+	if tail != "" {
+		b.WriteString(tail)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func paneDispatches(tasks []biam.Task, focused bool, cursor, width, maxRows int) string {
+	style := paneStyle
+	if focused {
+		style = focusedPaneStyle
+	}
+	if len(tasks) == 0 {
+		body := headerStyle.Render("Dispatches (0)") + "\n" +
+			dimStyle.Render("(no dispatches yet — run `clawtool send --async <prompt>`)")
+		return style.Width(maxWidth(width)).Render(body)
+	}
+	rows := make([]string, 0, len(tasks))
+	for _, t := range tasks {
 		short := t.TaskID
 		if len(short) > 12 {
 			short = short[:12]
 		}
 		status := statusFor(string(t.Status))
 		last := truncate(t.LastMessage, 40)
-		b.WriteString(fmt.Sprintf("%s%-10s %-12s %-15s %-10d %s\n",
-			marker, status, t.Agent, short, t.MessageCount, last))
+		rows = append(rows, fmt.Sprintf("%-10s %-12s %-15s %-5d %s",
+			status, t.Agent, short, t.MessageCount, last))
 	}
-	return style.Width(maxWidth(width)).Render(b.String())
+	header := fmt.Sprintf("Dispatches (%d)\n  %-10s %-12s %-15s %-5s %s",
+		len(tasks), "STATUS", "AGENT", "TASK_ID", "MSGS", "LAST")
+	body := renderPaneRows(header, rows, maxRows, focused, cursor)
+	return style.Width(maxWidth(width)).Render(body)
 }
 
-func paneAgents(list []agents.Agent, focused bool, cursor, width int) string {
+func paneAgents(list []agents.Agent, focused bool, cursor, width, maxRows int) string {
 	style := paneStyle
 	if focused {
 		style = focusedPaneStyle
 	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render(fmt.Sprintf("Agents (%d)", len(list))))
-	b.WriteString("\n")
 	if len(list) == 0 {
-		b.WriteString(dimStyle.Render("(no agents — run `clawtool bridge add <family>`)"))
-		return style.Width(maxWidth(width)).Render(b.String())
+		body := headerStyle.Render("Agents (0)") + "\n" +
+			dimStyle.Render("(no agents — run `clawtool bridge add <family>`)")
+		return style.Width(maxWidth(width)).Render(body)
 	}
-	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-15s %-10s %-10s %-15s %s",
-		"INSTANCE", "FAMILY", "CALLABLE", "STATUS", "SANDBOX")))
-	b.WriteString("\n")
-	for i, a := range list {
-		marker := "  "
-		if focused && i == cursor {
-			marker = "▸ "
-		}
+	rows := make([]string, 0, len(list))
+	for _, a := range list {
 		callable := "no"
 		if a.Callable {
 			callable = "yes"
@@ -253,10 +323,13 @@ func paneAgents(list []agents.Agent, focused bool, cursor, width int) string {
 		if sb == "" {
 			sb = "—"
 		}
-		b.WriteString(fmt.Sprintf("%s%-15s %-10s %-10s %-15s %s\n",
-			marker, a.Instance, a.Family, callable, a.Status, sb))
+		rows = append(rows, fmt.Sprintf("%-15s %-10s %-8s %-15s %s",
+			a.Instance, a.Family, callable, a.Status, sb))
 	}
-	return style.Width(maxWidth(width)).Render(b.String())
+	header := fmt.Sprintf("Agents (%d)\n  %-15s %-10s %-8s %-15s %s",
+		len(list), "INSTANCE", "FAMILY", "CALLABLE", "STATUS", "SANDBOX")
+	body := renderPaneRows(header, rows, maxRows, focused, cursor)
+	return style.Width(maxWidth(width)).Render(body)
 }
 
 func paneStats(tasks []biam.Task, list []agents.Agent, focused bool, width int) string {
@@ -287,17 +360,15 @@ func paneStats(tasks []biam.Task, list []agents.Agent, focused bool, width int) 
 			callable++
 		}
 	}
-	var b strings.Builder
-	b.WriteString(headerStyle.Render("Stats"))
-	b.WriteString("\n")
-	fmt.Fprintf(&b, "  %d total dispatches · %s active · %s done · %s failed · %d cancelled · %d expired\n",
-		len(tasks),
-		statusActive.Render(fmt.Sprintf("%d", counts.active)),
-		statusDone.Render(fmt.Sprintf("%d", counts.done)),
-		statusFailed.Render(fmt.Sprintf("%d", counts.failed)),
-		counts.cancelled, counts.expired)
-	fmt.Fprintf(&b, "  %d/%d agents callable\n", callable, len(list))
-	return style.Width(maxWidth(width)).Render(b.String())
+	body := headerStyle.Render("Stats") + "\n" +
+		fmt.Sprintf("  %d total · %s active · %s done · %s failed · %d cancelled · %d expired · %d/%d agents callable",
+			len(tasks),
+			statusActive.Render(fmt.Sprintf("%d", counts.active)),
+			statusDone.Render(fmt.Sprintf("%d", counts.done)),
+			statusFailed.Render(fmt.Sprintf("%d", counts.failed)),
+			counts.cancelled, counts.expired,
+			callable, len(list))
+	return style.Width(maxWidth(width)).Render(body)
 }
 
 func statusFor(s string) string {
@@ -327,7 +398,7 @@ func maxWidth(w int) int {
 	if w < 60 {
 		return 60
 	}
-	return w - 2 // leave room for borders
+	return w - 2
 }
 
 // ─── async refresh ──────────────────────────────────────────────
@@ -359,16 +430,12 @@ func refreshCmd(store *biam.Store, sup agents.Supervisor) tea.Cmd {
 	}
 }
 
-// tickCmd schedules the next poll. 1s cadence is the floor that
-// feels live without dominating the UI's render loop.
 func tickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+	return tea.Tick(pollInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
 
-// Run is the entry point the CLI verb calls. Wraps Bubble Tea's
-// program lifecycle.
 func Run(store *biam.Store, sup agents.Supervisor) error {
 	p := tea.NewProgram(New(store, sup), tea.WithAltScreen())
 	_, err := p.Run()
