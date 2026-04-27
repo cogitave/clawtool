@@ -1,24 +1,33 @@
-// Package core — Mcp* MCP tools (ADR-019). Surface stub for
-// v0.16.4: `McpList` ships read-only; `McpNew` / `McpBuild` /
-// `McpRun` / `McpInstall` surface a deferred-feature error so
-// the noun + tool names register today (agents discover them via
-// ToolSearch and don't have to relearn the surface in v0.17).
+// Package core — Mcp* MCP tools (ADR-019). v0.17 fills in
+// `McpNew` (real generator wrapper), `McpList` (real walker),
+// and keeps thin stubs for `McpRun` / `McpBuild` / `McpInstall`
+// that point at the CLI shortcut (those are inherently
+// filesystem-side operations the model doesn't usually drive).
 package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+
+	"github.com/cogitave/clawtool/internal/mcpgen"
 )
 
 type mcpListResult struct {
 	BaseResult
-	Projects []string `json:"projects"`
-	Root     string   `json:"root"`
+	Projects []mcpListEntry `json:"projects"`
+	Root     string         `json:"root"`
+}
+
+type mcpListEntry struct {
+	Name     string `json:"name"`
+	Language string `json:"language"`
+	Path     string `json:"path"`
 }
 
 func (r mcpListResult) Render() string {
@@ -27,18 +36,30 @@ func (r mcpListResult) Render() string {
 	}
 	var b strings.Builder
 	if len(r.Projects) == 0 {
-		b.WriteString("(no MCP server projects detected — `clawtool mcp new <name>` lands in v0.17)\n")
+		fmt.Fprintf(&b, "(no MCP server projects under %s — `clawtool mcp new <name>` to scaffold one)\n", r.Root)
 	} else {
-		fmt.Fprintf(&b, "%d MCP project(s)\n\n", len(r.Projects))
+		fmt.Fprintf(&b, "%d project(s) under %s\n\n", len(r.Projects), r.Root)
+		fmt.Fprintf(&b, "  %-32s %-12s %s\n", "PROJECT", "LANGUAGE", "PATH")
 		for _, p := range r.Projects {
-			fmt.Fprintf(&b, "  %s\n", p)
+			fmt.Fprintf(&b, "  %-32s %-12s %s\n", p.Name, p.Language, p.Path)
 		}
 	}
-	fmt.Fprintf(&b, "  search root: %s\n", r.Root)
-	fmt.Fprintln(&b, "  marker:      <project>/.clawtool/mcp.toml")
 	b.WriteString("\n")
 	b.WriteString(r.FooterLine())
 	return b.String()
+}
+
+type mcpNewResult struct {
+	BaseResult
+	Project string `json:"project"`
+	Path    string `json:"path"`
+}
+
+func (r mcpNewResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Project)
+	}
+	return r.SuccessLine(fmt.Sprintf("scaffolded %s at %s", r.Project, r.Path))
 }
 
 type mcpDeferredResult struct {
@@ -48,8 +69,11 @@ type mcpDeferredResult struct {
 
 func (r mcpDeferredResult) Render() string { return r.ErrorLine("Mcp" + r.Verb) }
 
-// RegisterMcpTools wires the Mcp* surface. Always-on; the deferred
-// verbs surface an error path so the catalog stays complete.
+// RegisterMcpTools wires the Mcp* surface (ADR-019). McpNew runs
+// the real generator. McpList walks the on-disk markers. McpRun /
+// McpBuild / McpInstall are CLI-side filesystem operations and
+// surface a hint to use the shell command — that's the natural
+// path for a model giving advice rather than driving the build.
 func RegisterMcpTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool(
@@ -57,9 +81,7 @@ func RegisterMcpTools(s *server.MCPServer) {
 			mcp.WithDescription(
 				"List MCP server projects under the given root (default cwd). "+
 					"A project is detected via the `.clawtool/mcp.toml` marker "+
-					"the v0.17 generator writes. v0.16.4 ships an empty walker; "+
-					"the walker upgrades transparently once the generator lands. "+
-					"ADR-019 — wiki/decisions/019-mcp-authoring-scaffolder.md.",
+					"`clawtool mcp new` writes. ADR-019.",
 			),
 			mcp.WithString("root",
 				mcp.Description("Search root path. Defaults to the server's cwd.")),
@@ -67,26 +89,61 @@ func RegisterMcpTools(s *server.MCPServer) {
 		runMcpList,
 	)
 
-	for _, verb := range []string{"New", "Run", "Build", "Install"} {
+	s.AddTool(
+		mcp.NewTool(
+			"McpNew",
+			mcp.WithDescription(
+				"Scaffold a new MCP server project (ADR-019). Per ADR-007 "+
+					"each language wraps the canonical SDK: Go via mark3labs/mcp-go, "+
+					"Python via fastmcp, TypeScript via @modelcontextprotocol/sdk. "+
+					"Result lives at <output>/<name>/. .claude-plugin/ is opt-in via "+
+					"the plugin flag. Tool definitions ship a single starter — the "+
+					"agent edits the generated source to add more.",
+			),
+			mcp.WithString("name", mcp.Required(),
+				mcp.Description("Project name. kebab-case [a-z0-9][a-z0-9-]{1,63}.")),
+			mcp.WithString("description", mcp.Required(),
+				mcp.Description("One-sentence server self-description.")),
+			mcp.WithString("language", mcp.Required(),
+				mcp.Description("go | python | typescript")),
+			mcp.WithString("transport",
+				mcp.Description("stdio (default) | streamable-http")),
+			mcp.WithString("packaging",
+				mcp.Description("native (default) | docker")),
+			mcp.WithString("tool_name",
+				mcp.Description("Snake_case name of the first tool. Defaults to echo_back.")),
+			mcp.WithString("tool_description",
+				mcp.Description("First tool's description. Defaults to a placeholder.")),
+			mcp.WithString("output",
+				mcp.Description("Parent directory for the project folder. Defaults to the server's cwd.")),
+			mcp.WithBoolean("plugin",
+				mcp.Description("Generate .claude-plugin/ manifest files (default true).")),
+		),
+		runMcpNew,
+	)
+
+	for _, verb := range []string{"Run", "Build", "Install"} {
 		boundVerb := verb
+		hint := fmt.Sprintf(
+			"clawtool MCP scaffolder — %s verb (ADR-019). This operation "+
+				"runs in the operator's shell because it touches the filesystem "+
+				"+ language toolchain (make / npm / pip / docker). Use "+
+				"`clawtool mcp %s <path>` instead. Calling this MCP tool "+
+				"surfaces the same hint.",
+			strings.ToLower(verb), strings.ToLower(verb))
 		s.AddTool(
 			mcp.NewTool(
 				"Mcp"+verb,
-				mcp.WithDescription(
-					"clawtool MCP server scaffolder — `"+strings.ToLower(verb)+
-						"` verb (ADR-019). Generator lands in v0.17; v0.16.4 surfaces "+
-						"the tool name so models discover the namespace early. Returns "+
-						"a clear deferred-feature error today.",
-				),
+				mcp.WithDescription(hint),
 			),
 			func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				out := mcpDeferredResult{
 					BaseResult: BaseResult{Operation: "Mcp" + boundVerb, Engine: "mcpgen"},
 					Verb:       boundVerb,
 				}
-				out.ErrorReason = errors.New(
-					"Mcp" + boundVerb + ": generator lands in v0.17 — see ADR-019 (wiki/decisions/019-mcp-authoring-scaffolder.md)",
-				).Error()
+				out.ErrorReason = fmt.Sprintf(
+					"Mcp%s runs in the shell — invoke `clawtool mcp %s <path>` instead.",
+					boundVerb, strings.ToLower(boundVerb))
 				return resultOf(out), nil
 			},
 		)
@@ -98,11 +155,137 @@ func runMcpList(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult
 	if root == "" {
 		root = "."
 	}
+	abs, err := filepath.Abs(root)
 	out := mcpListResult{
 		BaseResult: BaseResult{Operation: "McpList", Engine: "mcpgen"},
-		Root:       root,
+		Root:       abs,
 	}
-	// v0.16.4 walker stub — ships empty so the contract is wired.
-	// v0.17 fills in the actual walk against `.clawtool/mcp.toml`.
+	if err != nil {
+		out.ErrorReason = err.Error()
+		return resultOf(out), nil
+	}
+	projects, err := walkMcpProjectsForTool(abs)
+	if err != nil {
+		out.ErrorReason = err.Error()
+		return resultOf(out), nil
+	}
+	out.Projects = projects
 	return resultOf(out), nil
+}
+
+func runMcpNew(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name, err := req.RequireString("name")
+	if err != nil {
+		return mcp.NewToolResultError("missing required argument: name"), nil
+	}
+	description, err := req.RequireString("description")
+	if err != nil {
+		return mcp.NewToolResultError("missing required argument: description"), nil
+	}
+	language, err := req.RequireString("language")
+	if err != nil {
+		return mcp.NewToolResultError("missing required argument: language"), nil
+	}
+	out := mcpNewResult{
+		BaseResult: BaseResult{Operation: "McpNew", Engine: "mcpgen"},
+		Project:    name,
+	}
+	output := strings.TrimSpace(req.GetString("output", ""))
+	if output == "" {
+		cwd, _ := os.Getwd()
+		output = cwd
+	}
+	toolName := strings.TrimSpace(req.GetString("tool_name", "echo_back"))
+	if toolName == "" {
+		toolName = "echo_back"
+	}
+	toolDescription := strings.TrimSpace(req.GetString("tool_description", "Return the input string verbatim. Replace with your real tool."))
+	if toolDescription == "" {
+		toolDescription = "Return the input string verbatim. Replace with your real tool."
+	}
+	spec := mcpgen.Spec{
+		Name:        name,
+		Description: description,
+		Language:    language,
+		Transport:   strings.TrimSpace(req.GetString("transport", "stdio")),
+		Packaging:   strings.TrimSpace(req.GetString("packaging", "native")),
+		Plugin:      req.GetBool("plugin", true),
+		Tools: []mcpgen.ToolSpec{{
+			Name:        toolName,
+			Description: toolDescription,
+			Schema:      `{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}`,
+		}},
+	}
+	root, err := mcpgen.Generate(output, spec)
+	if err != nil {
+		out.ErrorReason = err.Error()
+		return resultOf(out), nil
+	}
+	out.Path = root
+	return resultOf(out), nil
+}
+
+// walkMcpProjectsForTool mirrors internal/cli/mcp.go's walkForMcpProjects
+// but lives here so the MCP tool doesn't import internal/cli (which
+// would invert the dependency direction).
+func walkMcpProjectsForTool(root string) ([]mcpListEntry, error) {
+	var out []mcpListEntry
+	skip := map[string]bool{
+		"node_modules": true, ".git": true, "vendor": true,
+		"dist": true, "build": true, ".venv": true, "__pycache__": true,
+	}
+	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if info.IsDir() && skip[info.Name()] {
+			return filepath.SkipDir
+		}
+		if info.IsDir() && info.Name() == ".clawtool" {
+			marker := filepath.Join(path, "mcp.toml")
+			if _, err := os.Stat(marker); err == nil {
+				projDir := filepath.Dir(path)
+				name, language := readMcpProjectFields(marker)
+				out = append(out, mcpListEntry{
+					Name:     name,
+					Language: language,
+					Path:     projDir,
+				})
+			}
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	return out, err
+}
+
+// readMcpProjectFields cheaply pulls name + language without
+// pulling the full TOML parser dep into this file. Marker files
+// always have the same shape (we wrote them).
+func readMcpProjectFields(marker string) (name, language string) {
+	body, err := os.ReadFile(marker)
+	if err != nil {
+		return "", ""
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "name        ="):
+			name = parseQuoted(strings.TrimPrefix(line, "name        ="))
+		case strings.HasPrefix(line, "language    ="):
+			language = parseQuoted(strings.TrimPrefix(line, "language    ="))
+		}
+		if name != "" && language != "" {
+			return
+		}
+	}
+	return
+}
+
+func parseQuoted(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
