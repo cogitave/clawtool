@@ -1,15 +1,12 @@
-// Package portal — Ask orchestrator (ADR-018, v0.16.2).
+// Package portal — Ask orchestrator (ADR-018).
 //
-// Spawns `obscura serve --port :0`, opens a fresh CDP browser
-// context, seeds cookies + extra headers, navigates to the portal's
-// start_url, runs login_check / ready_predicate, fills the input
-// selector with the prompt, clicks submit, and polls the
-// response_done_predicate until it resolves truthy. The final
-// response selector's innerText streams back to the caller.
-//
-// Per ADR-007 we wrap Obscura's CDP server — never re-implement
-// page rendering — and per ADR-014 the supervisor stays untouched:
-// portals are a Tool surface (ADR-017).
+// Spawns Obscura's CDP server, attaches via chromedp's
+// RemoteAllocator, seeds cookies + extra headers, navigates,
+// runs the saved login_check / ready_predicate, fills the input
+// selector with the prompt, clicks submit (or dispatches Enter),
+// polls response_done_predicate, returns the response selector's
+// innerText. Per ADR-007 the heavy lifting (CDP wire, page
+// lifecycle, JS evaluation) is chromedp's job — we orchestrate.
 package portal
 
 import (
@@ -19,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -61,80 +57,36 @@ func Ask(ctx context.Context, p config.PortalConfig, prompt string, opts AskOpti
 
 	progress := opts.Stdout
 
-	// 1. Spawn obscura serve --port 0 so the OS picks a free port;
-	// scan stderr for the "listening on ws://..." line.
-	cmd := exec.CommandContext(ctx, bin, "serve", "--port", "0")
-	if p.Browser.Stealth {
-		cmd.Args = append(cmd.Args, "--stealth")
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return "", fmt.Errorf("portal: stderr pipe: %w", err)
-	}
-	sysproc.ApplyGroup(cmd) // ctx cancel + KillGroup reaps the child tree
-	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("portal: start obscura serve: %w", err)
-	}
-	defer func() {
-		sysproc.KillGroup(cmd)
-		_ = cmd.Wait()
-	}()
-
-	wsURL, err := readObscuraWS(stderr, 10*time.Second)
+	srv, err := startObscuraServer(ctx, bin, p.Browser.Stealth)
 	if err != nil {
 		return "", err
 	}
+	defer srv.close()
 	if progress != nil {
-		fmt.Fprintf(progress, "portal: obscura listening at %s\n", wsURL)
+		fmt.Fprintf(progress, "portal: obscura listening at %s\n", srv.wsURL)
 	}
 
-	// 2. Connect CDP, isolate browser context.
-	browser, err := DialCDP(ctx, wsURL)
+	session, err := NewRemoteBrowser(ctx, srv.wsURL)
 	if err != nil {
 		return "", err
 	}
-	defer browser.Close()
+	defer session.Close()
 
-	browserCtxID, err := browser.CreateBrowserContext(ctx)
-	if err != nil {
-		return "", err
-	}
-	targetID, err := browser.CreateTarget(ctx, "about:blank", browserCtxID,
-		p.Browser.ViewportWidth, p.Browser.ViewportHeight)
-	if err != nil {
-		return "", err
-	}
-	sessionID, err := browser.AttachToTarget(ctx, targetID)
-	if err != nil {
-		return "", err
-	}
-	browser.SessionID = sessionID
-
-	if err := browser.EnableNetwork(ctx); err != nil {
-		return "", fmt.Errorf("portal: Network.enable: %w", err)
-	}
-	if err := browser.EnablePage(ctx); err != nil {
-		return "", fmt.Errorf("portal: Page.enable: %w", err)
-	}
-
-	// 3. Seed auth state + headers BEFORE navigation so the first
-	// request to the portal is already authenticated.
 	if err := AssertAuthCookies(opts.Cookies, p.AuthCookieNames); err != nil {
 		return "", err
 	}
-	if err := browser.SetCookies(ctx, opts.Cookies); err != nil {
+	if err := session.SetCookies(ctx, opts.Cookies); err != nil {
 		return "", fmt.Errorf("portal: setCookies: %w", err)
 	}
-	if err := browser.SetExtraHTTPHeaders(ctx, p.Headers); err != nil {
+	if err := session.SetExtraHTTPHeaders(ctx, p.Headers); err != nil {
 		return "", fmt.Errorf("portal: setExtraHTTPHeaders: %w", err)
 	}
 
-	// 4. Navigate.
 	startURL := p.StartURL
 	if startURL == "" {
 		startURL = p.BaseURL
 	}
-	if err := browser.Navigate(ctx, startURL); err != nil {
+	if err := session.Navigate(ctx, startURL); err != nil {
 		return "", fmt.Errorf("portal: navigate %s: %w", startURL, err)
 	}
 	if progress != nil {
@@ -146,64 +98,48 @@ func Ask(ctx context.Context, p config.PortalConfig, prompt string, opts AskOpti
 		pollEvery = 250 * time.Millisecond
 	}
 
-	// 5. Login check + ready predicate.
 	if p.LoginCheck.Type != "" {
-		if err := waitForPredicate(ctx, browser, p.LoginCheck, pollEvery, "login_check"); err != nil {
+		if err := waitForPredicate(ctx, session, p.LoginCheck, pollEvery, "login_check"); err != nil {
 			return "", err
 		}
 	}
 	if p.ReadyPredicate.Type != "" {
-		if err := waitForPredicate(ctx, browser, p.ReadyPredicate, pollEvery, "ready_predicate"); err != nil {
+		if err := waitForPredicate(ctx, session, p.ReadyPredicate, pollEvery, "ready_predicate"); err != nil {
 			return "", err
 		}
 	}
 
-	// 6. Type the prompt and submit. We bypass synthetic key events
-	// (clean for every chat UI we've tested) and write directly into
-	// the textarea + dispatch React's expected `input` event so
-	// frameworks register the change.
-	if err := typeAndSubmit(ctx, browser, p.Selectors.Input, p.Selectors.Submit, prompt); err != nil {
+	if err := typeAndSubmit(ctx, session, p.Selectors.Input, p.Selectors.Submit, prompt); err != nil {
 		return "", err
 	}
 	if progress != nil {
 		fmt.Fprintln(progress, "portal: prompt submitted; waiting for response_done_predicate")
 	}
 
-	// 7. Wait for response done.
-	if err := waitForPredicate(ctx, browser, p.ResponseDonePredicate, pollEvery, "response_done_predicate"); err != nil {
+	if err := waitForPredicate(ctx, session, p.ResponseDonePredicate, pollEvery, "response_done_predicate"); err != nil {
 		return "", err
 	}
 
-	// 8. Extract the last response selector's innerText.
 	respSelector := p.Selectors.Response
 	if respSelector == "" {
-		// Fall back to body innerText so the operator at least
-		// gets *something* back even on a misconfigured portal.
 		respSelector = "body"
 	}
 	expr := fmt.Sprintf(
 		`(() => { const els = document.querySelectorAll(%s); const last = els[els.length-1]; return last ? last.innerText : ""; })()`,
 		jsString(respSelector),
 	)
-	text, err := browser.EvaluateString(ctx, expr)
-	if err != nil {
-		return "", fmt.Errorf("portal: extract response: %w", err)
-	}
-	return text, nil
+	return session.EvaluateString(ctx, expr)
 }
 
-// typeAndSubmit fills the input selector with the prompt and either
-// clicks the submit selector or — when none is configured — fires
-// Enter via dispatchEvent. We inject value directly + dispatch
-// 'input' so React/Vue/Svelte controlled components register the
-// state change; otherwise our value gets clobbered on the next
-// re-render.
-func typeAndSubmit(ctx context.Context, browser *CDPClient, inputSel, submitSel, prompt string) error {
+// typeAndSubmit fills the input selector with the prompt then either
+// clicks the submit selector or fires Enter via dispatchEvent.
+// Native value setter + synthetic input/change events so React /
+// Vue / Svelte controlled components register the change.
+func typeAndSubmit(ctx context.Context, s *BrowserSession, inputSel, submitSel, prompt string) error {
 	tmpl := `
 (() => {
   const el = document.querySelector(%s);
   if (!el) return { ok: false, reason: "input selector not found" };
-  // Use the native setter so React's synthetic onChange picks it up.
   const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')
     || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
   if (setter) { setter.set.call(el, %s); }
@@ -212,22 +148,20 @@ func typeAndSubmit(ctx context.Context, browser *CDPClient, inputSel, submitSel,
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return { ok: true };
 })()`
-	res, err := browser.Evaluate(ctx, fmt.Sprintf(tmpl, jsString(inputSel), jsString(prompt), jsString(prompt)))
-	if err != nil {
-		return fmt.Errorf("portal: fill input: %w", err)
-	}
 	var fill struct {
 		OK     bool   `json:"ok"`
 		Reason string `json:"reason"`
 	}
-	_ = json.Unmarshal(res, &fill)
+	if err := s.Evaluate(ctx, fmt.Sprintf(tmpl, jsString(inputSel), jsString(prompt), jsString(prompt)), &fill); err != nil {
+		return fmt.Errorf("portal: fill input: %w", err)
+	}
 	if !fill.OK {
 		return fmt.Errorf("portal: fill input: %s", fill.Reason)
 	}
 
 	if strings.TrimSpace(submitSel) != "" {
 		clickTmpl := `(() => { const b = document.querySelector(%s); if (!b) return false; b.click(); return true; })()`
-		ok, err := browser.EvaluateBool(ctx, fmt.Sprintf(clickTmpl, jsString(submitSel)))
+		ok, err := s.EvaluateBool(ctx, fmt.Sprintf(clickTmpl, jsString(submitSel)))
 		if err != nil {
 			return fmt.Errorf("portal: click submit: %w", err)
 		}
@@ -237,19 +171,14 @@ func typeAndSubmit(ctx context.Context, browser *CDPClient, inputSel, submitSel,
 		return nil
 	}
 
-	// Fallback: dispatch Enter on the input. Works for textarea-only
-	// chat UIs that submit via key handler without a button.
 	enterTmpl := `(() => { const el = document.querySelector(%s); if (!el) return false; el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true })); return true; })()`
-	if _, err := browser.EvaluateBool(ctx, fmt.Sprintf(enterTmpl, jsString(inputSel))); err != nil {
+	if _, err := s.EvaluateBool(ctx, fmt.Sprintf(enterTmpl, jsString(inputSel))); err != nil {
 		return fmt.Errorf("portal: dispatch Enter: %w", err)
 	}
 	return nil
 }
 
-// waitForPredicate polls the given PortalPredicate until it returns
-// truthy or ctx expires. Phase name is folded into the error so the
-// operator sees which step failed.
-func waitForPredicate(ctx context.Context, browser *CDPClient, pred config.PortalPredicate, every time.Duration, phase string) error {
+func waitForPredicate(ctx context.Context, s *BrowserSession, pred config.PortalPredicate, every time.Duration, phase string) error {
 	expr, err := predicateExpression(pred)
 	if err != nil {
 		return fmt.Errorf("portal: %s: %w", phase, err)
@@ -257,14 +186,14 @@ func waitForPredicate(ctx context.Context, browser *CDPClient, pred config.Porta
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
-		ok, err := browser.EvaluateBool(ctx, expr)
-		if err == nil && ok {
+		ok, evalErr := s.EvaluateBool(ctx, expr)
+		if evalErr == nil && ok {
 			return nil
 		}
 		select {
 		case <-ctx.Done():
-			if err != nil {
-				return fmt.Errorf("portal: %s timed out (last error: %v)", phase, err)
+			if evalErr != nil {
+				return fmt.Errorf("portal: %s timed out (last error: %v)", phase, evalErr)
 			}
 			return fmt.Errorf("portal: %s timed out", phase)
 		case <-t.C:
@@ -272,9 +201,6 @@ func waitForPredicate(ctx context.Context, browser *CDPClient, pred config.Porta
 	}
 }
 
-// predicateExpression converts a PortalPredicate into a JS expression
-// the CDP Runtime.evaluate path can run. Bool coercion happens at the
-// EvaluateBool wrapper.
 func predicateExpression(p config.PortalPredicate) (string, error) {
 	switch p.Type {
 	case PredicateSelectorExists:
@@ -287,24 +213,51 @@ func predicateExpression(p config.PortalPredicate) (string, error) {
 	return "", fmt.Errorf("unknown predicate type %q", p.Type)
 }
 
-// jsString returns a safe JS string literal for `s`. We only need
-// to escape the four characters that break JSON strings since CDP
-// frames embed JS source via Runtime.evaluate's "expression" field
-// (already JSON-encoded by Send()).
 func jsString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
 
-// obscuraWSPattern matches the "DevTools listening on ws://..." line
-// that obscura prints to stderr at startup. We deliberately accept a
-// few common phrasings (DevTools, listening, Listening) so a future
-// Obscura release that tweaks the wording doesn't break us silently.
+// ── obscura process management ────────────────────────────────────
+
+type runningObscura struct {
+	cmd   *exec.Cmd
+	wsURL string
+}
+
+func (r *runningObscura) close() {
+	if r == nil || r.cmd == nil {
+		return
+	}
+	sysproc.KillGroup(r.cmd)
+	_ = r.cmd.Wait()
+}
+
+func startObscuraServer(ctx context.Context, bin string, stealth bool) (*runningObscura, error) {
+	args := []string{"serve", "--port", "0"}
+	if stealth {
+		args = append(args, "--stealth")
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("portal: stderr pipe: %w", err)
+	}
+	sysproc.ApplyGroup(cmd)
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("portal: start obscura serve: %w", err)
+	}
+	wsURL, err := readObscuraWS(stderr, 10*time.Second)
+	if err != nil {
+		sysproc.KillGroup(cmd)
+		_ = cmd.Wait()
+		return nil, err
+	}
+	return &runningObscura{cmd: cmd, wsURL: wsURL}, nil
+}
+
 var obscuraWSPattern = regexp.MustCompile(`ws://\S+`)
 
-// readObscuraWS scans stderr for the WebSocket URL with a hard
-// deadline; falls back to the /json/version endpoint if the line
-// pattern misses (some obscura builds suppress the banner).
 func readObscuraWS(stderr io.ReadCloser, deadline time.Duration) (string, error) {
 	type result struct {
 		url string
@@ -316,8 +269,7 @@ func readObscuraWS(stderr io.ReadCloser, deadline time.Duration) (string, error)
 		scanner := bufio.NewScanner(stderr)
 		scanner.Buffer(make([]byte, 64*1024), 1<<20)
 		for scanner.Scan() {
-			line := scanner.Text()
-			if m := obscuraWSPattern.FindString(line); m != "" {
+			if m := obscuraWSPattern.FindString(scanner.Text()); m != "" {
 				ch <- result{url: m}
 				return
 			}
@@ -332,34 +284,6 @@ func readObscuraWS(stderr io.ReadCloser, deadline time.Duration) (string, error)
 	case r := <-ch:
 		return r.url, r.err
 	case <-time.After(deadline):
-		return "", errors.New("portal: timed out waiting for obscura to print its ws:// URL — try `obscura serve --port 9222` manually to verify the binary works")
+		return "", errors.New("portal: timed out waiting for obscura's ws:// URL — try `obscura serve --port 9222` manually to verify")
 	}
-}
-
-// FetchWSFromVersionEndpoint is a fallback when obscura's stderr
-// banner doesn't carry the URL — hits /json/version and pulls
-// webSocketDebuggerUrl. Exposed for future use; not on the default
-// path because the regex scan covers every Obscura release we've
-// tested. The caller still needs a port; today we only call this
-// when the operator uses --port <n> manually.
-func FetchWSFromVersionEndpoint(ctx context.Context, host string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/json/version", nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	var body struct {
-		WebSocketURL string `json:"webSocketDebuggerUrl"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return "", err
-	}
-	if body.WebSocketURL == "" {
-		return "", errors.New("portal: /json/version returned no webSocketDebuggerUrl")
-	}
-	return body.WebSocketURL, nil
 }

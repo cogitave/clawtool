@@ -28,6 +28,23 @@ func LoadFromBytes(body []byte) (Config, error) {
 	return cfg, nil
 }
 
+// MarshalForAppend serialises just the [portals.*] entries of cfg
+// (ignoring everything else) into a TOML byte fragment that
+// AppendBytes can fold into the user's config.toml. Used by the
+// portal wizard to round-trip the assembled PortalConfig through
+// the same merge path the editor-driven `portal add` already uses.
+func MarshalForAppend(cfg Config) ([]byte, error) {
+	if len(cfg.Portals) == 0 {
+		return nil, fmt.Errorf("MarshalForAppend: no portals to emit")
+	}
+	patch := Config{Portals: cfg.Portals}
+	b, err := toml.Marshal(patch)
+	if err != nil {
+		return nil, fmt.Errorf("marshal portals: %w", err)
+	}
+	return b, nil
+}
+
 // AppendBytes merges the [portals.X] blocks from `body` into the
 // existing config at `path` (creating the file when missing) and
 // re-emits it. We go through go-toml round-trip — never a textual
