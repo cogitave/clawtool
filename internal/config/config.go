@@ -207,11 +207,12 @@ type AutoLintConfig struct {
 // to compose its agent registry. Phase 4 fields (Tags, FailoverTo)
 // drive the dispatch policies.
 type AgentConfig struct {
-	Family       string   `toml:"family"`                  // CLI family ("claude", "codex", "opencode", "gemini")
+	Family       string   `toml:"family"`                  // CLI family ("claude", "codex", "opencode", "gemini", "hermes")
 	SecretsScope string   `toml:"secrets_scope,omitempty"` // [secrets.X] section to resolve env from; defaults to instance name
 	HomeOverride string   `toml:"home,omitempty"`          // optional HOME override (e.g. "~/.claude-personal") so each instance has its own auth dir
 	Tags         []string `toml:"tags,omitempty"`          // labels for tag-routed dispatch ("fast", "long-context", …)
 	FailoverTo   []string `toml:"failover_to,omitempty"`   // ordered fallback chain of instance names; failover policy cascades through this list on Send error
+	Sandbox      string   `toml:"sandbox,omitempty"`       // ADR-020 / #163: name of a [sandboxes.<name>] profile to wrap every dispatch to this instance in. Empty = no sandbox.
 }
 
 // Dispatch configures how the supervisor resolves prompts when the

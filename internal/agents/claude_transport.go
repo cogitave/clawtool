@@ -48,7 +48,7 @@ func (c claudeTransport) Send(ctx context.Context, prompt string, opts map[strin
 	}
 	args = append(args, o.ExtraArgs...)
 
-	rc, err := startStreamingExec(ctx, "claude", args, o.Cwd)
+	rc, err := startStreamingExecWith(ctx, "claude", args, o.Cwd, o.Sandbox)
 	if err != nil {
 		return nil, ErrBinaryMissing{Family: "claude", Binary: "claude"}
 	}

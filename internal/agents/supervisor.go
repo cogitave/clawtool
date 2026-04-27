@@ -34,13 +34,14 @@ import (
 // FailoverTo drive Phase 4's dispatch policies.
 type Agent struct {
 	Instance   string   `json:"instance"`              // user-chosen kebab-case name (claude-personal, claude-work, codex1, …)
-	Family     string   `json:"family"`                // upstream CLI family (claude / codex / opencode / gemini)
-	Bridge     string   `json:"bridge,omitempty"`      // installed bridge name ("codex-bridge", "opencode-bridge", "gemini-bridge"); empty when family lacks a bridge concept (claude self)
+	Family     string   `json:"family"`                // upstream CLI family (claude / codex / opencode / gemini / hermes)
+	Bridge     string   `json:"bridge,omitempty"`      // installed bridge name ("codex-bridge", "opencode-bridge", "gemini-bridge", "hermes-bridge"); empty when family lacks a bridge concept (claude self)
 	Status     string   `json:"status"`                // "callable", "bridge-missing", "binary-missing", "disabled"
 	Callable   bool     `json:"callable"`              // derived: status == "callable"
 	AuthScope  string   `json:"auth_scope,omitempty"`  // [secrets.X] section to resolve env from
 	Tags       []string `json:"tags,omitempty"`        // labels for tag-routed dispatch (Phase 4)
 	FailoverTo []string `json:"failover_to,omitempty"` // ordered fallback chain of instance names (Phase 4)
+	Sandbox    string   `json:"sandbox,omitempty"`     // ADR-020 / #163: name of a [sandboxes.<name>] profile to wrap every dispatch in. Empty = no sandbox. Resolved per-call in dispatch().
 }
 
 // Supervisor is the single dispatch entry point for prompt routing.
@@ -222,6 +223,7 @@ func (s *supervisor) Agents(_ context.Context) ([]Agent, error) {
 		a := s.composeAgent(instance, ac.Family, ac.SecretsScope)
 		a.Tags = append([]string(nil), ac.Tags...)
 		a.FailoverTo = append([]string(nil), ac.FailoverTo...)
+		a.Sandbox = ac.Sandbox
 		out = append(out, a)
 		configuredFamilies[ac.Family] = true
 	}
@@ -410,7 +412,15 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 			}
 		}
 
-		rc, err := tr.Send(sendCtx, prompt, opts)
+		// Sandbox resolution per-iteration: when the agent has a
+		// sandbox name configured (AgentConfig.Sandbox), look the
+		// profile up in cfg.Sandboxes and stash it on a per-call
+		// opts copy. Failover chain agents resolve their OWN
+		// sandbox separately — primary's profile must NOT leak
+		// into a fallback that wasn't configured for one.
+		callOpts := withSandboxResolved(opts, a, s.loadConfig)
+
+		rc, err := tr.Send(sendCtx, prompt, callOpts)
 		if err == nil {
 			// Don't end the child span here — let the caller end it
 			// when the stream closes. The release func also fires on
