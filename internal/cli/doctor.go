@@ -15,6 +15,7 @@ import (
 
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/daemon"
 	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/cogitave/clawtool/internal/setup"
 	"github.com/cogitave/clawtool/internal/version"
@@ -56,6 +57,7 @@ func (a *App) runDoctor(_ []string) int {
 
 	a.doctorBinary(w, rep)
 	a.doctorConfig(w, rep)
+	a.doctorDaemon(w, rep)
 	a.doctorAgents(w, rep)
 	a.doctorSources(w, rep)
 	a.doctorRecipes(w, rep)
@@ -117,6 +119,35 @@ func (a *App) doctorConfig(w io.Writer, rep *doctorReport) {
 		rep.info(w, fmt.Sprintf("%s not found (no secrets configured)", secPath))
 	} else {
 		rep.warn(w, fmt.Sprintf("stat %s: %v", secPath, err), "")
+	}
+	fmt.Fprintln(w)
+}
+
+// doctorDaemon surfaces the persistent shared-MCP daemon's state
+// (audit/UX gap from #193). The daemon backs every host's MCP claim
+// in shared-http mode; if it's stale or missing, every codex/gemini
+// dispatch breaks and the operator gets opaque MCP errors.
+func (a *App) doctorDaemon(w io.Writer, rep *doctorReport) {
+	fmt.Fprintln(w, "[daemon]")
+	st, err := daemon.ReadState()
+	if err != nil {
+		rep.warn(w, "read daemon state: "+err.Error(), "")
+		fmt.Fprintln(w)
+		return
+	}
+	if st == nil {
+		rep.info(w, "not running (no state file)")
+		fmt.Fprintln(w, "      → clawtool daemon start")
+		fmt.Fprintln(w)
+		return
+	}
+	if daemon.IsRunning(st) {
+		rep.ok(w, fmt.Sprintf("running pid %d at %s", st.PID, st.URL()))
+	} else {
+		rep.warn(w,
+			fmt.Sprintf("state file claims pid %d / port %d but probe failed (stale)", st.PID, st.Port),
+			"clawtool daemon restart",
+		)
 	}
 	fmt.Fprintln(w)
 }
