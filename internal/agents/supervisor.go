@@ -418,7 +418,19 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 		// opts copy. Failover chain agents resolve their OWN
 		// sandbox separately — primary's profile must NOT leak
 		// into a fallback that wasn't configured for one.
-		callOpts := withSandboxResolved(opts, a, s.loadConfig)
+		//
+		// Audit fix #202: explicit per-call --sandbox names that
+		// can't be resolved fail-closed here. The dispatch is
+		// refused for THIS chain entry; if the operator wants a
+		// fallback, they configure it explicitly.
+		callOpts, sandboxErr := withSandboxResolved(opts, a, s.loadConfig)
+		if sandboxErr != nil {
+			s.observer.RecordError(sendCtx, sandboxErr)
+			sendEnd()
+			release()
+			lastErr = fmt.Errorf("dispatch %q: %w", a.Instance, sandboxErr)
+			continue
+		}
 
 		rc, err := tr.Send(sendCtx, prompt, callOpts)
 		if err == nil {

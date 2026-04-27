@@ -37,7 +37,7 @@ func loaderOK(t *testing.T) func() (config.Config, error) {
 func TestWithSandboxResolved_TypedProfilePassthrough(t *testing.T) {
 	preset := &sandbox.Profile{Name: "preset"}
 	opts := map[string]any{"sandbox": preset}
-	got := withSandboxResolved(opts, Agent{}, loaderOK(t))
+	got, _ := withSandboxResolved(opts, Agent{}, loaderOK(t))
 	if got["sandbox"].(*sandbox.Profile) != preset {
 		t.Errorf("typed *sandbox.Profile in opts should be passed through unchanged")
 	}
@@ -45,7 +45,7 @@ func TestWithSandboxResolved_TypedProfilePassthrough(t *testing.T) {
 
 func TestWithSandboxResolved_StringNameResolves(t *testing.T) {
 	opts := map[string]any{"sandbox": "strict"}
-	got := withSandboxResolved(opts, Agent{}, loaderOK(t))
+	got, _ := withSandboxResolved(opts, Agent{}, loaderOK(t))
 	p, ok := got["sandbox"].(*sandbox.Profile)
 	if !ok {
 		t.Fatalf("string name should resolve to *sandbox.Profile, got %T", got["sandbox"])
@@ -59,17 +59,37 @@ func TestWithSandboxResolved_StringNameResolves(t *testing.T) {
 	}
 }
 
-func TestWithSandboxResolved_StringNameUnknownDropsKey(t *testing.T) {
+// Audit fix #202 — fail-CLOSED on per-call name resolution failure.
+// Operator's `--sandbox <name>` is an explicit security request; if the
+// profile is missing or invalid, refuse the dispatch instead of silently
+// running unsandboxed.
+func TestWithSandboxResolved_StringNameUnknownIsFailClosed(t *testing.T) {
 	opts := map[string]any{"sandbox": "ghost"}
-	got := withSandboxResolved(opts, Agent{}, loaderOK(t))
-	if _, present := got["sandbox"]; present {
-		t.Errorf("unknown profile name should drop the sandbox key (transport sees nil); got %v", got["sandbox"])
+	got, err := withSandboxResolved(opts, Agent{}, loaderOK(t))
+	if err == nil {
+		t.Fatal("explicit --sandbox <unknown> must error (fail-closed), got nil")
+	}
+	if !errors.Is(err, ErrSandboxUnresolvable) {
+		t.Errorf("error should wrap ErrSandboxUnresolvable; got %v", err)
+	}
+	if got != nil {
+		t.Errorf("opts should be nil on fail-closed; got %v", got)
+	}
+}
+
+// Original opts must not be mutated even when fail-closed fires —
+// test scope reuses the same opts across iterations.
+func TestWithSandboxResolved_FailClosedDoesNotMutate(t *testing.T) {
+	opts := map[string]any{"sandbox": "ghost", "model": "sonnet"}
+	_, _ = withSandboxResolved(opts, Agent{}, loaderOK(t))
+	if opts["sandbox"] != "ghost" || opts["model"] != "sonnet" {
+		t.Errorf("opts mutated on fail-closed; got %+v", opts)
 	}
 }
 
 func TestWithSandboxResolved_AgentConfigSandbox(t *testing.T) {
 	a := Agent{Instance: "claude", Sandbox: "lenient"}
-	got := withSandboxResolved(map[string]any{}, a, loaderOK(t))
+	got, _ := withSandboxResolved(map[string]any{}, a, loaderOK(t))
 	p, ok := got["sandbox"].(*sandbox.Profile)
 	if !ok {
 		t.Fatalf("agent.Sandbox should resolve, got %T", got["sandbox"])
@@ -81,14 +101,14 @@ func TestWithSandboxResolved_AgentConfigSandbox(t *testing.T) {
 
 func TestWithSandboxResolved_AgentConfigSandboxUnknown(t *testing.T) {
 	a := Agent{Instance: "claude", Sandbox: "ghost"}
-	got := withSandboxResolved(map[string]any{}, a, loaderOK(t))
+	got, _ := withSandboxResolved(map[string]any{}, a, loaderOK(t))
 	if _, present := got["sandbox"]; present {
 		t.Errorf("unknown agent.Sandbox should result in no sandbox key; got %v", got["sandbox"])
 	}
 }
 
 func TestWithSandboxResolved_NoSandboxAtAll(t *testing.T) {
-	got := withSandboxResolved(map[string]any{"foo": "bar"}, Agent{}, loaderOK(t))
+	got, _ := withSandboxResolved(map[string]any{"foo": "bar"}, Agent{}, loaderOK(t))
 	if _, present := got["sandbox"]; present {
 		t.Errorf("expected no sandbox key when nothing requests one; got %v", got["sandbox"])
 	}
@@ -102,7 +122,7 @@ func TestWithSandboxResolved_LoadConfigError(t *testing.T) {
 	loader := func() (config.Config, error) {
 		return config.Config{}, errors.New("disk on fire")
 	}
-	got := withSandboxResolved(map[string]any{}, a, loader)
+	got, _ := withSandboxResolved(map[string]any{}, a, loader)
 	if _, present := got["sandbox"]; present {
 		t.Error("config load error should drop the sandbox key")
 	}
@@ -112,7 +132,7 @@ func TestWithSandboxResolved_PerCallOverridesAgentConfig(t *testing.T) {
 	// Agent has Sandbox="strict" but caller passed "lenient" in opts.
 	a := Agent{Instance: "claude", Sandbox: "strict"}
 	opts := map[string]any{"sandbox": "lenient"}
-	got := withSandboxResolved(opts, a, loaderOK(t))
+	got, _ := withSandboxResolved(opts, a, loaderOK(t))
 	p, ok := got["sandbox"].(*sandbox.Profile)
 	if !ok || p.Name != "lenient" {
 		t.Errorf("per-call override should win over agent.Sandbox; got %+v", got["sandbox"])
