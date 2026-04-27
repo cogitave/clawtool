@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/hooks"
@@ -103,7 +104,15 @@ func SetGlobalBiamRunner(r BiamRunner) { globalBiamRunner = r }
 
 // NewSupervisor wires the default supervisor. Tests inject custom
 // loaders / transports.
+//
+// Round-robin counters and the rate / concurrency limiter are pulled
+// from process-wide singletons (sharedDispatchState) so multiple
+// callers in the same process — MCP tool handlers, the HTTP gateway,
+// the BIAM runner — observe one rotation cursor and one token bucket.
+// Building fresh state per call resets both, which silently disables
+// rate limits and pins round-robin to the first instance.
 func NewSupervisor() Supervisor {
+	rr, lim := sharedDispatchState()
 	return &supervisor{
 		loadConfig: defaultLoadConfig,
 		transports: map[string]Transport{
@@ -112,23 +121,55 @@ func NewSupervisor() Supervisor {
 			"opencode": OpencodeTransport(),
 			"gemini":   GeminiTransport(),
 		},
-		rrState:  &roundRobinState{},
+		rrState:  rr,
 		observer: globalObserver,
 		biam:     globalBiamRunner,
-		limiter:  buildLimiterFromConfig(),
+		limiter:  lim,
 	}
+}
+
+// sharedDispatchState is a process-wide singleton for the dispatch
+// rotation cursor and the token-bucket limiter. Initialised on first
+// access; survive across NewSupervisor calls so the round-robin
+// position and rate budget actually persist between dispatches.
+var (
+	sharedDispatchOnce sync.Once
+	sharedRR           *roundRobinState
+	sharedLimiter      *dispatchLimiter
+)
+
+func sharedDispatchState() (*roundRobinState, *dispatchLimiter) {
+	sharedDispatchOnce.Do(func() {
+		sharedRR = &roundRobinState{}
+		sharedLimiter = buildLimiterFromConfig()
+	})
+	return sharedRR, sharedLimiter
+}
+
+// ResetDispatchStateForTest re-creates the shared rrState + limiter.
+// Test-only escape hatch — production code should not call this.
+func ResetDispatchStateForTest() {
+	sharedDispatchOnce = sync.Once{}
+	sharedRR = nil
+	sharedLimiter = nil
 }
 
 // buildLimiterFromConfig reads config.Dispatch.Limits at supervisor
 // construction. A bad rate string falls back to a disabled limiter so
-// the dispatch path never panics; we surface the parse error via
-// stderr at server boot, not on every CLI invocation.
+// the dispatch path never panics; the parse error is logged once to
+// stderr so the operator notices instead of silently losing rate
+// enforcement.
 func buildLimiterFromConfig() *dispatchLimiter {
 	cfg, err := defaultLoadConfig()
 	if err != nil {
 		return nil
 	}
-	l, _ := newDispatchLimiter(cfg.Dispatch.Limits.Rate, cfg.Dispatch.Limits.Burst, cfg.Dispatch.Limits.MaxConcurrent)
+	l, perr := newDispatchLimiter(cfg.Dispatch.Limits.Rate, cfg.Dispatch.Limits.Burst, cfg.Dispatch.Limits.MaxConcurrent)
+	if perr != nil {
+		fmt.Fprintf(os.Stderr,
+			"clawtool: dispatch.limits parse error (%v) — rate limiting disabled until config is fixed\n",
+			perr)
+	}
 	return l
 }
 

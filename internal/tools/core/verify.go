@@ -137,7 +137,7 @@ func executeVerify(ctx context.Context, repo, target string, timeout time.Durati
 		res.Checks = append(res.Checks, VerifyCheck{
 			Name:    "detect",
 			Status:  "skipped",
-			Summary: "no test runner detected (probe order: make / pnpm / npm / go / pytest / ruby / cargo / just)",
+			Summary: "no test runner detected (probe order: make / pnpm / npm / go / pytest / rake / cargo / just)",
 		})
 		res.Overall = "fail"
 		res.DurationMs = time.Since(start).Milliseconds()
@@ -215,6 +215,16 @@ func probeOrder() []candidate {
 			},
 		},
 		{
+			plan: runnerPlan{name: "bundle exec rake test", argv: []string{"bundle", "exec", "rake", "test"}},
+			detect: func(r string) bool {
+				return fileExists(filepath.Join(r, "Gemfile")) && fileExists(filepath.Join(r, "Rakefile"))
+			},
+		},
+		{
+			plan:   runnerPlan{name: "rake test", argv: []string{"rake", "test"}},
+			detect: func(r string) bool { return fileExists(filepath.Join(r, "Rakefile")) },
+		},
+		{
 			plan:   runnerPlan{name: "cargo test", argv: []string{"cargo", "test"}},
 			detect: func(r string) bool { return fileExists(filepath.Join(r, "Cargo.toml")) },
 		},
@@ -239,7 +249,11 @@ func byTarget(t string) (runnerPlan, bool) {
 	case "pytest":
 		return runnerPlan{name: "pytest", argv: []string{"pytest"}}, true
 	case "ruby":
-		return runnerPlan{name: "ruby -Itest", argv: []string{"ruby", "-Itest"}}, true
+		// Ruby itself isn't a test runner; the canonical Ruby
+		// test entry-point is rake. `bundle exec` keeps the gem
+		// resolution consistent with the project's Gemfile when
+		// one exists.
+		return runnerPlan{name: "bundle exec rake test", argv: []string{"bundle", "exec", "rake", "test"}}, true
 	case "cargo":
 		return runnerPlan{name: "cargo test", argv: []string{"cargo", "test"}}, true
 	case "just":

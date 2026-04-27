@@ -153,7 +153,11 @@ func (m *manager) Create(ctx context.Context, repoPath, taskID, agent string) (s
 	var once sync.Once
 	cleanup := func() {
 		once.Do(func() {
-			_ = removeWorktree(ctx, repoRoot, workdir, m.lockDir)
+			// cleanup must not inherit the caller's ctx — when the
+			// dispatch ended via cancellation/timeout, the original
+			// ctx is already done and `git worktree remove` would
+			// refuse, leaking the worktree on every aborted run.
+			_ = removeWorktree(context.Background(), repoRoot, workdir, m.lockDir)
 		})
 	}
 	return workdir, cleanup, nil

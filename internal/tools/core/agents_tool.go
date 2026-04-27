@@ -219,7 +219,6 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 		out.DurationMs = time.Since(start).Milliseconds()
 		return resultOf(out), nil
 	}
-	defer rc.Close()
 
 	// Read with cap. Anything beyond the cap gets truncated; the
 	// MCP response stays a single payload (streaming arrives with
@@ -227,6 +226,15 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	buf, truncated := readCapped(rc, sendMessageBufferCapBytes)
 	out.Content = string(buf)
 	out.Truncated = truncated
+
+	// Surface upstream non-zero exit. streamingProcess.Close()
+	// returns *exec.ExitError when the CLI crashed — without
+	// folding it into the result the agent sees a truncated
+	// reply as success. Keep the buffered content so the agent
+	// can read the partial output for debugging.
+	if closeErr := rc.Close(); closeErr != nil {
+		out.ErrorReason = fmt.Sprintf("upstream exited non-zero: %v", closeErr)
+	}
 	out.DurationMs = time.Since(start).Milliseconds()
 	return resultOf(out), nil
 }

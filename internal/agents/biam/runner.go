@@ -76,7 +76,6 @@ func (r *Runner) run(prompt *Envelope, instance, promptText string, opts map[str
 		r.recordResult(prompt, KindError, fmt.Sprintf("send error: %v", err), TaskFailed)
 		return
 	}
-	defer rc.Close()
 
 	// Buffer up to 4 MiB; anything beyond gets truncated with a marker.
 	buf, truncated := readCapped(rc, 4*1024*1024)
@@ -84,7 +83,25 @@ func (r *Runner) run(prompt *Envelope, instance, promptText string, opts map[str
 	if truncated {
 		body += "\n\n…[truncated by clawtool BIAM at 4 MiB]"
 	}
-	r.recordResult(prompt, KindResult, body, TaskDone)
+
+	// streamingProcess.Close() surfaces *exec.ExitError when the
+	// upstream CLI exited non-zero. Without folding that signal in,
+	// a crashed dispatch records as TaskDone and downstream pollers
+	// believe the (likely empty / partial) buffer is the real
+	// answer. Persist the body either way so debuggers still see
+	// the partial output.
+	closeErr := rc.Close()
+	terminal := TaskDone
+	kind := KindResult
+	if closeErr != nil {
+		terminal = TaskFailed
+		kind = KindError
+		if body != "" {
+			body += "\n\n"
+		}
+		body += fmt.Sprintf("upstream exited non-zero: %v", closeErr)
+	}
+	r.recordResult(prompt, kind, body, terminal)
 }
 
 // recordResult writes the terminal envelope + flips the task row.
