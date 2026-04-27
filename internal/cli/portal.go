@@ -25,9 +25,15 @@ const portalUsage = `Usage:
   clawtool portal which                 Show the sticky-default portal.
   clawtool portal use <name>            Set the sticky default for 'portal ask'.
   clawtool portal unset                 Clear the sticky default.
-  clawtool portal add <name>            Open $EDITOR with a TOML template; the
-                                        result is appended to ~/.config/clawtool/
-                                        config.toml under [portals.<name>].
+  clawtool portal add <name>            Interactive wizard: opens Chrome with a
+                                        clean temp profile, you log in, clawtool
+                                        captures cookies via the DevTools Protocol
+                                        (Network.getAllCookies), you supply three
+                                        CSS selectors + a "response done" template,
+                                        result lands in config.toml + secrets.toml.
+  clawtool portal add --manual <name>   Legacy editor-driven path: opens $EDITOR
+                                        with a TOML template; result is appended
+                                        to ~/.config/clawtool/config.toml.
   clawtool portal remove <name>         Remove the [portals.<name>] block.
   clawtool portal ask [<name>] "<prompt>"
                                         Drive the saved web-UI flow with the
@@ -59,11 +65,31 @@ func (a *App) runPortal(argv []string) int {
 	case "unset":
 		return a.dispatchPortalErr("unset", a.PortalUnset())
 	case "add":
-		if len(argv) != 2 {
-			fmt.Fprintln(a.Stderr, "usage: clawtool portal add <name>")
+		// Default flow: interactive wizard (Chrome+CDP, captures
+		// cookies + selectors live). --manual flag falls back to
+		// the v0.16.1 $EDITOR-driven TOML template.
+		manual := false
+		var name string
+		for _, v := range argv[1:] {
+			switch v {
+			case "--manual":
+				manual = true
+			default:
+				if name != "" {
+					fmt.Fprintln(a.Stderr, "usage: clawtool portal add [--manual] <name>")
+					return 2
+				}
+				name = v
+			}
+		}
+		if name == "" {
+			fmt.Fprintln(a.Stderr, "usage: clawtool portal add [--manual] <name>")
 			return 2
 		}
-		return a.dispatchPortalErr("add", a.PortalAdd(argv[1]))
+		if manual {
+			return a.dispatchPortalErr("add", a.PortalAdd(name))
+		}
+		return a.dispatchPortalErr("add", a.runPortalAddWizard(name))
 	case "remove":
 		if len(argv) != 2 {
 			fmt.Fprintln(a.Stderr, "usage: clawtool portal remove <name>")
