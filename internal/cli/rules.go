@@ -1,0 +1,287 @@
+// Package cli — `clawtool rules` subcommand. Lifecycle management
+// for the operator's predicate-based invariants in
+// .clawtool/rules.toml (project-local) or
+// ~/.config/clawtool/rules.toml (user-global).
+//
+// Operator-facing surface:
+//
+//	clawtool rules list                     show every loaded rule + its source
+//	clawtool rules show <name>              detail view of one rule
+//	clawtool rules new <name> [flags]       add a new rule (asks scope when ambiguous)
+//	clawtool rules remove <name>            delete a rule
+//	clawtool rules path [--user|--local]    print the rules file path
+//	clawtool rules check <event> [flags]    one-shot evaluation against current state
+//
+// Why this lives in CLI: the operator wants to add a rule from a
+// fresh-context shell without firing up an editor; the parallel
+// MCP-side tool (RulesAdd) is a thin wrapper that calls the same
+// rules.AppendRule helper this CLI does.
+package cli
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/cogitave/clawtool/internal/rules"
+)
+
+const rulesUsage = `Usage:
+  clawtool rules list                              List every loaded rule with its source path.
+  clawtool rules show <name>                       Detail view of one rule (when, condition, severity, hint).
+  clawtool rules new <name> --when <event> --condition '<expr>' [options]
+                                                   Add a new rule. Defaults: severity=warn, scope=local.
+  clawtool rules remove <name> [--user|--local]    Delete the rule. Without scope flag, removes from the
+                                                   first file that contains the rule.
+  clawtool rules path [--user|--local]             Print the rules file path.
+
+Options for 'new':
+  --description "..."                              One-line human description (optional).
+  --severity off|warn|block                        Default warn.
+  --hint "..."                                     Operator-facing hint when the rule fires.
+  --user                                           Write to ~/.config/clawtool/rules.toml (or
+                                                   $XDG_CONFIG_HOME). Default --local.
+  --local                                          Write to ./.clawtool/rules.toml (default).
+
+Events:
+  pre_commit, post_edit, session_end, pre_send, pre_unattended
+
+See docs/rules.md for the predicate DSL (changed / commit_message_contains /
+tool_call_count / arg / true / false + AND/OR/NOT).
+`
+
+func (a *App) runRules(argv []string) int {
+	if len(argv) == 0 {
+		fmt.Fprint(a.Stderr, rulesUsage)
+		return 2
+	}
+	switch argv[0] {
+	case "list":
+		return a.runRulesList(argv[1:])
+	case "show":
+		return a.runRulesShow(argv[1:])
+	case "new", "add":
+		return a.runRulesNew(argv[1:])
+	case "remove", "rm", "delete":
+		return a.runRulesRemove(argv[1:])
+	case "path":
+		return a.runRulesPath(argv[1:])
+	default:
+		fmt.Fprintf(a.Stderr, "clawtool rules: unknown subcommand %q\n\n%s",
+			argv[0], rulesUsage)
+		return 2
+	}
+}
+
+// resolveScope returns the rules file path based on flags. Default
+// is local (./.clawtool/rules.toml) — operators typically scope
+// rules to a project; user-global is opt-in.
+func resolveScope(argv []string) (path string, fromFlag string, err error) {
+	user, local := false, false
+	for _, a := range argv {
+		switch a {
+		case "--user":
+			user = true
+		case "--local":
+			local = true
+		}
+	}
+	if user && local {
+		return "", "", fmt.Errorf("--user and --local are mutually exclusive")
+	}
+	if user {
+		return rules.UserRulesPath(), "user", nil
+	}
+	return rules.LocalRulesPath(), "local", nil
+}
+
+func (a *App) runRulesList(_ []string) int {
+	loaded, path, ok, err := rules.LoadDefault()
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool rules list: %v\n", err)
+		return 1
+	}
+	if !ok {
+		fmt.Fprintln(a.Stdout, "(no rules configured — try `clawtool rules new <name> --when pre_commit --condition '...'`)")
+		return 0
+	}
+	fmt.Fprintf(a.Stdout, "source: %s\n\n", path)
+	fmt.Fprintf(a.Stdout, "%-30s %-20s %-10s %s\n", "NAME", "WHEN", "SEVERITY", "DESCRIPTION")
+	for _, r := range loaded {
+		desc := r.Description
+		if len(desc) > 60 {
+			desc = desc[:57] + "…"
+		}
+		fmt.Fprintf(a.Stdout, "%-30s %-20s %-10s %s\n",
+			r.Name, string(r.When), string(r.Severity), desc)
+	}
+	return 0
+}
+
+func (a *App) runRulesShow(argv []string) int {
+	if len(argv) < 1 {
+		fmt.Fprint(a.Stderr, "usage: clawtool rules show <name>\n")
+		return 2
+	}
+	target := argv[0]
+	loaded, path, ok, err := rules.LoadDefault()
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool rules show: %v\n", err)
+		return 1
+	}
+	if !ok {
+		fmt.Fprintln(a.Stderr, "no rules configured")
+		return 1
+	}
+	for _, r := range loaded {
+		if r.Name == target {
+			fmt.Fprintf(a.Stdout, "name:        %s\n", r.Name)
+			fmt.Fprintf(a.Stdout, "source:      %s\n", path)
+			fmt.Fprintf(a.Stdout, "when:        %s\n", string(r.When))
+			fmt.Fprintf(a.Stdout, "severity:    %s\n", string(r.Severity))
+			if r.Description != "" {
+				fmt.Fprintf(a.Stdout, "description: %s\n", r.Description)
+			}
+			fmt.Fprintf(a.Stdout, "condition:   %s\n", r.Condition)
+			if r.Hint != "" {
+				fmt.Fprintf(a.Stdout, "hint:        %s\n", r.Hint)
+			}
+			return 0
+		}
+	}
+	fmt.Fprintf(a.Stderr, "rule %q not found in %s\n", target, path)
+	return 1
+}
+
+func (a *App) runRulesNew(argv []string) int {
+	if len(argv) < 1 {
+		fmt.Fprint(a.Stderr, "usage: clawtool rules new <name> --when <event> --condition '<expr>' [options]\n")
+		return 2
+	}
+	name := argv[0]
+	rest := argv[1:]
+	var (
+		when        string
+		cond        string
+		severity    = "warn"
+		description string
+		hint        string
+	)
+	for i := 0; i < len(rest); i++ {
+		switch rest[i] {
+		case "--when":
+			if i+1 < len(rest) {
+				when = rest[i+1]
+				i++
+			}
+		case "--condition":
+			if i+1 < len(rest) {
+				cond = rest[i+1]
+				i++
+			}
+		case "--severity":
+			if i+1 < len(rest) {
+				severity = rest[i+1]
+				i++
+			}
+		case "--description":
+			if i+1 < len(rest) {
+				description = rest[i+1]
+				i++
+			}
+		case "--hint":
+			if i+1 < len(rest) {
+				hint = rest[i+1]
+				i++
+			}
+		case "--user", "--local":
+			// handled by resolveScope
+		default:
+			if strings.HasPrefix(rest[i], "--") {
+				fmt.Fprintf(a.Stderr, "clawtool rules new: unknown flag %q\n", rest[i])
+				return 2
+			}
+		}
+	}
+	if when == "" || cond == "" {
+		fmt.Fprintln(a.Stderr, "clawtool rules new: --when and --condition are required")
+		return 2
+	}
+	path, scope, err := resolveScope(rest)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool rules new: %v\n", err)
+		return 2
+	}
+	rule := rules.Rule{
+		Name:        name,
+		Description: description,
+		When:        rules.Event(when),
+		Condition:   cond,
+		Severity:    rules.Severity(severity),
+		Hint:        hint,
+	}
+	if err := rules.AppendRule(path, rule); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool rules new: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(a.Stdout, "✓ rule %q added (scope=%s, path=%s)\n", name, scope, path)
+	return 0
+}
+
+func (a *App) runRulesRemove(argv []string) int {
+	if len(argv) < 1 {
+		fmt.Fprint(a.Stderr, "usage: clawtool rules remove <name> [--user|--local]\n")
+		return 2
+	}
+	name := argv[0]
+	rest := argv[1:]
+	// Try the explicit scope first; fall back to walking both
+	// roots if the operator didn't specify.
+	candidates := []string{}
+	for _, a := range rest {
+		if a == "--user" {
+			candidates = []string{rules.UserRulesPath()}
+			break
+		}
+		if a == "--local" {
+			candidates = []string{rules.LocalRulesPath()}
+			break
+		}
+	}
+	if len(candidates) == 0 {
+		candidates = rules.DefaultRoots()
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		gone, err := rules.RemoveRule(p, name)
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool rules remove: %v\n", err)
+			return 1
+		}
+		if gone {
+			fmt.Fprintf(a.Stdout, "✓ rule %q removed from %s\n", name, p)
+			return 0
+		}
+	}
+	fmt.Fprintf(a.Stderr, "clawtool rules remove: %q not found in any rules file\n", name)
+	return 1
+}
+
+func (a *App) runRulesPath(argv []string) int {
+	for _, a := range argv {
+		if a == "--user" {
+			fmt.Println(rules.UserRulesPath())
+			return 0
+		}
+		if a == "--local" {
+			fmt.Println(rules.LocalRulesPath())
+			return 0
+		}
+	}
+	// No flag: print BOTH so the operator sees the lookup order.
+	fmt.Printf("local: %s\n", rules.LocalRulesPath())
+	fmt.Printf("user:  %s\n", rules.UserRulesPath())
+	return 0
+}

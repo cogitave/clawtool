@@ -109,3 +109,111 @@ func LoadDefault() ([]Rule, string, bool, error) {
 	}
 	return nil, "", false, nil
 }
+
+// LocalRulesPath returns the project-scoped rules path:
+// ./.clawtool/rules.toml.
+func LocalRulesPath() string {
+	return filepath.Join(".clawtool", "rules.toml")
+}
+
+// UserRulesPath returns the user-scoped rules path:
+// $XDG_CONFIG_HOME/clawtool/rules.toml (or ~/.config/...).
+func UserRulesPath() string {
+	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
+		return filepath.Join(x, "clawtool", "rules.toml")
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".config", "clawtool", "rules.toml")
+	}
+	return filepath.Join("clawtool", "rules.toml")
+}
+
+// AppendRule writes one new rule to the file at path, creating
+// the file (and parent dirs) when missing. Validates the rule's
+// shape and condition syntax BEFORE persisting so a malformed
+// add never corrupts the existing rules. Returns ErrDuplicate
+// when a rule with the same Name already exists in the file.
+func AppendRule(path string, r Rule) error {
+	if err := validateRule(r); err != nil {
+		return fmt.Errorf("rules: append %q: %w", r.Name, err)
+	}
+	if _, err := parseExpr(r.Condition); err != nil {
+		return fmt.Errorf("rules: append %q condition: %w", r.Name, err)
+	}
+	// Read existing rules (if any) — we'll re-emit them all so
+	// the file stays in canonical TOML shape (no dangling
+	// fragments from hand-edits, ordering preserved).
+	var existing []Rule
+	if body, err := os.ReadFile(path); err == nil {
+		existing, err = ParseBytes(body)
+		if err != nil {
+			return fmt.Errorf("rules: parse existing %s: %w", path, err)
+		}
+	}
+	for _, e := range existing {
+		if e.Name == r.Name {
+			return fmt.Errorf("rules: append: rule %q already exists in %s", r.Name, path)
+		}
+	}
+	all := append(existing, r)
+	return saveRules(path, all)
+}
+
+// RemoveRule deletes the named rule from the file at path. Returns
+// ok=false when no rule with that name exists; the file stays
+// untouched.
+func RemoveRule(path, name string) (bool, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	existing, err := ParseBytes(body)
+	if err != nil {
+		return false, fmt.Errorf("rules: parse %s: %w", path, err)
+	}
+	out := existing[:0]
+	found := false
+	for _, e := range existing {
+		if e.Name == name {
+			found = true
+			continue
+		}
+		out = append(out, e)
+	}
+	if !found {
+		return false, nil
+	}
+	return true, saveRules(path, out)
+}
+
+// saveRules emits the canonical TOML representation. Each rule
+// becomes one [[rule]] block with name / description / when /
+// condition / severity / hint fields written in a stable order.
+// We hand-roll the writer to avoid pulling in a TOML encoder
+// dependency just for one shape.
+func saveRules(path string, rs []Rule) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("rules: mkdir %s: %w", filepath.Dir(path), err)
+	}
+	var b strings.Builder
+	b.WriteString("# clawtool rules — predicate-based invariants enforced at\n")
+	b.WriteString("# lifecycle events (pre_commit, post_edit, session_end,\n")
+	b.WriteString("# pre_send, pre_unattended). See docs/rules.md for the schema.\n\n")
+	for i, r := range rs {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString("[[rule]]\n")
+		fmt.Fprintf(&b, "name      = %q\n", r.Name)
+		if r.Description != "" {
+			fmt.Fprintf(&b, "description = %q\n", r.Description)
+		}
+		fmt.Fprintf(&b, "when      = %q\n", string(r.When))
+		fmt.Fprintf(&b, "condition = %q\n", r.Condition)
+		fmt.Fprintf(&b, "severity  = %q\n", string(r.Severity))
+		if r.Hint != "" {
+			fmt.Fprintf(&b, "hint      = %q\n", r.Hint)
+		}
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
