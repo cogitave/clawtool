@@ -240,6 +240,12 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	core.RegisterPortalTools(s)
 	core.RegisterPortalAliases(s, cfg)
 
+	// Mcp* — MCP server scaffolder surface (ADR-019). McpList
+	// ships read-only today; McpNew / McpRun / McpBuild /
+	// McpInstall surface a v0.17 deferred-feature error so the
+	// noun + tool names are discoverable now.
+	core.RegisterMcpTools(s)
+
 	// SkillNew lets a model scaffold an agentskills.io-standard
 	// skill from inside a conversation. Same template the
 	// `clawtool skill new` CLI emits — both go through the
