@@ -276,6 +276,11 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// when the Tool Manifest Registry refactor adds middleware.
 	core.RegisterRulesCheck(s)
 
+	// Commit wraps git commit with Conventional Commits validation,
+	// a hard Co-Authored-By trailer block, and a pre_commit rules
+	// gate. ADR-022 phase 1. Use this INSTEAD OF Bash git commit.
+	core.RegisterCommit(s)
+
 	// Aggregated source tools — one entry per (running instance × tool),
 	// already named in wire form `<instance>__<tool>`.
 	for _, st := range mgr.AggregatedTools() {
