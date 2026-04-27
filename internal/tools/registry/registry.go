@@ -84,13 +84,19 @@ type ToolSpec struct {
 // independently. Add fields as new tools demand them; never
 // remove without a deprecation cycle.
 type Runtime struct {
-	// Index is the search.Index built from CoreToolDocs(). Today
-	// only ToolSearch consumes it; future tools that want to do
-	// catalog introspection inherit access here.
+	// Index is the bleve search index ToolSearch closes over.
+	// Step 4 wires ToolSearch through the manifest, so this
+	// field becomes load-bearing rather than aspirational.
 	Index *search.Index
 
-	// (Add Secrets, Sources, Cfg, etc. as migrations need them.
-	//  Phase 1 keeps the surface minimal.)
+	// Secrets is the secrets store WebSearch reads its API key
+	// from at registration time. Typed as *secrets.Store at the
+	// importer's site (server.go / core); registry stays a leaf
+	// by holding it as `any` and letting the per-tool register
+	// fn type-assert. The trade-off (slightly worse type safety
+	// at registration) is preferable to having registry depend
+	// on internal/secrets — keeps the import graph linear.
+	Secrets any
 }
 
 // RegisterFn is the shape every typed register callback adopts.

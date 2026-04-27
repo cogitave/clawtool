@@ -34,6 +34,7 @@ import (
 	"github.com/cogitave/clawtool/internal/sources"
 	"github.com/cogitave/clawtool/internal/telemetry"
 	"github.com/cogitave/clawtool/internal/tools/core"
+	"github.com/cogitave/clawtool/internal/tools/registry"
 	"github.com/cogitave/clawtool/internal/version"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -162,124 +163,27 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 		server.WithLogging(),
 	)
 
-	// Core tools, filtered by config.IsEnabled. ADR-005 / ADR-006: agents
-	// can disable any core tool and use the agent's native one instead.
-	if cfg.IsEnabled("Bash").Enabled {
-		core.RegisterBash(s)
-		core.RegisterBashOutput(s)
-		core.RegisterBashKill(s)
-	}
-	if cfg.IsEnabled("Grep").Enabled {
-		core.RegisterGrep(s)
-	}
-	if cfg.IsEnabled("Read").Enabled {
-		core.RegisterRead(s)
-	}
-	if cfg.IsEnabled("Glob").Enabled {
-		core.RegisterGlob(s)
-	}
-	if cfg.IsEnabled("ToolSearch").Enabled {
-		core.RegisterToolSearch(s, idx)
-	}
-	if cfg.IsEnabled("WebFetch").Enabled {
-		core.RegisterWebFetch(s)
-	}
-	if cfg.IsEnabled("WebSearch").Enabled {
-		core.RegisterWebSearch(s, sec)
-	}
-	if cfg.IsEnabled("Edit").Enabled {
-		core.RegisterEdit(s)
-	}
-	if cfg.IsEnabled("Write").Enabled {
-		core.RegisterWrite(s)
-	}
+	// Manifest-driven registration (#173 Step 4). The 28 hand-
+	// maintained core.RegisterX(s) calls that used to live here
+	// collapsed into a single Apply walk over the typed
+	// internal/tools/core.BuildManifest() — see ADR-005 / ADR-006
+	// for the gating policy and docs/feature-shipping-contract.md
+	// for the four-plane invariant the registry enforces.
+	//
+	// Multi-tool wrappers (Recipe / Bridge / Agent / Task / Portal
+	// / Mcp / Sandbox) follow the "first spec invokes" pattern:
+	// each wrapper's first ToolSpec carries the Register fn that
+	// registers the whole bundle; companion specs (RecipeStatus
+	// after RecipeList, etc.) have Register=nil and Apply skips
+	// them silently.
+	manifest := core.BuildManifest()
+	manifest.Apply(s, registry.Runtime{Index: idx, Secrets: sec},
+		func(name string) bool { return cfg.IsEnabled(name).Enabled })
 
-	// Recipe* tools mirror `clawtool recipe …` so a model can list,
-	// detect, and apply project-setup recipes from inside a chat.
-	// Always registered — there's no per-tool gate for the recipe
-	// surface yet (cfg.IsEnabled is core-tool scoped). Adding one is
-	// trivial when the need shows up.
-	core.RegisterRecipeTools(s)
-
-	// Bridge* tools mirror `clawtool bridge add/list/remove/upgrade`
-	// so a model can install / inspect bridges to other coding-agent
-	// CLIs (codex / opencode / gemini) mid-conversation. Per ADR-014.
-	core.RegisterBridgeTools(s)
-
-	// SendMessage + AgentList expose the supervisor's dispatch +
-	// registry surface over MCP. Same call site as `clawtool send`
-	// CLI and the future HTTP gateway.
-	core.RegisterAgentTools(s)
-
-	// TaskGet + TaskWait + TaskList — BIAM async surface (ADR-015
-	// Phase 1). Pair with SendMessage --bidi for "fire-and-forget
-	// then poll" workflows.
-	core.RegisterTaskTools(s)
-
-	// TaskNotify — edge-triggered completion push for fan-out
-	// dispatches. Subscribes to biam.Notifier so the caller wakes
-	// the instant ANY watched task settles, no SQLite poll.
-	core.RegisterTaskNotify(s)
-
-	// Verify runs a repo's tests/lints/typechecks via whichever
-	// runner the repo declares (Make/pnpm/npm/go/pytest/ruby/cargo/
-	// just) and returns one structured pass/fail per check. ADR-014
-	// T4. Always registered.
-	core.RegisterVerify(s)
-
-	// SemanticSearch wraps chromem-go for intent-based code search;
-	// the embedding index is built lazily on first call. Registered
-	// always — missing OPENAI_API_KEY (or absent Ollama daemon) is
-	// surfaced as a per-call error, not a boot failure.
-	core.RegisterSemanticSearch(s)
-
-	// BrowserFetch + BrowserScrape — JS-rendered fetching via Obscura
-	// (Chrome DevTools Protocol headless engine). Sister of WebFetch
-	// for SPA / hydrated content. Stateless per call. Always
-	// registered; missing-binary surfaces as a per-call hint.
-	core.RegisterBrowserFetch(s)
-	core.RegisterBrowserScrape(s)
-
-	// Portal* — saved web-UI targets (ADR-018). Generic surface
-	// (List / Use / Which / Unset / Remove / Ask) plus per-portal
-	// aliases `<name>__ask` so a model can call `my_deepseek__ask`
-	// directly. PortalAdd is CLI-only because it spawns $EDITOR.
-	core.RegisterPortalTools(s)
+	// Portal aliases are dynamic (one per configured portal) so
+	// they can't fit the static manifest shape — register
+	// imperatively. ADR-018.
 	core.RegisterPortalAliases(s, cfg)
-
-	// Mcp* — MCP server scaffolder surface (ADR-019). McpList
-	// ships read-only today; McpNew / McpRun / McpBuild /
-	// McpInstall surface a v0.17 deferred-feature error so the
-	// noun + tool names are discoverable now.
-	core.RegisterMcpTools(s)
-
-	// Sandbox* — sandbox profile catalog (ADR-020). Read-only
-	// surface ships in v0.18; engine enforcement (bwrap /
-	// sandbox-exec / docker) lands v0.18.1+.
-	core.RegisterSandboxTools(s)
-
-	// SkillNew lets a model scaffold an agentskills.io-standard
-	// skill from inside a conversation. Same template the
-	// `clawtool skill new` CLI emits — both go through the
-	// internal/skillgen package.
-	core.RegisterSkillNew(s)
-
-	// AgentNew scaffolds a Claude Code subagent persona —
-	// USER-DEFINED, not a bridge / instance. Same template the
-	// `clawtool agent new` CLI emits via internal/agentgen.
-	core.RegisterAgentNew(s)
-
-	// RulesCheck evaluates .clawtool/rules.toml against a
-	// caller-supplied Context (event + changed_paths + commit_message
-	// + tool_calls + args) and returns Verdict (passed / warned /
-	// blocked). Read-only — enforcement at tool-call time lands
-	// when the Tool Manifest Registry refactor adds middleware.
-	core.RegisterRulesCheck(s)
-
-	// Commit wraps git commit with Conventional Commits validation,
-	// a hard Co-Authored-By trailer block, and a pre_commit rules
-	// gate. ADR-022 phase 1. Use this INSTEAD OF Bash git commit.
-	core.RegisterCommit(s)
 
 	// Aggregated source tools — one entry per (running instance × tool),
 	// already named in wire form `<instance>__<tool>`.
@@ -289,35 +193,22 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	return s, mgr, cfg, sec, nil
 }
 
-// buildIndexDocs assembles search descriptors from every tool clawtool will
-// register. The nine gateable core tools (Bash / Edit / … / Write) honour
-// their config.IsEnabled flag; the always-on surface (SendMessage,
-// AgentList, Bridge*, Task*, Verify, SemanticSearch, …) is always
-// indexed so ToolSearch returns the full v0.15+ catalog. Without this,
-// adding a new always-on tool meant agents could call it but couldn't
-// find it via ToolSearch.
+// buildIndexDocs flattens the manifest into search.Doc entries
+// for the bleve indexer + appends the dynamic per-source-instance
+// aggregated tools.
+//
+// Gating is delegated to manifest.SearchDocs(pred) where pred
+// reads cfg.IsEnabled(spec.Gate). Empty-Gate specs always pass —
+// keeps always-on tools (Verify, SemanticSearch, Recipe*, …)
+// indexed even when the operator disables every gateable tool.
+//
+// The Bash companions (BashOutput, BashKill) are gated on "Bash"
+// at manifest construction time (see internal/tools/core/manifest.go),
+// so this function doesn't need a separate alias map any more.
 func buildIndexDocs(cfg config.Config, mgr *sources.Manager) []search.Doc {
-	var docs []search.Doc
-
-	gateable := map[string]bool{
-		"Bash": true, "Edit": true, "Glob": true, "Grep": true, "Read": true,
-		"ToolSearch": true, "WebFetch": true, "WebSearch": true, "Write": true,
-	}
-	// BashOutput/BashKill are companions to Bash — gate them on the
-	// same flag rather than introducing a separate config knob.
-	gateAlias := map[string]string{
-		"BashOutput": "Bash",
-		"BashKill":   "Bash",
-	}
-	for _, d := range core.CoreToolDocs() {
-		if gateable[d.Name] && !cfg.IsEnabled(d.Name).Enabled {
-			continue
-		}
-		if alias, ok := gateAlias[d.Name]; ok && !cfg.IsEnabled(alias).Enabled {
-			continue
-		}
-		docs = append(docs, d)
-	}
+	docs := core.BuildManifest().SearchDocs(func(gate string) bool {
+		return cfg.IsEnabled(gate).Enabled
+	})
 
 	// Aggregated source tools. We index name + description from the child's
 	// own MCP advertisement — that's the canonical source of truth.
