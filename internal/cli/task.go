@@ -14,6 +14,13 @@ const taskUsage = `Usage:
   clawtool task list [--limit N]                 Recent BIAM tasks (default 50, max 1000).
   clawtool task get <task_id>                    Snapshot of one task + its message timeline.
   clawtool task wait <task_id> [--timeout 5m]    Block until the task hits a terminal state.
+  clawtool task watch [<task_id> | --all] [--json] [--poll-interval 250ms]
+                                                Stream state transitions as one stdout line per
+                                                event. Pair with Claude Code's Monitor tool to
+                                                surface dispatch progress as inline chat events
+                                                (ADR-026). Without --all, watches a single task.
+                                                With --all, watches every active dispatch in the
+                                                BIAM store.
 
 Tasks are created when you dispatch with 'clawtool send --async' or
 'mcp__clawtool__SendMessage --bidi=true'. The store lives at
@@ -71,6 +78,8 @@ func (a *App) runTask(argv []string) int {
 			fmt.Fprintf(a.Stderr, "clawtool task wait: %v\n", err)
 			return 1
 		}
+	case "watch":
+		return a.runTaskWatch(argv[1:])
 	default:
 		fmt.Fprintf(a.Stderr, "clawtool task: unknown subcommand %q\n\n%s", argv[0], taskUsage)
 		return 2
