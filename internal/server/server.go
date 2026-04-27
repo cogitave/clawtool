@@ -32,6 +32,7 @@ import (
 	"github.com/cogitave/clawtool/internal/search"
 	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/cogitave/clawtool/internal/sources"
+	"github.com/cogitave/clawtool/internal/telemetry"
 	"github.com/cogitave/clawtool/internal/tools/core"
 	"github.com/cogitave/clawtool/internal/version"
 	"github.com/mark3labs/mcp-go/server"
@@ -109,6 +110,17 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 		"version": version.Version,
 		"pid":     os.Getpid(),
 	})
+
+	// Telemetry (F5). Anonymous, opt-in. Env-var kill switch always
+	// wins over config so an operator can disable temporarily without
+	// editing files.
+	if !telemetry.SilentDisabled() {
+		tc := telemetry.New(cfg.Telemetry)
+		telemetry.SetGlobal(tc)
+		tc.Track("server.start", map[string]any{
+			"version": version.Version,
+		})
+	}
 
 	// BIAM Phase 1 (ADR-015): bring up the per-instance identity +
 	// SQLite store, register a process-wide async runner so

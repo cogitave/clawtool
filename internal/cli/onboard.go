@@ -20,6 +20,7 @@ type onboardState struct {
 	InstallBridges []string
 	CreateIdentity bool
 	Telemetry      bool
+	RunInit        bool
 }
 
 // onboardDeps lets tests substitute the four side-effecting calls
@@ -106,6 +107,15 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 			Value(&state.Telemetry),
 	))
 
+	groups = append(groups, huh.NewGroup(
+		huh.NewConfirm().
+			Title("Run `clawtool init` after onboard?").
+			Description("Onboard set up your host. `clawtool init` is the project-level wizard that injects release-please / dependabot / commitlint / brain / etc. into the repo you're sitting in. Skip if you'd rather run it later in a different repo.").
+			Affirmative("Yes, set this repo up too").
+			Negative("Skip").
+			Value(&state.RunInit),
+	))
+
 	form := huh.NewForm(groups...)
 	if err := d.runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
@@ -137,7 +147,11 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 	}
 
 	d.stdoutLn("")
-	d.stdoutLn("Done. Run `clawtool send --list` to see your callable agents.")
+	if state.RunInit {
+		d.stdoutLn("Run `clawtool init` now to drop project recipes (release-please / dependabot / etc.) into the current repo.")
+	} else {
+		d.stdoutLn("Done. Run `clawtool send --list` to see your callable agents.")
+	}
 	return nil
 }
 

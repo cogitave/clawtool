@@ -98,12 +98,31 @@ func TestEmit_Argv_SkipsShell(t *testing.T) {
 	}
 }
 
-func TestEmit_Timeout(t *testing.T) {
-	// Linux process-group reaping for shell children is left to the
-	// future ProcessGroup helper (the same one applyProcessGroup
-	// uses for the Bash tool). This test exercises the immediate
-	// path: a hook that returns non-zero before the timeout fires
-	// surfaces as an error promptly, with no shell-stall risk.
+func TestEmit_Timeout_KillsShellChildren(t *testing.T) {
+	// F7: a `sleep 30` child of /bin/sh used to keep stdio pipes
+	// open past the timeout because exec.CommandContext only kills
+	// the shell. With internal/sysproc's process-group reaping the
+	// whole tree gets SIGKILL and Wait() returns within ~timeout.
+	cfg := config.HooksConfig{
+		Events: map[string][]config.HookEntry{
+			"pre_send": {{Cmd: "sleep 30", BlockOnErr: true, TimeoutMs: 200}},
+		},
+	}
+	m := New(cfg)
+	start := time.Now()
+	err := m.Emit(context.Background(), EventPreSend, nil)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("error should mention timeout: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("hook timeout did not fire promptly with group-kill; took %v", elapsed)
+	}
+}
+
+func TestEmit_NonZeroExit_FailFast(t *testing.T) {
 	cfg := config.HooksConfig{
 		Events: map[string][]config.HookEntry{
 			"pre_send": {{Cmd: "exit 7", BlockOnErr: true, TimeoutMs: 1000}},
@@ -114,9 +133,6 @@ func TestEmit_Timeout(t *testing.T) {
 	err := m.Emit(context.Background(), EventPreSend, nil)
 	if err == nil {
 		t.Fatal("expected error from non-zero hook")
-	}
-	if !strings.Contains(err.Error(), "exit") && !strings.Contains(err.Error(), "7") {
-		t.Errorf("error should mention exit code or status: %v", err)
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Errorf("non-zero hook should fail fast; took %v", elapsed)

@@ -30,7 +30,8 @@
 # ─────────────────────────────────────────────────────────────────────
 /bin/
 /dist/
-/test/e2e/stub-server/stub-server     # built on-demand by `make stub-server`
+# built on-demand by `make stub-server`
+/test/e2e/stub-server/stub-server
 *.test
 *.out
 *.exe
