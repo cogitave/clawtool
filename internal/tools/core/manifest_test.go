@@ -74,3 +74,89 @@ func TestBuildManifest_BashCompanionsShareGate(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildManifest_Step3aSpecs asserts the 12 individual-Register
+// tools migrated in Step 3a are all present, in the right
+// category, with the right gate (empty for always-on, name-of-tool
+// for gateable file/shell/web tools), and a non-nil Register fn.
+func TestBuildManifest_Step3aSpecs(t *testing.T) {
+	type expect struct {
+		Cat  registry.Category
+		Gate string
+	}
+	want := map[string]expect{
+		// Gateable — disabling the tool's name in cfg.IsEnabled
+		// hides it. Same key for tool name + gate today.
+		"Bash":     {registry.CategoryShell, "Bash"},
+		"Grep":     {registry.CategoryFile, "Grep"},
+		"Read":     {registry.CategoryFile, "Read"},
+		"Glob":     {registry.CategoryFile, "Glob"},
+		"WebFetch": {registry.CategoryWeb, "WebFetch"},
+		"Edit":     {registry.CategoryFile, "Edit"},
+		"Write":    {registry.CategoryFile, "Write"},
+		// Always-on individual tools.
+		"Verify":         {registry.CategorySetup, ""},
+		"SemanticSearch": {registry.CategoryDiscovery, ""},
+		"BrowserFetch":   {registry.CategoryWeb, ""},
+		"BrowserScrape":  {registry.CategoryWeb, ""},
+		"SkillNew":       {registry.CategoryAuthoring, ""},
+	}
+	got := map[string]registry.ToolSpec{}
+	for _, s := range BuildManifest().Specs() {
+		got[s.Name] = s
+	}
+	for name, w := range want {
+		spec, ok := got[name]
+		if !ok {
+			t.Errorf("manifest missing %q", name)
+			continue
+		}
+		if spec.Category != w.Cat {
+			t.Errorf("%q category = %q, want %q", name, spec.Category, w.Cat)
+		}
+		if spec.Gate != w.Gate {
+			t.Errorf("%q gate = %q, want %q", name, spec.Gate, w.Gate)
+		}
+		if spec.Register == nil {
+			t.Errorf("%q has nil Register — Step 3a tools should all be wired", name)
+		}
+		if strings.TrimSpace(spec.Description) == "" {
+			t.Errorf("%q has empty Description", name)
+		}
+		if len(spec.Keywords) == 0 {
+			t.Errorf("%q has no Keywords", name)
+		}
+	}
+}
+
+// TestBuildManifest_NoStep4ToolsYet documents the deferral: the
+// tools that need additional Runtime dependencies (ToolSearch
+// needs *search.Index; WebSearch needs *secrets.Store) and the
+// multi-tool wrappers (Recipe* / Bridge* / Agent* / Task* /
+// Portal* / Mcp* / Sandbox*) are EXPLICITLY not in Step 2/3a.
+// They land in Step 4 alongside the server.go hookup.
+//
+// If a future commit accidentally adds them before the hookup
+// is ready, this test fires so the author knows to land them
+// together with the server.go flip.
+func TestBuildManifest_NoStep4ToolsYet(t *testing.T) {
+	deferred := []string{
+		"ToolSearch", "WebSearch", // need Runtime additions
+		"RecipeList", "RecipeStatus", "RecipeApply", // multi-tool wrapper RegisterRecipeTools
+		"BridgeList", "BridgeAdd", "BridgeRemove", "BridgeUpgrade", // RegisterBridgeTools
+		"SendMessage", "AgentList", // RegisterAgentTools
+		"TaskGet", "TaskWait", "TaskList", // RegisterTaskTools
+		"PortalList", "PortalAsk", "PortalUse", "PortalWhich", "PortalUnset", "PortalRemove", // RegisterPortalTools
+		"McpList", "McpNew", "McpRun", "McpBuild", "McpInstall", // RegisterMcpTools
+		"SandboxList", "SandboxShow", "SandboxDoctor", // RegisterSandboxTools
+	}
+	got := map[string]bool{}
+	for _, s := range BuildManifest().Specs() {
+		got[s.Name] = true
+	}
+	for _, name := range deferred {
+		if got[name] {
+			t.Errorf("%q is in BuildManifest but documented as Step 4 — verify the server.go hookup landed in the same commit; if so, remove the name from this test's deferred list", name)
+		}
+	}
+}

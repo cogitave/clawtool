@@ -113,5 +113,133 @@ func BuildManifest() *registry.Manifest {
 		},
 	})
 
+	// ─── Step 3a: gateable file + shell + web tools ────────────
+	// All have a `(s *server.MCPServer)` Register signature today.
+	// ToolSearch + WebSearch are deferred to Step 4 because they
+	// take additional dependencies (search.Index / secrets.Store);
+	// adding those to Runtime is part of Step 4's hookup commit.
+	m.Append(registry.ToolSpec{
+		Name:        "Bash",
+		Description: "Run a shell command via /bin/bash. Returns structured JSON with stdout, stderr, exit_code, duration_ms, timed_out, cwd. Output preserved on timeout via process-group SIGKILL. Set background=true to fire-and-forget — returns a task_id you poll via BashOutput / kill via BashKill.",
+		Keywords:    []string{"shell", "execute", "run", "command", "terminal", "background", "async", "long-running"},
+		Category:    registry.CategoryShell,
+		Gate:        "Bash",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterBash(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "Grep",
+		Description: "Search file contents for a regular-expression pattern. Powered by ripgrep (rg) with .gitignore-aware traversal and --type aliases; falls back to system grep.",
+		Keywords:    []string{"search", "find", "regex", "ripgrep", "rg", "match", "pattern"},
+		Category:    registry.CategoryFile,
+		Gate:        "Grep",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterGrep(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "Read",
+		Description: "Read a file with stable line cursors and deterministic line counts. Format-aware: text, PDF (pdftotext), Jupyter (.ipynb), Word (.docx via pandoc), Excel (.xlsx via excelize), CSV/TSV, HTML (Mozilla Readability), and JSON/YAML/TOML/XML pass-through.",
+		Keywords:    []string{"file", "open", "cat", "view", "pdf", "docx", "word", "xlsx", "excel", "spreadsheet", "csv", "tsv", "html", "json", "yaml", "toml", "xml", "ipynb", "notebook", "office"},
+		Category:    registry.CategoryFile,
+		Gate:        "Read",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterRead(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "Glob",
+		Description: "List files matching a glob pattern (** double-star supported). Powered by github.com/bmatcuk/doublestar.",
+		Keywords:    []string{"find", "match", "files", "pattern", "wildcard", "ls", "list"},
+		Category:    registry.CategoryFile,
+		Gate:        "Glob",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterGlob(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "WebFetch",
+		Description: "Retrieve a URL and return clean article text via Mozilla Readability for HTML, or raw text for text/* MIME types. Binary refused. 10 MB body cap.",
+		Keywords:    []string{"http", "https", "url", "fetch", "download", "web", "page", "article", "scrape", "readability"},
+		Category:    registry.CategoryWeb,
+		Gate:        "WebFetch",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterWebFetch(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "Edit",
+		Description: "Replace a substring in an existing file. Atomic temp+rename, line-ending and BOM preserve, binary refusal. Refuses ambiguous matches unless replace_all=true.",
+		Keywords:    []string{"replace", "modify", "change", "patch", "substitute", "search-and-replace", "sed", "fix"},
+		Category:    registry.CategoryFile,
+		Gate:        "Edit",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterEdit(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "Write",
+		Description: "Create or replace a whole file. Atomic temp+rename, parent directory auto-create, line-ending and BOM preserve when overwriting.",
+		Keywords:    []string{"create", "save", "overwrite", "tee", "echo", "new", "file"},
+		Category:    registry.CategoryFile,
+		Gate:        "Write",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterWrite(s)
+		},
+	})
+
+	// ─── Always-on individual tools (single-Register-fn shape) ─
+	m.Append(registry.ToolSpec{
+		Name:        "Verify",
+		Description: "Run a repo's tests / lints / typechecks via whichever runner it declares (Make / pnpm / npm / go / pytest / ruby / cargo / just). Returns one structured pass/fail per check. Buffered single payload — for streaming output use Bash.",
+		Keywords:    []string{"verify", "test", "tests", "check", "ci", "make", "pnpm", "npm", "go-test", "pytest", "cargo", "just", "validate"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterVerify(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "SemanticSearch",
+		Description: "Semantic (intent-based) code search. Use for conceptual queries like 'where do we rotate auth tokens?' or 'how is caching wired?' — Grep stays the literal-regex tool. Wraps chromem-go + an embedding provider; index is built lazily on first call.",
+		Keywords:    []string{"semantic", "embeddings", "vector", "concept", "intent", "find-code", "rag", "search-code", "discover", "where"},
+		Category:    registry.CategoryDiscovery,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterSemanticSearch(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "BrowserFetch",
+		Description: "Render a URL inside a real headless browser (Obscura, V8 + Chrome DevTools Protocol) and return clean prose for HTML or the value of a custom JS expression. Use when WebFetch returns empty SPA shells (Next.js / React / hydrated pages). Stateless per call.",
+		Keywords:    []string{"browser", "headless", "spa", "javascript", "render", "obscura", "puppeteer", "playwright", "fetch", "scrape", "react", "next", "hydrated", "cdp"},
+		Category:    registry.CategoryWeb,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterBrowserFetch(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "BrowserScrape",
+		Description: "Render many URLs in parallel through a real browser engine (Obscura) and capture a JS expression's value per page. Bulk SPA scraping with configurable concurrency. Stateless per URL.",
+		Keywords:    []string{"browser", "headless", "scrape", "bulk", "parallel", "spa", "obscura", "crawler", "harvest"},
+		Category:    registry.CategoryWeb,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterBrowserScrape(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "SkillNew",
+		Description: "Scaffold a Claude Code skill (agentskills.io standard): SKILL.md with frontmatter + scripts/ + references/ + assets/. Same template the `clawtool skill new` CLI emits.",
+		Keywords:    []string{"skill", "scaffold", "new", "create", "agentskills", "skill-md", "claude-skill"},
+		Category:    registry.CategoryAuthoring,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterSkillNew(s)
+		},
+	})
+
 	return m
 }
