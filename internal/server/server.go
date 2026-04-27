@@ -21,9 +21,11 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/cogitave/clawtool/internal/agents"
+	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/observability"
 	"github.com/cogitave/clawtool/internal/search"
@@ -87,6 +89,25 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// silent skip, not an error.
 	if cfg.AutoLint.Enabled != nil {
 		core.SetAutoLintEnabled(*cfg.AutoLint.Enabled)
+	}
+
+	// BIAM Phase 1 (ADR-015): bring up the per-instance identity +
+	// SQLite store, register a process-wide async runner so
+	// `mcp__clawtool__SendMessage --bidi` and `clawtool send --async`
+	// can return task IDs immediately. Init failures are logged but
+	// non-fatal (synchronous send keeps working).
+	id, err := biam.LoadOrCreateIdentity("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "clawtool: biam identity init failed: %v\n", err)
+	} else if store, err := biam.OpenStore(""); err != nil {
+		fmt.Fprintf(os.Stderr, "clawtool: biam store init failed: %v\n", err)
+	} else {
+		runner := biam.NewRunner(store, id, func(ctx context.Context, instance, prompt string, opts map[string]any) (io.ReadCloser, error) {
+			// Cast through the package var to avoid an import cycle.
+			return agents.NewSupervisor().Send(ctx, instance, prompt, opts)
+		})
+		agents.SetGlobalBiamRunner(runner)
+		core.SetBiamStore(store)
 	}
 
 	mgr := sources.NewManager(cfg, sec)
@@ -156,6 +177,11 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// registry surface over MCP. Same call site as `clawtool send`
 	// CLI and the future HTTP gateway.
 	core.RegisterAgentTools(s)
+
+	// TaskGet + TaskWait + TaskList — BIAM async surface (ADR-015
+	// Phase 1). Pair with SendMessage --bidi for "fire-and-forget
+	// then poll" workflows.
+	core.RegisterTaskTools(s)
 
 	// Verify runs a repo's tests/lints/typechecks via whichever
 	// runner the repo declares (Make/pnpm/npm/go/pytest/ruby/cargo/

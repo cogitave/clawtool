@@ -80,6 +80,7 @@ type sendArgs struct {
 	list        bool
 	isolated    bool
 	keepOnError bool
+	async       bool
 }
 
 func parseSendArgs(argv []string) (sendArgs, error) {
@@ -123,6 +124,8 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 			out.isolated = true
 		case "--keep-on-error":
 			out.keepOnError = true
+		case "--async":
+			out.async = true
 		case "--help", "-h":
 			out.list = false
 			out.prompt = ""
@@ -177,6 +180,46 @@ func (a *App) Send(args sendArgs) error {
 		opts["cwd"] = workdir
 		cleanup = c
 		fmt.Fprintf(a.Stderr, "clawtool: isolated worktree at %s\n", workdir)
+	}
+
+	if args.async {
+		// CLI is a separate process from `clawtool serve`; bootstrap
+		// the BIAM identity + SQLite store here so SubmitAsync has a
+		// runner attached. The store survives the process exit (it's
+		// just a file on disk) and the goroutine inside the runner
+		// drains the upstream stream before we return — but only
+		// after we've persisted the prompt envelope and the result
+		// envelope. We block briefly on a Goroutine wait via TaskWait
+		// elsewhere; here we just want the task_id.
+		if _, err := ensureBIAMRunner(); err != nil {
+			if cleanup != nil && !args.keepOnError {
+				cleanup()
+			}
+			return fmt.Errorf("--async: %w", err)
+		}
+		// Wire a fresh supervisor that picks up the runner we just
+		// installed (NewSupervisor reads globalBiamRunner at construction).
+		sup = agents.NewSupervisor()
+		taskID, err := sup.SubmitAsync(context.Background(), args.agent, args.prompt, opts)
+		if err != nil {
+			if cleanup != nil && !args.keepOnError {
+				cleanup()
+			}
+			return err
+		}
+		fmt.Fprintln(a.Stdout, taskID)
+
+		// CLI process is about to exit; the runner's goroutine needs
+		// the upstream dispatch to complete before main returns,
+		// otherwise codex/etc. get SIGKILL'd before persisting their
+		// result. Block until the task hits a terminal state.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		store, _ := ensureBIAMRunner()
+		if store != nil {
+			_, _ = store.WaitForTerminal(ctx, taskID, 250*time.Millisecond)
+		}
+		return nil
 	}
 
 	rc, err := sup.Send(context.Background(), args.agent, args.prompt, opts)

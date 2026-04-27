@@ -223,5 +223,23 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"semantic", "embeddings", "vector", "concept", "intent", "find-code", "rag", "search-code", "discover", "where"},
 		},
+		{
+			Name:        "TaskGet",
+			Description: "Snapshot of one BIAM task: status + every message persisted under task_id. Pair with SendMessage --bidi to dispatch async and poll without blocking.",
+			Type:        "core",
+			Keywords:    []string{"task", "biam", "async", "poll", "result", "snapshot"},
+		},
+		{
+			Name:        "TaskWait",
+			Description: "Block until a BIAM task reaches a terminal state. Use when the caller has nothing else to do until the upstream finishes.",
+			Type:        "core",
+			Keywords:    []string{"task", "biam", "wait", "block", "result", "terminal"},
+		},
+		{
+			Name:        "TaskList",
+			Description: "Recent BIAM tasks (default 50). Use to find task_ids when the caller forgot one mid-conversation.",
+			Type:        "core",
+			Keywords:    []string{"task", "biam", "list", "recent", "history"},
+		},
 	}
 }

@@ -119,9 +119,24 @@ func (s *streamingProcess) Close() error {
 		// on windows. CLIs we wrap all clean up on either signal.
 		_ = s.cmd.Process.Signal(os.Interrupt)
 	}
-	if s.cmd != nil {
-		_ = s.cmd.Wait()
+	if s.cmd == nil {
+		return nil
 	}
+	// Surface upstream exit failures — without this, a CLI that
+	// crashes after Start sees the caller treating its truncated
+	// stream as success. Skip ExitError when we initiated the
+	// SIGINT ourselves (graceful cancel).
+	err := s.cmd.Wait()
+	if err == nil {
+		return nil
+	}
+	if _, ok := err.(*exec.ExitError); ok {
+		// upstream exited non-zero (assertion failure, auth error, …);
+		// callers care about this.
+		return err
+	}
+	// Process kill / pipe close caused by our own Close(); not a
+	// caller-visible error.
 	return nil
 }
 
