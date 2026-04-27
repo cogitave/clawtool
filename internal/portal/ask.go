@@ -32,11 +32,18 @@ type AskOptions struct {
 	ObscuraBin string        // "obscura" → resolved via PATH if empty
 	PollEvery  time.Duration // default 250ms
 	Stdout     io.Writer     // optional: progress stream (one line per phase). nil → silent
+
+	// Browser, when non-nil, replaces the obscura spawn + chromedp
+	// connect path. Used by tests to drive Ask against a fake
+	// Browser implementation; production callers leave this nil.
+	Browser Browser
 }
 
 // Ask drives the portal `p` with `prompt` and returns the captured
 // response text. Idempotent in the sense that each call spins a
-// fresh browser context (no shared state).
+// fresh browser context (no shared state) — except when
+// opts.Browser is supplied, in which case Ask uses the provided
+// Browser directly and is responsible only for orchestration.
 func Ask(ctx context.Context, p config.PortalConfig, prompt string, opts AskOptions) (string, error) {
 	if err := Validate(p.Name, p); err != nil {
 		return "", err
@@ -47,6 +54,10 @@ func Ask(ctx context.Context, p config.PortalConfig, prompt string, opts AskOpti
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	if opts.Browser != nil {
+		return runAskOnBrowser(ctx, opts.Browser, p, prompt, opts)
+	}
+
 	bin := opts.ObscuraBin
 	if bin == "" {
 		bin = "obscura"
@@ -56,7 +67,6 @@ func Ask(ctx context.Context, p config.PortalConfig, prompt string, opts AskOpti
 	}
 
 	progress := opts.Stdout
-
 	srv, err := startObscuraServer(ctx, bin, p.Browser.Stealth)
 	if err != nil {
 		return "", err
@@ -72,13 +82,23 @@ func Ask(ctx context.Context, p config.PortalConfig, prompt string, opts AskOpti
 	}
 	defer session.Close()
 
+	return runAskOnBrowser(ctx, session, p, prompt, opts)
+}
+
+// runAskOnBrowser is the pure orchestration: assumes the Browser
+// is already connected, drives cookies → headers → navigate →
+// login_check → ready_predicate → fill+submit → response_done →
+// extract. Caller manages the browser's lifecycle.
+func runAskOnBrowser(ctx context.Context, b Browser, p config.PortalConfig, prompt string, opts AskOptions) (string, error) {
+	progress := opts.Stdout
+
 	if err := AssertAuthCookies(opts.Cookies, p.AuthCookieNames); err != nil {
 		return "", err
 	}
-	if err := session.SetCookies(ctx, opts.Cookies); err != nil {
+	if err := b.SetCookies(ctx, opts.Cookies); err != nil {
 		return "", fmt.Errorf("portal: setCookies: %w", err)
 	}
-	if err := session.SetExtraHTTPHeaders(ctx, p.Headers); err != nil {
+	if err := b.SetExtraHTTPHeaders(ctx, p.Headers); err != nil {
 		return "", fmt.Errorf("portal: setExtraHTTPHeaders: %w", err)
 	}
 
@@ -86,7 +106,7 @@ func Ask(ctx context.Context, p config.PortalConfig, prompt string, opts AskOpti
 	if startURL == "" {
 		startURL = p.BaseURL
 	}
-	if err := session.Navigate(ctx, startURL); err != nil {
+	if err := b.Navigate(ctx, startURL); err != nil {
 		return "", fmt.Errorf("portal: navigate %s: %w", startURL, err)
 	}
 	if progress != nil {
@@ -99,24 +119,24 @@ func Ask(ctx context.Context, p config.PortalConfig, prompt string, opts AskOpti
 	}
 
 	if p.LoginCheck.Type != "" {
-		if err := waitForPredicate(ctx, session, p.LoginCheck, pollEvery, "login_check"); err != nil {
+		if err := waitForPredicate(ctx, b, p.LoginCheck, pollEvery, "login_check"); err != nil {
 			return "", err
 		}
 	}
 	if p.ReadyPredicate.Type != "" {
-		if err := waitForPredicate(ctx, session, p.ReadyPredicate, pollEvery, "ready_predicate"); err != nil {
+		if err := waitForPredicate(ctx, b, p.ReadyPredicate, pollEvery, "ready_predicate"); err != nil {
 			return "", err
 		}
 	}
 
-	if err := typeAndSubmit(ctx, session, p.Selectors.Input, p.Selectors.Submit, prompt); err != nil {
+	if err := typeAndSubmit(ctx, b, p.Selectors.Input, p.Selectors.Submit, prompt); err != nil {
 		return "", err
 	}
 	if progress != nil {
 		fmt.Fprintln(progress, "portal: prompt submitted; waiting for response_done_predicate")
 	}
 
-	if err := waitForPredicate(ctx, session, p.ResponseDonePredicate, pollEvery, "response_done_predicate"); err != nil {
+	if err := waitForPredicate(ctx, b, p.ResponseDonePredicate, pollEvery, "response_done_predicate"); err != nil {
 		return "", err
 	}
 
@@ -128,14 +148,14 @@ func Ask(ctx context.Context, p config.PortalConfig, prompt string, opts AskOpti
 		`(() => { const els = document.querySelectorAll(%s); const last = els[els.length-1]; return last ? last.innerText : ""; })()`,
 		jsString(respSelector),
 	)
-	return session.EvaluateString(ctx, expr)
+	return b.EvaluateString(ctx, expr)
 }
 
 // typeAndSubmit fills the input selector with the prompt then either
 // clicks the submit selector or fires Enter via dispatchEvent.
 // Native value setter + synthetic input/change events so React /
 // Vue / Svelte controlled components register the change.
-func typeAndSubmit(ctx context.Context, s *BrowserSession, inputSel, submitSel, prompt string) error {
+func typeAndSubmit(ctx context.Context, s Browser, inputSel, submitSel, prompt string) error {
 	tmpl := `
 (() => {
   const el = document.querySelector(%s);
@@ -178,7 +198,7 @@ func typeAndSubmit(ctx context.Context, s *BrowserSession, inputSel, submitSel, 
 	return nil
 }
 
-func waitForPredicate(ctx context.Context, s *BrowserSession, pred config.PortalPredicate, every time.Duration, phase string) error {
+func waitForPredicate(ctx context.Context, s Browser, pred config.PortalPredicate, every time.Duration, phase string) error {
 	expr, err := predicateExpression(pred)
 	if err != nil {
 		return fmt.Errorf("portal: %s: %w", phase, err)

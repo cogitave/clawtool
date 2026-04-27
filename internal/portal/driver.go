@@ -35,6 +35,22 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// Browser is the structural subset of BrowserSession that the
+// portal Ask flow uses. Carved out so tests inject a fake without
+// spawning Chrome / Obscura. Production code passes a
+// *BrowserSession directly via duck typing.
+type Browser interface {
+	Navigate(ctx context.Context, url string) error
+	SetCookies(ctx context.Context, cookies []Cookie) error
+	SetExtraHTTPHeaders(ctx context.Context, headers map[string]string) error
+	Evaluate(ctx context.Context, expr string, out any) error
+	EvaluateBool(ctx context.Context, expr string) (bool, error)
+	EvaluateString(ctx context.Context, expr string) (string, error)
+}
+
+// Ensure BrowserSession satisfies the interface at compile time.
+var _ Browser = (*BrowserSession)(nil)
+
 // BrowserSession is the wizard / runtime handle. Wraps a chromedp
 // context plus its allocator-cancel + browser-cancel funcs so
 // Close() reaps cleanly.
