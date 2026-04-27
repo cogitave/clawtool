@@ -333,6 +333,13 @@ then the process env.
 
 ```
 clawtool serve                        Run as an MCP server (stdio).
+clawtool serve --listen :8080 [--token-file <p>] [--mcp-http]
+                                      HTTP gateway: bearer-auth /v1 endpoints
+                                      (health, agents, send_message, recipes,
+                                      recipe/apply) plus optional MCP over
+                                      Streamable HTTP at /mcp. Full schema +
+                                      Postman/cURL examples: docs/http-api.md.
+clawtool serve init-token [<path>]    Generate a 256-bit hex bearer token (mode 0600).
 clawtool init [--yes]                 Interactive setup wizard. --yes for
                                       non-interactive Stable defaults.
 clawtool version                      Print the build version.
