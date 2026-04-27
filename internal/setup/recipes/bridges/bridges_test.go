@@ -8,8 +8,8 @@ import (
 	"github.com/cogitave/clawtool/internal/setup"
 )
 
-func TestThreeBridgesRegistered(t *testing.T) {
-	want := map[string]bool{"codex": false, "opencode": false, "gemini": false}
+func TestBridgesRegistered(t *testing.T) {
+	want := map[string]bool{"codex": false, "opencode": false, "gemini": false, "hermes": false}
 	for _, fam := range Families() {
 		if _, ok := want[fam]; ok {
 			want[fam] = true
@@ -23,7 +23,7 @@ func TestThreeBridgesRegistered(t *testing.T) {
 }
 
 func TestLookupByFamily_KnownAndUnknown(t *testing.T) {
-	for _, fam := range []string{"codex", "opencode", "gemini"} {
+	for _, fam := range []string{"codex", "opencode", "gemini", "hermes"} {
 		r := LookupByFamily(fam)
 		if r == nil {
 			t.Errorf("LookupByFamily(%q) = nil", fam)

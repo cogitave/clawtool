@@ -120,6 +120,7 @@ func NewSupervisor() Supervisor {
 			"codex":    CodexTransport(),
 			"opencode": OpencodeTransport(),
 			"gemini":   GeminiTransport(),
+			"hermes":   HermesTransport(),
 		},
 		rrState:  rr,
 		observer: globalObserver,
