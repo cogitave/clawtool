@@ -7,7 +7,9 @@ import (
 	"os/exec"
 
 	"github.com/charmbracelet/huh"
+	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/agents/biam"
+	"github.com/cogitave/clawtool/internal/daemon"
 )
 
 // onboardState carries everything the wizard collects before any side
@@ -18,14 +20,21 @@ type onboardState struct {
 	Found          map[string]bool
 	MissingBridges []string
 	InstallBridges []string
+	// MCPClaimable is the set of detected hosts whose `mcp add`
+	// surface accepts clawtool registration today (codex, gemini,
+	// opencode). The wizard defaults this to selected so the
+	// operator's "every host sees clawtool" expectation holds.
+	MCPClaimable []string
+	ClaimMCP     []string // selected from MCPClaimable
 	CreateIdentity bool
 	Telemetry      bool
 	RunInit        bool
 }
 
-// onboardDeps lets tests substitute the four side-effecting calls
-// (PATH lookup, form runner, bridge installer, identity bootstrap).
-// In production they hit the real CLI / huh / agents packages.
+// onboardDeps lets tests substitute the side-effecting calls
+// (PATH lookup, form runner, bridge installer, identity bootstrap,
+// daemon ensure, host claim). In production they hit the real CLI /
+// huh / daemon / agents packages.
 type onboardDeps struct {
 	lookPath       func(string) error
 	runForm        func(*huh.Form) error
@@ -33,6 +42,11 @@ type onboardDeps struct {
 	createIdentity func() error
 	identityExists func() bool
 	stdoutLn       func(string)
+	// claimMCPHost wraps daemon.Ensure + agents.Find(name).Claim()
+	// so the wizard can register clawtool as an MCP server in each
+	// selected host without leaking those details into the wizard
+	// flow itself. Returns the host's URL on success.
+	claimMCPHost func(string) (string, error)
 }
 
 // runOnboard is the dispatcher hooked into Run().
@@ -54,6 +68,20 @@ func (a *App) runOnboard(argv []string) int {
 			return err == nil
 		},
 		stdoutLn: func(s string) { fmt.Fprintln(a.Stdout, s) },
+		claimMCPHost: func(name string) (string, error) {
+			st, err := daemon.Ensure(context.Background())
+			if err != nil {
+				return "", fmt.Errorf("ensure daemon: %w", err)
+			}
+			ad, err := agents.Find(name)
+			if err != nil {
+				return "", err
+			}
+			if _, err := ad.Claim(agents.Options{}); err != nil {
+				return "", err
+			}
+			return st.URL(), nil
+		},
 	}
 	if err := a.onboard(context.Background(), d); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool onboard: %v\n", err)
@@ -86,6 +114,23 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 				Description("Selected items run `clawtool bridge add <family>` after submit. Bridge install failures stay non-fatal.").
 				Options(opts...).
 				Value(&state.InstallBridges),
+		))
+	}
+
+	if len(state.MCPClaimable) > 0 {
+		opts := make([]huh.Option[string], 0, len(state.MCPClaimable))
+		for _, h := range state.MCPClaimable {
+			opts = append(opts, huh.NewOption(h, h))
+		}
+		// Default to selecting all so the operator's "every host
+		// sees clawtool" intent is the path of least resistance.
+		state.ClaimMCP = append([]string{}, state.MCPClaimable...)
+		groups = append(groups, huh.NewGroup(
+			huh.NewMultiSelect[string]().
+				Title("Register clawtool as an MCP server in these hosts").
+				Description("Starts a single persistent local daemon (loopback HTTP + bearer auth) and points each selected host at it. Without this, hosts can't see clawtool tools or send cross-host messages.").
+				Options(opts...).
+				Value(&state.ClaimMCP),
 		))
 	}
 
@@ -133,6 +178,19 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		}
 	}
 
+	for _, h := range state.ClaimMCP {
+		if d.claimMCPHost == nil {
+			d.stdoutLn(fmt.Sprintf("  ! MCP claim %s: not wired (test build?)", h))
+			continue
+		}
+		url, err := d.claimMCPHost(h)
+		if err != nil {
+			d.stdoutLn(fmt.Sprintf("  ! MCP claim %s: %v", h, err))
+		} else {
+			d.stdoutLn(fmt.Sprintf("  ✓ %s registered → %s", h, url))
+		}
+	}
+
 	if state.CreateIdentity {
 		if err := d.createIdentity(); err != nil {
 			return fmt.Errorf("create identity: %w", err)
@@ -155,20 +213,31 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 	return nil
 }
 
-// detectHost reports which agent CLIs are on PATH and which bridges
-// would need installing.
+// detectHost reports which agent CLIs are on PATH, which bridges
+// would need installing, and which detected hosts can be claimed as
+// shared-MCP fan-in targets.
+//
+// `hermes` was added per Codex 491d1332 audit (was previously omitted
+// from family detection — operator could detect-Hermes-as-bridge but
+// not surface it in the wizard).
 func detectHost(lookPath func(string) error) onboardState {
-	families := []string{"claude", "codex", "opencode", "gemini"}
+	families := []string{"claude", "codex", "opencode", "gemini", "hermes"}
+	// Hosts whose `mcp add` we know how to drive (matches the
+	// internal/agents/mcp_host.go registrations). claude is its own
+	// path — clawtool runs INSIDE Claude Code so MCP registration
+	// happens via the marketplace plugin, not via this wizard.
+	mcpClaimable := map[string]bool{"codex": true, "gemini": true, "opencode": true}
+
 	state := onboardState{Found: map[string]bool{}}
 	for _, fam := range families {
 		if lookPath(fam) == nil {
 			state.Found[fam] = true
+			if mcpClaimable[fam] {
+				state.MCPClaimable = append(state.MCPClaimable, fam)
+			}
 			continue
 		}
 		state.Found[fam] = false
-		// `claude` is the operator's primary; if it's missing we
-		// don't offer a bridge for it (clawtool runs inside Claude
-		// Code, no plugin needed).
 		if fam != "claude" {
 			state.MissingBridges = append(state.MissingBridges, fam)
 		}
@@ -180,14 +249,14 @@ func detectHost(lookPath func(string) error) onboardState {
 // page's body. Stable formatting → easy snapshot in tests.
 func hostSummary(found map[string]bool) string {
 	out := "Detected host CLIs:\n"
-	for _, fam := range []string{"claude", "codex", "opencode", "gemini"} {
+	for _, fam := range []string{"claude", "codex", "opencode", "gemini", "hermes"} {
 		mark := "✗"
 		if found[fam] {
 			mark = "✓"
 		}
 		out += fmt.Sprintf("  %s %s\n", mark, fam)
 	}
-	out += "\nThis wizard offers to install missing bridges, generate the BIAM identity, and record your telemetry preference."
+	out += "\nThis wizard offers to install missing bridges, register clawtool as an MCP server in detected hosts, generate the BIAM identity, and record your telemetry preference."
 	return out
 }
 
