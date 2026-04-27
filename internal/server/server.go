@@ -216,6 +216,11 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// then poll" workflows.
 	core.RegisterTaskTools(s)
 
+	// TaskNotify — edge-triggered completion push for fan-out
+	// dispatches. Subscribes to biam.Notifier so the caller wakes
+	// the instant ANY watched task settles, no SQLite poll.
+	core.RegisterTaskNotify(s)
+
 	// Verify runs a repo's tests/lints/typechecks via whichever
 	// runner the repo declares (Make/pnpm/npm/go/pytest/ruby/cargo/
 	// just) and returns one structured pass/fail per check. ADR-014

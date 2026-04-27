@@ -184,6 +184,22 @@ func (r *Runner) recordResult(prompt *Envelope, kind EnvelopeKind, body string, 
 	} else {
 		_ = r.store.SetTaskStatus(bg, prompt.TaskID, terminal, summary(body))
 	}
+	// In-process completion push so TaskNotify callers wake the
+	// instant a task settles, no SQLite poll. Done after the row
+	// flip so subscribers see the terminal state if they re-query.
+	// Best-effort GetTask: if it fails (DB transient) we still
+	// publish a synthetic Task so the subscriber unblocks rather
+	// than waiting on a poll that may never arrive.
+	if t, err := r.store.GetTask(bg, prompt.TaskID); err == nil && t != nil {
+		Notifier.Publish(*t)
+	} else {
+		Notifier.Publish(Task{
+			TaskID: prompt.TaskID,
+			Status: terminal,
+			Agent:  prompt.To.InstanceID,
+		})
+	}
+
 	// on_task_complete hook (F3) fires after the task row settles so
 	// user scripts read a stable snapshot. The hook can't fail the
 	// task — it's already terminal — but errors surface via the hook
