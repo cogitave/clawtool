@@ -1,0 +1,70 @@
+# clawtool — HTTP gateway via docker compose.
+#
+# Mirrors the clawtool-relay recipe but lives at the repo root for
+# operators who clone the source. Brings up clawtool serve --listen
+# behind a Caddy reverse proxy with bearer-token auth at the edge.
+#
+# Quick start:
+#   1. Generate a token:
+#        clawtool serve init-token ./listener-token
+#      (or: docker run --rm -v $(pwd):/data cogitave/clawtool:latest \
+#           serve init-token /data/listener-token)
+#   2. docker compose up -d
+#   3. curl http://localhost:8080/v1/health \
+#        -H "Authorization: Bearer $(cat listener-token)"
+#
+# Set CLAWTOOL_TAG in .env to pin a specific image (e.g. v0.18.0).
+# Default is `latest`.
+
+services:
+  clawtool:
+    image: ${CLAWTOOL_IMAGE:-cogitave/clawtool}:${CLAWTOOL_TAG:-latest}
+    container_name: clawtool-serve
+    restart: unless-stopped
+    command:
+      - serve
+      - --listen
+      - "0.0.0.0:8080"
+      - --token-file
+      - /data/listener-token
+      - --mcp-http
+    volumes:
+      - ./listener-token:/data/listener-token:ro
+      - clawtool-config:/home/nonroot/.config/clawtool
+      - clawtool-cache:/home/nonroot/.cache/clawtool
+      - clawtool-data:/home/nonroot/.local/share/clawtool
+    environment:
+      - HOME=/home/nonroot
+    expose:
+      - "8080"
+    healthcheck:
+      # Use clawtool itself for the probe — distroless has no curl.
+      # `serve --listen :0` exits non-zero on misconfig but doesn't
+      # actually probe the listener; we settle for the binary
+      # responding to --version as a liveness signal and rely on
+      # caddy's upstream-fail tracking for real failure detection.
+      test: ["CMD", "/usr/local/bin/clawtool", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: clawtool-caddy
+    restart: unless-stopped
+    ports:
+      - "${CLAWTOOL_HTTPS_PORT:-443}:443"
+      - "${CLAWTOOL_HTTP_PORT:-80}:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - clawtool
+
+volumes:
+  clawtool-config:
+  clawtool-cache:
+  clawtool-data:
+  caddy-data:
+  caddy-config:
