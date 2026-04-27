@@ -67,6 +67,8 @@ func RegisterWebFetch(s *server.MCPServer) {
 			mcp.Description("URL to fetch. http:// and https:// only.")),
 		mcp.WithNumber("timeout_ms",
 			mcp.Description("Request timeout in milliseconds. Default 30000, max 120000.")),
+		mcp.WithBoolean("allow_private",
+			mcp.Description("Bypass the SSRF guard and allow fetching private / loopback / link-local / cloud-metadata addresses. Default false. Use only when fetching from localhost (e.g. local dev server) is the actual intent. ADR-021 phase B.")),
 	)
 	s.AddTool(tool, runWebFetch)
 }
@@ -83,7 +85,8 @@ func runWebFetch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRes
 	if timeoutMs > webFetchMaxTimeoutMs {
 		timeoutMs = webFetchMaxTimeoutMs
 	}
-	res := executeWebFetch(ctx, target, time.Duration(timeoutMs)*time.Millisecond)
+	allowPrivate := req.GetBool("allow_private", false)
+	res := executeWebFetch(ctx, target, time.Duration(timeoutMs)*time.Millisecond, allowPrivate)
 	return resultOf(res), nil
 }
 
@@ -114,14 +117,23 @@ func (r WebFetchResult) Render() string {
 // httpClient is a package-level client so tests can inject a transport.
 // Tests in webfetch_test.go set this to point at httptest.Server with
 // custom redirect / timeout policies.
+//
+// CheckRedirect runs the SSRF guard on every hop — see
+// webfetch_ssrf.go and ADR-021 phase B. Without this, a public
+// 302 → private redirect could exfiltrate cloud metadata.
 var httpClient = &http.Client{
-	Timeout: webFetchMaxTimeoutMs * time.Millisecond,
+	Timeout:       webFetchMaxTimeoutMs * time.Millisecond,
+	CheckRedirect: ssrfCheckRedirect,
 }
 
 // executeWebFetch performs the HTTP GET and dispatches the body through
 // the right engine based on Content-Type. The function never panics on
 // network or parse failures — all errors fold into ReadResult.ErrorReason.
-func executeWebFetch(ctx context.Context, rawURL string, timeout time.Duration) WebFetchResult {
+//
+// allowPrivate=true skips the SSRF guard so callers can fetch from
+// loopback / RFC1918 (e.g. local dev server). Default false; surfaced
+// as the `allow_private` MCP arg.
+func executeWebFetch(ctx context.Context, rawURL string, timeout time.Duration, allowPrivate bool) WebFetchResult {
 	start := time.Now()
 	res := WebFetchResult{
 		BaseResult: BaseResult{Operation: "WebFetch"},
@@ -138,6 +150,21 @@ func executeWebFetch(ctx context.Context, rawURL string, timeout time.Duration) 
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	// Thread allowPrivate through the redirect chain.
+	reqCtx = withAllowPrivate(reqCtx, allowPrivate)
+
+	// SSRF guard (ADR-021 phase B) — refuse private / loopback /
+	// link-local / cloud-metadata targets BEFORE issuing the GET.
+	// Redirect-time re-check lives on the http.Client.CheckRedirect.
+	// allowPrivate=true skips the guard for legitimate localhost
+	// fetches (operator dev server, /etc/resolv.conf-style probes).
+	if !allowPrivate {
+		if err := resolveAndGuard(reqCtx, parsed); err != nil {
+			res.ErrorReason = err.Error()
+			res.DurationMs = time.Since(start).Milliseconds()
+			return res
+		}
+	}
 
 	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rawURL, nil)
 	if err != nil {

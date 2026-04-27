@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -38,7 +39,7 @@ func TestWebFetch_HTML_Readability(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeWebFetch(ctx, srv.URL, 3*time.Second)
+	res := executeWebFetch(ctx, srv.URL, 3*time.Second, true)
 
 	if res.Status != 200 {
 		t.Errorf("status = %d, want 200", res.Status)
@@ -76,7 +77,7 @@ func TestWebFetch_PlainText(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeWebFetch(ctx, srv.URL, 3*time.Second)
+	res := executeWebFetch(ctx, srv.URL, 3*time.Second, true)
 
 	if res.Format != "text" {
 		t.Errorf("format = %q, want text", res.Format)
@@ -98,7 +99,7 @@ func TestWebFetch_BinaryRejected(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeWebFetch(ctx, srv.URL, 3*time.Second)
+	res := executeWebFetch(ctx, srv.URL, 3*time.Second, true)
 
 	if res.Format != "binary-rejected" {
 		t.Errorf("format = %q, want binary-rejected", res.Format)
@@ -123,7 +124,7 @@ func TestWebFetch_FollowsRedirect(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeWebFetch(ctx, srvStart.URL, 3*time.Second)
+	res := executeWebFetch(ctx, srvStart.URL, 3*time.Second, true)
 
 	if !strings.Contains(res.Content, "after redirect") {
 		t.Errorf("redirect not followed: content = %q", res.Content)
@@ -139,7 +140,7 @@ func TestWebFetch_FollowsRedirect(t *testing.T) {
 func TestWebFetch_RejectsNonHTTPScheme(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res := executeWebFetch(ctx, "ftp://example.com/file", 3*time.Second)
+	res := executeWebFetch(ctx, "ftp://example.com/file", 3*time.Second, false)
 	if res.ErrorReason == "" || !strings.Contains(res.ErrorReason, "http") {
 		t.Errorf("expected scheme rejection, got %q", res.ErrorReason)
 	}
@@ -157,7 +158,7 @@ func TestWebFetch_RespectsTimeout(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	res := executeWebFetch(ctx, srv.URL, 250*time.Millisecond)
+	res := executeWebFetch(ctx, srv.URL, 250*time.Millisecond, true)
 	elapsed := time.Since(start)
 
 	if res.ErrorReason == "" {
@@ -169,5 +170,56 @@ func TestWebFetch_RespectsTimeout(t *testing.T) {
 	// Returned within ~500ms — not waiting for the 2s server response.
 	if elapsed > 1500*time.Millisecond {
 		t.Errorf("waited too long for timeout: %s", elapsed)
+	}
+}
+
+func TestWebFetch_SSRFGuard_BlocksLoopback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("nope"))
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	// Default allow_private=false → 127.0.0.1 should be refused.
+	res := executeWebFetch(ctx, srv.URL, 3*time.Second, false)
+	if res.ErrorReason == "" {
+		t.Fatal("expected SSRF refusal for loopback")
+	}
+	if !strings.Contains(res.ErrorReason, "SSRF guard") {
+		t.Errorf("error should mention SSRF guard: %q", res.ErrorReason)
+	}
+}
+
+func TestWebFetch_SSRFGuard_BlocksAWSMetadata(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	// 169.254.169.254 — AWS / Azure / GCP metadata endpoint. The
+	// guard must refuse before any DNS / HTTP work happens.
+	res := executeWebFetch(ctx, "http://169.254.169.254/latest/meta-data/", 3*time.Second, false)
+	if res.ErrorReason == "" {
+		t.Fatal("expected metadata refusal")
+	}
+	if !strings.Contains(res.ErrorReason, "169.254") {
+		t.Errorf("error should mention metadata IP: %q", res.ErrorReason)
+	}
+}
+
+func TestPrivateNets_ContainsExpectedRanges(t *testing.T) {
+	cases := map[string]bool{
+		"127.0.0.1":       true,
+		"::1":             true,
+		"169.254.169.254": true,
+		"10.1.2.3":        true,
+		"192.168.1.1":     true,
+		"172.20.0.5":      true,
+		"8.8.8.8":         false, // Google DNS — public, must NOT match
+		"1.1.1.1":         false, // Cloudflare DNS — public
+	}
+	for ipStr, want := range cases {
+		ip := net.ParseIP(ipStr)
+		got := checkIPNotPrivate(ip) != nil
+		if got != want {
+			t.Errorf("checkIPNotPrivate(%s) blocked=%v, want blocked=%v", ipStr, got, want)
+		}
 	}
 }
