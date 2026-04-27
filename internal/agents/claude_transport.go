@@ -46,6 +46,13 @@ func (c claudeTransport) Send(ctx context.Context, prompt string, opts map[strin
 	if o.Format != "" {
 		args = append(args, "--output-format", o.Format)
 	}
+	if o.Unattended {
+		// Claude Code's elevation flag — accepts every tool call
+		// without prompting. Operator opted in via
+		// `clawtool send --unattended` (ADR-023); the audit log
+		// already records the intent.
+		args = append(args, "--dangerously-skip-permissions")
+	}
 	args = append(args, o.ExtraArgs...)
 
 	rc, err := startStreamingExecWith(ctx, "claude", args, o.Cwd, o.Sandbox)

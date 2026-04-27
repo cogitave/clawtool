@@ -37,6 +37,13 @@ func (codexTransport) Send(ctx context.Context, prompt string, opts map[string]a
 	// `extra_args = ["--no-skip-git-repo-check"]` per call.
 	args = append(args, "--skip-git-repo-check")
 	args = append(args, "--json") // stream-json equivalent for codex exec
+	if o.Unattended {
+		// Codex's full elevation flag — bypasses approvals AND the
+		// codex-managed sandbox. Operator opted in via
+		// `clawtool send --unattended` (ADR-023); the audit log
+		// already records the intent.
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+	}
 	args = append(args, o.ExtraArgs...)
 	args = append(args, prompt)
 

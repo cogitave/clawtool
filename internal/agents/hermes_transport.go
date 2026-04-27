@@ -55,6 +55,13 @@ func (hermesTransport) Send(ctx context.Context, prompt string, opts map[string]
 		args = append(args, "--format", "text")
 	}
 
+	if o.Unattended {
+		// Hermes elevation flag — accept all tool calls without
+		// prompting. Per upstream README the headless flag is
+		// `--yolo`. Operator opted in via `clawtool send --unattended`.
+		args = append(args, "--yolo")
+	}
+
 	args = append(args, o.ExtraArgs...)
 
 	rc, err := startStreamingExecWith(ctx, "hermes", args, o.Cwd, o.Sandbox)

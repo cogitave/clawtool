@@ -28,6 +28,12 @@ func (opencodeTransport) Send(ctx context.Context, prompt string, opts map[strin
 	if o.Format == "json" || o.Format == "stream-json" {
 		args = append(args, "--format", "json")
 	}
+	if o.Unattended {
+		// OpenCode's elevation flag — bypass interactive
+		// confirmations. Operator opted in via
+		// `clawtool send --unattended` (ADR-023).
+		args = append(args, "--yolo")
+	}
 	args = append(args, o.ExtraArgs...)
 	args = append(args, prompt)
 
