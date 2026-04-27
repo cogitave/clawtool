@@ -67,6 +67,7 @@ type supervisor struct {
 	rrState    *roundRobinState        // round-robin counters; one supervisor = one rotation state
 	observer   *observability.Observer // optional; nil → no instrumentation
 	biam       BiamRunner              // optional; nil → SubmitAsync errors out
+	limiter    *dispatchLimiter        // built lazily from config.Dispatch.Limits; nil when disabled
 }
 
 // globalObserver is the process-wide OTel observer NewSupervisor
@@ -113,7 +114,21 @@ func NewSupervisor() Supervisor {
 		rrState:  &roundRobinState{},
 		observer: globalObserver,
 		biam:     globalBiamRunner,
+		limiter:  buildLimiterFromConfig(),
 	}
+}
+
+// buildLimiterFromConfig reads config.Dispatch.Limits at supervisor
+// construction. A bad rate string falls back to a disabled limiter so
+// the dispatch path never panics; we surface the parse error via
+// stderr at server boot, not on every CLI invocation.
+func buildLimiterFromConfig() *dispatchLimiter {
+	cfg, err := defaultLoadConfig()
+	if err != nil {
+		return nil
+	}
+	l, _ := newDispatchLimiter(cfg.Dispatch.Limits.Rate, cfg.Dispatch.Limits.Burst, cfg.Dispatch.Limits.MaxConcurrent)
+	return l
 }
 
 // SubmitAsync routes through the global BIAM runner. The runner does
@@ -319,6 +334,17 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 		// per-instance env (ANTHROPIC_API_KEY, OPENAI_API_KEY, …). For
 		// Phase 1 the upstream CLI inherits the parent process env
 		// unchanged.
+
+		// Per-instance rate limit (v0.15 F1). The limiter blocks
+		// until a token is available + a concurrency slot opens; the
+		// release func runs when the dispatch's reader is closed so
+		// long-running streams hold their slot for the duration.
+		release, lerr := s.limiter.acquire(ctx, a.Instance)
+		if lerr != nil {
+			lastErr = fmt.Errorf("dispatch %q: %w", a.Instance, lerr)
+			continue
+		}
+
 		sendCtx, sendEnd := s.observer.StartSpan(ctx, "agents.Transport.Send",
 			attribute.String("agent.instance", a.Instance),
 			attribute.String("agent.family", a.Family),
@@ -327,12 +353,17 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 		rc, err := tr.Send(sendCtx, prompt, opts)
 		if err == nil {
 			// Don't end the child span here — let the caller end it
-			// when the stream closes. We attach the close to the
-			// returned reader by wrapping it.
-			return &observedReadCloser{ReadCloser: rc, end: sendEnd}, nil
+			// when the stream closes. The release func also fires on
+			// Close so the concurrency slot is held for the full
+			// stream duration.
+			return &observedReadCloser{ReadCloser: rc, end: func() {
+				sendEnd()
+				release()
+			}}, nil
 		}
 		s.observer.RecordError(sendCtx, err)
 		sendEnd()
+		release()
 		lastErr = fmt.Errorf("send to %q (%s): %w", a.Instance, a.Family, err)
 	}
 	if lastErr == nil {
