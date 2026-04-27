@@ -39,12 +39,18 @@ builds:
 
 archives:
   - id: default
+    # Naming convention matches creativeprojects/go-selfupdate's
+    # default DetectLatest pattern so `clawtool upgrade` (which
+    # uses that library) can find the right asset for the host's
+    # GOOS/GOARCH. Previous versions emitted `x86_64` for amd64
+    # via a manual mapping; go-selfupdate looks for `amd64`
+    # verbatim, so the upgrade path silently 404'd. Keep the
+    # GOARCH name as-is.
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
       {{- .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else }}{{ .Arch }}{{ end }}
+      {{- .Arch }}
     formats: ["tar.gz"]
     files:
       - README.md
@@ -84,7 +90,7 @@ release:
     **Install (user-local, no sudo)**
 
     ```bash
-    curl -sSL https://github.com/cogitave/clawtool/releases/download/{{ .Tag }}/clawtool_{{ trimprefix .Tag "v" }}_linux_x86_64.tar.gz \
+    curl -sSL https://github.com/cogitave/clawtool/releases/download/{{ .Tag }}/clawtool_{{ trimprefix .Tag "v" }}_linux_amd64.tar.gz \
       | tar -xz -C ~/.local/bin clawtool
     clawtool init
     claude mcp add-json clawtool '{"type":"stdio","command":"'"$HOME"'/.local/bin/clawtool","args":["serve"]}' --scope user
