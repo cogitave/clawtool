@@ -226,6 +226,13 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// surfaced as a per-call error, not a boot failure.
 	core.RegisterSemanticSearch(s)
 
+	// BrowserFetch + BrowserScrape — JS-rendered fetching via Obscura
+	// (Chrome DevTools Protocol headless engine). Sister of WebFetch
+	// for SPA / hydrated content. Stateless per call. Always
+	// registered; missing-binary surfaces as a per-call hint.
+	core.RegisterBrowserFetch(s)
+	core.RegisterBrowserScrape(s)
+
 	// SkillNew lets a model scaffold an agentskills.io-standard
 	// skill from inside a conversation. Same template the
 	// `clawtool skill new` CLI emits — both go through the
