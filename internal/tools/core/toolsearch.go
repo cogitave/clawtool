@@ -391,5 +391,11 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"rules", "policy", "guard", "invariant", "lint", "gate", "check", "validate", "pre-commit", "session-end", "doc-sync"},
 		},
+		{
+			Name:        "Commit",
+			Description: "Create a git commit with Conventional Commits validation, hard Co-Authored-By trailer block, and pre_commit rules.toml gate. Use INSTEAD OF `Bash git commit -m \"…\"` — Bash can't enforce policy. Returns SHA + branch + subject; rule/validation block returns violations and refuses to commit.",
+			Type:        "core",
+			Keywords:    []string{"commit", "git", "save", "conventional", "conventional-commits", "checkpoint", "no-coauthor", "stage", "push"},
+		},
 	}
 }

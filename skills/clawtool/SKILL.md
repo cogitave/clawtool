@@ -53,7 +53,7 @@ the routing-target provides.
 
 | Operator intent | Wrong path | Right tool |
 |---|---|---|
-| "commit my work" / `git commit` | `Bash git commit -m …` | **`Commit`** (when shipped — until then, Bash with explicit Conventional Commits format and **never** `Co-Authored-By`) |
+| "commit my work" / `git commit` | `Bash git commit -m …` | **`Commit`** (Conventional Commits validation + hard Co-Authored-By block + pre_commit rules gate. Pass `files`, optional `auto_stage_all`, optional `push`) |
 | Long-running script / build | `Bash` sync + cancel ctrl-C | `Bash` with `background=true` → `BashOutput` polls → `BashKill` |
 | Tail a running task | re-running `Bash` | `BashOutput` |
 | Read a PDF / docx / xlsx | `Bash pdftotext …` | `Read` (auto-dispatches by format) |
