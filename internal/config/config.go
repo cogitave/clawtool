@@ -255,8 +255,9 @@ type CoreTool struct {
 	Enabled *bool `toml:"enabled,omitempty"`
 }
 
-// Source defines a sourced MCP server instance. v0.2 stores the spec but
-// does not yet spawn it; instance spawning lands when source instances ship.
+// Source defines a sourced MCP server instance. internal/sources/manager
+// spawns each Source as a child MCP process and proxies its tools through
+// the supervisor (visible as `mcp__<source>__*` from the model's view).
 type Source struct {
 	Type    string            `toml:"type"`              // currently only "mcp"
 	Command []string          `toml:"command,omitempty"` // argv to spawn the MCP server
