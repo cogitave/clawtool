@@ -56,15 +56,24 @@ jobs:
       # double-firing on this auto-commit. We push directly to main
       # because we just tagged from main; the branch protection
       # rules allow the GITHUB_TOKEN's bot identity through.
-      - name: Regenerate CHANGELOG.md and commit to main
+      #
+      # Important: orhun/git-cliff-action's binary is NOT left on
+      # PATH for subsequent steps in the same job; the v0.21.2 release
+      # tripped on `git-cliff: command not found`. Re-invoke the
+      # action here to get a fresh CHANGELOG.md generation, then
+      # commit + push from a plain bash step.
+      - name: Regenerate CHANGELOG.md (full history, not just --latest)
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          # No --latest flag: emit the FULL changelog so CHANGELOG.md
+          # carries every release. The default args are "--bump
+          # --output CHANGELOG.md" — we want the full history.
+          args: --output CHANGELOG.md
+
+      - name: Commit regenerated CHANGELOG.md to main
         run: |
           set -euo pipefail
-          # Fetch the full history including the tag we just pushed.
-          git fetch --tags --force
-          # git-cliff is already installed by orhun/git-cliff-action;
-          # re-running with --output writes the FULL changelog (not
-          # just the latest section).
-          git-cliff --output CHANGELOG.md
           if git diff --quiet CHANGELOG.md; then
             echo "CHANGELOG.md unchanged; nothing to commit"
             exit 0
@@ -72,12 +81,16 @@ jobs:
           git config user.name "clawtool-release-bot"
           git config user.email "clawtool-release-bot@users.noreply.github.com"
           git checkout main
-          # Pull any commits that landed during the release run so the
-          # push is fast-forward. If main moved AND CHANGELOG.md is
-          # part of those changes, our regen captures both.
           git pull --rebase origin main || true
-          git-cliff --output CHANGELOG.md
+          # Re-stage in case the rebase changed CHANGELOG.md.
           git add CHANGELOG.md
+          # If after rebase there's nothing to commit (someone else
+          # already pushed our regen — unlikely but possible), bail
+          # cleanly.
+          if git diff --cached --quiet; then
+            echo "CHANGELOG.md already up to date on main after rebase"
+            exit 0
+          fi
           git commit -m "docs(changelog): regenerate for ${GITHUB_REF_NAME} [skip ci]"
           git push origin main
         env:
