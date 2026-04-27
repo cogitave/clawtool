@@ -193,6 +193,8 @@ func (a *App) Run(argv []string) int {
 		return a.runMcp(argv[1:])
 	case "uninstall":
 		return a.runUninstall(argv[1:])
+	case "sandbox":
+		return a.runSandbox(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -428,6 +430,13 @@ Usage:
                             Remove every artifact clawtool drops on the host
                             (config, secrets, caches, data, BIAM, sticky
                             pointers). Useful when test installs pile up.
+  clawtool sandbox list/show/doctor/run
+                            Sandbox profiles for dispatch isolation
+                            (ADR-020). Per-profile [sandboxes.X] in
+                            config.toml. Engines: bwrap (Linux),
+                            sandbox-exec (macOS), docker (anywhere fallback).
+                            v0.18 ships the surface; engine enforcement
+                            lands v0.18.1+.
   clawtool version          Print the build version.
   clawtool help             Show this help.
 

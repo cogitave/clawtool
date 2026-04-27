@@ -36,6 +36,49 @@ type Config struct {
 	Hooks         HooksConfig                `toml:"hooks,omitempty"`
 	Telemetry     TelemetryConfig            `toml:"telemetry,omitempty"`
 	Portals       map[string]PortalConfig    `toml:"portals,omitempty"`
+	Sandboxes     map[string]SandboxConfig   `toml:"sandboxes,omitempty"`
+}
+
+// SandboxConfig is one [sandboxes.<name>] profile (ADR-020).
+// Engine adapters in internal/sandbox/ render this into the
+// host-native sandbox flags (bwrap, sandbox-exec, docker, …).
+type SandboxConfig struct {
+	Description string         `toml:"description,omitempty"`
+	Paths       []SandboxPath  `toml:"paths,omitempty"`
+	Network     SandboxNetwork `toml:"network,omitempty"`
+	Limits      SandboxLimits  `toml:"limits,omitempty"`
+	Env         SandboxEnv     `toml:"env,omitempty"`
+}
+
+// SandboxPath is one filesystem rule. Mode is "ro" | "rw" | "none".
+type SandboxPath struct {
+	Path string `toml:"path"`
+	Mode string `toml:"mode"`
+}
+
+// SandboxNetwork covers the egress policy. Policy is one of:
+// "none" | "loopback" | "allowlist" | "open".
+type SandboxNetwork struct {
+	Policy string   `toml:"policy,omitempty"`
+	Allow  []string `toml:"allow,omitempty"`
+}
+
+// SandboxLimits maps to engine-specific resource flags. Strings
+// (e.g. "5m", "1GB") are parsed by the engine adapter so the
+// schema stays human-friendly in TOML.
+type SandboxLimits struct {
+	Timeout      string `toml:"timeout,omitempty"`
+	Memory       string `toml:"memory,omitempty"`
+	CPUShares    int    `toml:"cpu_shares,omitempty"`
+	ProcessCount int    `toml:"process_count,omitempty"`
+}
+
+// SandboxEnv selects which host env vars survive into the
+// sandboxed process. Allow + deny semantics are AND-ed: deny
+// patterns trump matching allow entries.
+type SandboxEnv struct {
+	Allow []string `toml:"allow,omitempty"`
+	Deny  []string `toml:"deny,omitempty"`
 }
 
 // PortalConfig is one saved web-UI target (ADR-018). Selectors,

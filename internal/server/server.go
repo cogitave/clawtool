@@ -246,6 +246,11 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// noun + tool names are discoverable now.
 	core.RegisterMcpTools(s)
 
+	// Sandbox* — sandbox profile catalog (ADR-020). Read-only
+	// surface ships in v0.18; engine enforcement (bwrap /
+	// sandbox-exec / docker) lands v0.18.1+.
+	core.RegisterSandboxTools(s)
+
 	// SkillNew lets a model scaffold an agentskills.io-standard
 	// skill from inside a conversation. Same template the
 	// `clawtool skill new` CLI emits — both go through the

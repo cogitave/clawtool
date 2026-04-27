@@ -319,5 +319,23 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"mcp", "install", "register", "source", "local"},
 		},
+		{
+			Name:        "SandboxList",
+			Description: "List configured sandbox profiles (ADR-020). Each profile constrains a `clawtool send` dispatch — paths, network, env, resource limits. Engines: bwrap (Linux), sandbox-exec (macOS), docker (anywhere fallback).",
+			Type:        "core",
+			Keywords:    []string{"sandbox", "list", "profiles", "isolation", "security", "bwrap", "sandbox-exec", "docker"},
+		},
+		{
+			Name:        "SandboxShow",
+			Description: "Render a parsed sandbox profile — paths, network policy, env allow/deny, resource limits — plus the engine that would run it on this host. Use BEFORE recommending a profile so the constraints are explicit.",
+			Type:        "core",
+			Keywords:    []string{"sandbox", "show", "profile", "isolation", "constraints"},
+		},
+		{
+			Name:        "SandboxDoctor",
+			Description: "Report which sandbox engines are available on this host (bwrap / sandbox-exec / docker). Use to recommend the right engine to install when none is available.",
+			Type:        "core",
+			Keywords:    []string{"sandbox", "doctor", "engine", "diagnostic", "bwrap", "sandbox-exec", "docker"},
+		},
 	}
 }
