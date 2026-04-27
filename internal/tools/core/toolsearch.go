@@ -367,5 +367,11 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"agent", "subagent", "persona", "scaffold", "new", "create", "dispatcher", "claude-agent"},
 		},
+		{
+			Name:        "RulesCheck",
+			Description: "Evaluate .clawtool/rules.toml against a Context (event + changed paths + commit message + tool calls + args). Returns the Verdict — every applicable rule's pass/fail with reasons. Use BEFORE committing / dispatching / ending a session to confirm operator invariants hold.",
+			Type:        "core",
+			Keywords:    []string{"rules", "policy", "guard", "invariant", "lint", "gate", "check", "validate", "pre-commit", "session-end", "doc-sync"},
+		},
 	}
 }
