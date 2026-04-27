@@ -7,445 +7,189 @@
 [![License](https://img.shields.io/github/license/cogitave/clawtool?color=brightgreen)](LICENSE)
 [![Conventional Commits](https://img.shields.io/badge/conventional--commits-1.0.0-yellow)](https://www.conventionalcommits.org)
 
-> **Define a toolset once. Use it in every AI coding agent.**
-> clawtool is the standard layer across Claude Code, Codex, and OpenCode.
+> **Tools. Agents. Wired.**
 
-A single Go binary that does four things:
+## What clawtool is
+- **Canonical core tools**: clawtool replaces native Bash, Read, Edit, Write, Grep, and Glob with higher-quality, timeout-safe, and format-aware equivalents. These tools provide uniform structured JSON output and rigorous process-group reaping, ensuring that agent operations are deterministic and safe across Linux, macOS, and WSL2 environments.
+- **Multi-agent dispatch**: A single `SendMessage` entry point routes prompts to Claude, Codex, Gemini, or Opencode instances. This supervisor layer uses the Bidirectional Inter-Agent Messaging (BIAM) protocol with an async SQLite task store and edge-triggered `TaskNotify` fan-in, allowing one agent to delegate long-running tasks to another without blocking the conversation.
+- **Marketplace plugin**: clawtool is packaged as a first-class Claude Code marketplace plugin. On installation, it auto-registers the MCP server and injects necessary slash commands and skills with zero ceremony. There is no need for manual `claude mcp add-json` editing or complex environment setup.
+- **Search-first discovery**: When a tool catalog grows past a few dozen entries, agents can no longer hold every schema in context. clawtool implements a `ToolSearch` primitive powered by bleve BM25 ranking, allowing agents to discover and bind to the right tool based on natural-language intent.
 
-1. **Canonical toolset.** Every MCP-aware agent gets the same
-   higher-quality `Bash` / `Read` / `Edit` / `Write` / `Grep` / `Glob` /
-   `WebFetch` / `WebSearch` / `ToolSearch` — wrapping ripgrep, pandoc,
-   poppler, doublestar, Mozilla Readability and friends. No more "your
-   agent's `Read` doesn't speak xlsx" or "Bash on this client times out
-   on the wrong signal."
-2. **Bridge layer.** `clawtool bridge add codex` installs the official
-   Codex Claude Code plugin; `clawtool bridge add gemini` / `bridge add
-   opencode` do the same for Gemini and OpenCode. `clawtool send
-   --agent <instance> "<prompt>"` then routes a single prompt to the
-   right CLI from inside Claude Code, from a CI hook, or over an HTTP
-   relay (v0.10 → v0.12; see [ADR-014](wiki/decisions/014-clawtool-relay-and-cli-multiplexer.md)).
-3. **Project-setup wizard.** `clawtool init` injects the canonical
-   project-setup tools (release-please, GoReleaser, Conventional
-   Commits CI, Dependabot, CODEOWNERS, an SPDX-licensed `LICENSE`, an
-   Obsidian-backed memory layer) — running each upstream's own init,
-   never re-implementing them.
-4. **First-run onboarding + lifecycle hooks.** `clawtool onboard`
-   detects host CLIs, offers bridge installs, generates a BIAM
-   identity, records telemetry consent, and can chain into
-   `clawtool init`. Hooks run user shell snippets on nine lifecycle
-   events (dispatch, edits, bridge add, recipe apply, BIAM task
-   completion, server start/stop) — same pattern as Claude Code's
-   own hooks.
-
-```sh
-curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
-clawtool init
-```
-
-That's it. Pick what you want set up; clawtool runs each upstream's
-own init and drops the canonical glue config. **No reinvention** —
-release-please is googleapis/release-please, brain is claude-obsidian,
-license texts are SPDX. clawtool is the wizard, not a fork.
-
----
-
-## What's new in v0.14 / v0.15
-
-- **BIAM Phase 1** (ADR-015): signed Ed25519 envelopes + SQLite task store + async dispatch via `clawtool send --async` or MCP `SendMessage` with `bidi=true`.
-- **`TaskList` / `TaskGet` / `TaskWait`** expose BIAM state over MCP; `clawtool task list/get/wait` mirrors it in the CLI.
-- **New MCP tools**: `Verify` (structured pass/fail across make/pnpm/npm/go/pytest/cargo/just) and `SemanticSearch` (intent-based code search via chromem-go).
-- **Dispatch surface** grew bridge management (`clawtool bridge add/list/remove/upgrade`), sticky `agent use`, round-robin / failover / tag-routed policies, and per-instance rate / concurrency limits.
-- **`clawtool send --isolated`** runs agents in ephemeral git worktrees; `clawtool worktree list/show/gc` inspects and reaps them.
-- **`mem0`** joins the knowledge recipes, **`clawtool upgrade`** self-updates, optional **OTel observability** spans trace dispatch, and **`Edit`/`Write`** return auto-lint findings.
-- **Hooks + onboarding** add `clawtool onboard`, nine lifecycle events under `[hooks.events.<name>]`, `clawtool hooks list/show/test`, and process-group reaping so hook timeouts kill the whole shell child tree.
-- **Browser tools** (v0.16) wrap [Obscura](https://github.com/h4ckf0r0day/obscura) (Apache-2.0 V8+CDP headless engine) so agents can render SPA / hydrated pages: `BrowserFetch` for one-off renders, `BrowserScrape` for bulk parallel JS-eval. Full schema: [docs/browser-tools.md](docs/browser-tools.md).
-- **Portals** (v0.16.1 → v0.16.3) save a web-UI target — base URL + login cookies + selectors + "response done" predicate — under a name. `clawtool portal add/list/use/which/unset/remove/ask` plus the matching `Portal*` MCP tools manage them. `clawtool portal add` is an interactive wizard (chromedp launches your Chrome, you log in, cookies + auth-name detection happen automatically; pass `--manual` for the legacy `$EDITOR` flow). Runtime `portal ask` spawns Obscura, drives the saved flow, and returns the rendered response. Per-portal `<name>__ask` aliases register at `clawtool serve` boot so an MCP-aware model can call them directly. See [docs/portals.md](docs/portals.md) and [ADR-018](wiki/decisions/018-portal-feature.md).
-- **MCP authoring** (v0.17) `clawtool mcp new <project>` scaffolds a fresh, compilable MCP server (Go via `mcp-go`, Python via `fastmcp`, TypeScript via `@modelcontextprotocol/sdk`). Wizard picks language / transport / packaging / tools, optionally writes a `.claude-plugin/` manifest. `clawtool mcp install <path>` reads `.clawtool/mcp.toml` and registers `[sources.X]` in config. `clawtool mcp list` walks for projects. Smoke-tested end-to-end: `mcp new --yes` → `go build` → 6.7MB binary → MCP `initialize` handshake responds correctly. Sister of `clawtool skill new` (Agent Skills). See [docs/mcp-authoring.md](docs/mcp-authoring.md) and [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md).
-- **Sandbox** (v0.18 surface, v0.18.1+ engines) `clawtool sandbox list / show / doctor` + `clawtool send --sandbox <profile>` route dispatches through host-native isolation: bubblewrap on Linux/WSL2, sandbox-exec on macOS, Docker as fallback. Per-profile `[sandboxes.X]` covers paths, network policy, env allow/deny, time + memory budgets. External sandbox layered on top of the upstream's native flag (Codex `--sandbox workspace-write`, Claude permission modes, Gemini sandbox) so both compose. See [docs/sandbox.md](docs/sandbox.md) and [ADR-020](wiki/decisions/020-sandbox-feature.md).
-- **Uninstall** (v0.17.1) `clawtool uninstall [--yes] [--dry-run] [--purge-binary] [--keep-config]` wipes every artifact (config, secrets, caches, BIAM data, sticky pointers) so test installs don't pile up duplicate sources / portals. Smoke-tested + idempotent.
-- **Docker** ([cogitave/clawtool](docs/docker.md)) ships as a 15 MB distroless static image. `docker run -i --rm cogitave/clawtool:latest` is a stdio MCP server; `docker compose up` brings up the HTTP gateway behind Caddy. Smoke-tested: real `docker build` + `docker run` returns a correct `serverInfo` on MCP `initialize`. See [docs/docker.md](docs/docker.md).
-
-### How to use BIAM async dispatch
-
-BIAM stores signed task envelopes in `$XDG_DATA_HOME/clawtool/biam.db` and lets callers wait later. From the CLI:
-
-```sh
-TASK=$(clawtool send --async --agent codex "review HEAD")
-clawtool task wait "$TASK" --timeout 10m
-```
-
-From inside Claude Code, the model calls `mcp__clawtool__SendMessage` with `bidi=true`, gets back a `task_id`, and pulls the result later via `mcp__clawtool__TaskWait` — no blocking the conversation while codex thinks.
-
-### First-run setup: `onboard` vs `init`
-
-`clawtool onboard` is the **host** bootstrap (run once per machine): detects which agent CLIs are installed, offers to add missing bridges, generates the BIAM identity at `~/.config/clawtool/identity.ed25519`, asks for telemetry consent, and (optionally) chains into `init` for the current repo. `clawtool init` is the **project** bootstrap (run per repo): picks recipes — release-please, dependabot, commit-format-ci, brain, mem0, … — and applies them. Different scopes, no overlap.
-
-### Lifecycle hooks
-
-Drop user shell snippets in `~/.config/clawtool/config.toml` under `[hooks.events.<name>]`. Nine events fire today (`pre_send`, `post_send`, `on_task_complete`, `pre_edit`, `post_edit`, `pre_bridge_add`, `post_recipe_apply`, `on_server_start`, `on_server_stop`). The JSON event envelope lands on the script's stdin so user code skips argv parsing. `timeout_ms` reaps the whole process group; `block_on_error = true` lets a guard-rail hook veto the originating operation.
-
-```toml
-[[hooks.events.pre_send]]
-cmd = "echo dispatching | tee -a ~/.cache/clawtool/dispatch.log"
-timeout_ms = 1000
-
-[[hooks.events.on_task_complete]]
-cmd = "notify-send 'clawtool' 'BIAM task complete'"
-timeout_ms = 1000
-```
-
-Use `clawtool hooks list / show <event> / test <event>` to debug snippets without triggering the real lifecycle.
-
----
-
-## Install
-
-```sh
-curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
-```
-
-The installer downloads the latest release tarball for your OS / arch,
-verifies its SHA-256 against `checksums.txt`, and atomically installs
-to `~/.local/bin/clawtool`.
-
-<details>
-<summary>Other install paths</summary>
-
-```sh
-# Pin a version
-curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh -s -- --version=v0.8.6
-
-# Or use env vars
-CLAWTOOL_VERSION=v0.8.6 CLAWTOOL_INSTALL_DIR=$HOME/bin \
-  curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
-
-# Or build from source
-git clone https://github.com/cogitave/clawtool && cd clawtool
-make install
-```
-
-</details>
-
-## Plug it into Claude Code (zero ceremony)
-
-```sh
+## Quick install
+```bash
 claude plugin marketplace add cogitave/clawtool
 claude plugin install clawtool@clawtool-marketplace
 ```
-
-This auto-registers the MCP server and exposes `/clawtool*` slash
-commands. Want Claude to **only** see clawtool's tools (no native
-fallback)? Run:
-
-```sh
-clawtool agents claim claude-code
+Or build from source:
+```bash
+go install github.com/cogitave/clawtool/cmd/clawtool@latest
 ```
 
-That writes the native `Bash`/`Read`/`Edit`/`Write`/`Grep`/`Glob`/`WebFetch`/
-`WebSearch` tool names into `~/.claude/settings.json`'s
-`permissions.deny` list — Claude Code refuses to invoke them, the
-model sees only `mcp__clawtool__*`. Reverse with `clawtool agents
-release claude-code`. Idempotent + atomic + `--dry-run` available.
-
-## Set up a repo in 30 seconds
-
-```sh
-cd my-repo
-clawtool init
+## Onboarding (5-minute walk)
+- **Confirm the install**: Verify the connection between Claude Code and the clawtool MCP server to ensure all core tools are correctly registered.
+```bash
+/clawtool
 ```
-
-The wizard asks what scope to set up — your repo, your global
-clawtool, both, or just preview — then walks 9 categories
-(governance, commits, release, ci, quality, supply-chain, knowledge,
-agents, runtime). Pick what you want; everything else is skipped.
-
-Recipes shipped today:
-
-| Category | Recipe | Wraps |
-|---|---|---|
-| governance | `license` | SPDX (MIT · Apache-2.0 · BSD-3-Clause · AGPL-3.0) |
-| governance | `codeowners` | GitHub CODEOWNERS spec |
-| commits | `conventional-commits-ci` | `amannn/action-semantic-pull-request` |
-| release | `release-please` | googleapis/release-please |
-| release | `goreleaser` | GoReleaser v2 |
-| ci | `gh-actions-test` | GitHub Actions (Go / Node / Python / Rust auto-detect) |
-| quality | `prettier` | prettier.io (cross-language formatter) |
-| quality | `golangci-lint` | golangci-lint v2 (errcheck/govet/staticcheck/gosec/…) |
-| supply-chain | `dependabot` | GitHub Dependabot |
-| knowledge | `brain` | claude-obsidian + Obsidian app |
-| agents | `agent-claim` | `clawtool agents claim` per-agent |
-| agents | `caveman` | lackeyjb/caveman Claude Code skill (Beta) |
-| agents | `superclaude` | SuperClaude framework (slash commands + personas, Beta) |
-| agents | `claude-flow` | ruvnet/claude-flow multi-agent orchestration (Beta) |
-| runtime | `devcontainer` | containers.dev (Codespaces / Remote-SSH) |
-
-Every recipe **detects** before it touches anything, **refuses** to
-overwrite a file you wrote yourself, and **records** what it touched
-in `.clawtool.toml` so you can re-run safely. Each one wraps a
-maintained upstream — clawtool is the wizard, never the
-implementation.
-
-Prefer one shot? `clawtool recipe apply license holder="Jane Doe"`.
-Need to overwrite a file you wrote yourself? `--force` is the
-explicit knob; the wizard prompts for it interactively.
-
-Want Claude to set things up from inside a chat? Just say "set me
-up" — the `/clawtool` skill teaches the model to walk the same
-recipes via `mcp__clawtool__RecipeApply`.
-
-## Author your own skills (agentskills.io standard)
-
-```sh
-clawtool skill new my-skill --description "What this skill does and when to load it." \
-                            --triggers "save this, file this, log this"
+- **List enabled tools**: Inspect the full catalog of core, bridge, and aggregated third-party tools currently available to your agent instances.
+```bash
+/clawtool-tools-list
 ```
-
-Scaffolds a folder under `~/.claude/skills/my-skill/` (or
-`./.claude/skills/my-skill/` with `--local`) containing a
-spec-compliant `SKILL.md` plus the optional `scripts/`,
-`references/`, `assets/` subdirectories from the
-[agentskills.io](https://agentskills.io) standard. The model can
-also do this from inside a chat — same template — via
-`mcp__clawtool__SkillNew`.
-
-`clawtool skill list` enumerates installed skills; `clawtool skill
-path <name>` prints the directory.
-
-## Diagnose your setup
-
-```sh
-clawtool doctor
-```
-
-One command that surveys the binary, agent claims, source
-credentials, and recipe statuses for the current repo. Each row
-ends in ✓ / ⚠ / ✗ with a suggested fix command for everything that
-isn't healthy. Exit code is non-zero only on critical issues, so it
-fits into CI / shell guards too.
-
-## What's a toolset?
-
-A toolset is the named surface of capabilities you want your AI coding
-agent to expose. Today every agent ships its own — and they're all
-subtly different. clawtool replaces them with one canonical layer:
-
-### Native-grade core tools
-
-Wrapped at a higher quality bar than every agent's built-in equivalent.
-
-| Tool          | Engine clawtool wraps                                | Polish (clawtool's own)                              |
-|---------------|------------------------------------------------------|------------------------------------------------------|
-| `Bash`        | `/bin/bash`                                          | timeout-safe (process-group SIGKILL), structured JSON |
-| `Read`        | stdlib + `pdftotext` + `pandoc` + `excelize` + `go-readability` | text · PDF · Word · Excel · CSV · HTML · ipynb · json/yaml/toml/xml; stable line cursors |
-| `Edit`        | stdlib (`atomic.go`)                                 | atomic temp+rename · line-ending + BOM preserve · ambiguity guard |
-| `Write`       | stdlib (`atomic.go`)                                 | atomic temp+rename · parent-dir auto-create · BOM preserve |
-| `Grep`        | `ripgrep` (system grep fallback)                     | uniform output across engines                        |
-| `Glob`        | `bmatcuk/doublestar`                                 | bounded streaming · forward-slash output cross-platform |
-| `WebFetch`    | `net/http` + `go-readability` (Mozilla port)         | UA · timeout · 10 MiB body cap · binary refusal       |
-| `WebSearch`   | pluggable backend (Brave today, Tavily/SearXNG planned) | API key via secrets store · HTML markup stripped     |
-| `ToolSearch`  | `bleve` (BM25)                                       | name^3 · keywords^2 · description^1 boosts; type/limit filters |
-
-Every engine is **wrapped, never reinvented**. The polish layer
-(uniform structured output, timeout-safety, BOM preserve, atomic
-writes, secret redaction) is what clawtool brings.
-
-### Source aggregation
-
-`clawtool source add github` resolves to the canonical MCP server,
-prints the auth hint, registers it. Eighteen entries in the catalog
-out of the box:
-
-```
-github · slack · postgres · sqlite · filesystem · fetch
-brave-search · google-maps · memory · sequentialthinking · time · git
-context7 · playwright · desktop-commander · exa · notion · atlassian
-```
-
-Pick what you need; clawtool installs none by default.
-
-Sources spawn as child MCP processes; their tools are aggregated under
-the wire-form name `<instance>__<tool>` (e.g.
-`github-personal__create_issue`). Two GitHub accounts? Add
-`github-personal` and `github-work` — collision-free by construction.
-
-### Search-first discovery
-
-When the catalog grows past a few dozen tools, the agent can't hold
-every schema in context. `mcp__clawtool__ToolSearch` ranks candidates
-by query so the agent picks the right tool without seeing every
-schema:
-
-```jsonc
-ToolSearch{ query: "search file contents regex", limit: 3 }
-// → {"results":[
-//     {"name":"Grep",       "score":0.94, "type":"core"},
-//     {"name":"Read",       "score":0.05, "type":"core"},
-//     {"name":"ToolSearch", "score":0.01, "type":"core"}
-//   ], "engine":"bleve-bm25", "duration_ms":1}
-```
-
-## Common workflows
-
-```sh
-# See your toolset
-clawtool tools list
-
-# Toggle a core tool
-clawtool tools disable Bash       # use the agent's native Bash
-clawtool tools enable  Bash       # back to clawtool's
-clawtool tools status  Bash       # show which rule resolved this state
-
-# Add a source from the catalog
+- **Add a source**: Enable a third-party source from the built-in catalog (e.g., GitHub, Slack, or Postgres) to expand your agent's knowledge and action space.
+```bash
 clawtool source add github
-clawtool source set-secret github GITHUB_TOKEN
-clawtool source check
-
-# Make Claude Code prefer clawtool exclusively
-clawtool agents claim claude-code
-
-# Dry-run any mutation first
-clawtool agents claim claude-code --dry-run
-clawtool tools disable github.delete_repo
 ```
+- **Run your first ToolSearch**: Use natural-language queries to discover the right tool for any task, allowing the agent to bind to the specific schema it needs.
+```bash
+mcp__clawtool__ToolSearch query="commit my work"
+```
+- **Set a sandbox profile**: Run the sandbox diagnostic to see supported host engines (bwrap, sandbox-exec, or docker) and pick a profile for isolated execution.
+```bash
+clawtool sandbox doctor
+```
+- **Send your first cross-agent message**: Delegate a complex sub-task to a different agent family (e.g., Codex) via the supervisor's async dispatch layer.
+```bash
+clawtool send --agent codex "audit this repo"
+```
+- **Scaffold a subagent**: Create a new subagent persona with a custom dispatcher manifest, allowed-tools list, and model preference for specialized tasks.
+```bash
+clawtool agent new my-researcher --description "Expert in codebase exploration and dependency mapping"
+```
+
+## What's in the box
+
+clawtool ships with a comprehensive catalog of tools designed to replace or augment the native capabilities of AI coding agents. These tools are grouped by their functional area and are designed to work together to provide a seamless, multi-agent developer experience.
+
+### Core tools
+The core toolset replaces the standard Bash, File, and Search operations with higher-fidelity equivalents. These tools are built with a focus on safety, atomic operations, and format-awareness, ensuring that agents can work reliably across different operating systems and file types.
+
+| Tool | Capability | Reference |
+|---|---|---|
+| Bash | Run shell commands with timeout safety and structured JSON (supports `background=true` for async execution). | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
+| BashOutput | Snapshot of a background Bash task — live stdout, stderr, and terminal exit status. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
+| BashKill | Cancel a background Bash task via SIGKILL to the entire process group. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
+| Read | Format-aware file reader with stable line cursors; supports PDF, Word, Excel, HTML, Jupyter, and more. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
+| Edit | Precise substring replacement with atomic temp+rename, BOM preservation, and ambiguity guards. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
+| Write | Atomic file creation or replacement with parent directory auto-create and BOM preservation. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
+| Grep | High-performance regex content search powered by ripgrep with .gitignore-aware traversal. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
+| Glob | Directory traversal and file matching with double-star support via the doublestar engine. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
+| WebFetch | Retrieve URLs and return clean article text via Mozilla Readability with a 10MB body cap. | |
+| WebSearch | Ranked web search results via Brave Search, Tavily, or SearXNG backends. | |
+| ToolSearch | Search-first discovery across the tool catalog using bleve BM25 ranking and field boosts. | |
+| SemanticSearch | Intent-based code search using vector embeddings; index is built lazily on first call. | |
+| Verify | Multi-runner test/lint execution (Make, pnpm, go, pytest, cargo, just) with log excerpting. | |
+
+### Multi-agent dispatch
+Multi-agent dispatch allows agents to communicate and delegate tasks to one another. By leveraging the BIAM protocol, clawtool enables complex, multi-step workflows where specialized agents handle specific sub-tasks asynchronously.
+
+| Tool | Capability | Reference |
+|---|---|---|
+| SendMessage | Forward prompts to Claude, Codex, Gemini, or Opencode instances with async/bidi support. | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
+| AgentList | Snapshot of the supervisor's agent registry, including family, bridge, and callable status. | |
+| TaskGet | Retrieve the current status, metadata, and full message history for a specific BIAM task. | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
+| TaskWait | Block the caller until a BIAM task reaches a terminal state (done, failed, or cancelled). | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
+| TaskList | Enumeration of recent BIAM task history for the current supervisor instance. | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
+| TaskNotify | Edge-triggered notification that wakes the caller as soon as any watched task completes. | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
+
+### Rules engine
+Predicate-based invariants the operator declares in `.clawtool/rules.toml` and enforces at lifecycle events (pre-commit, post-edit, session-end, pre-send, pre-unattended). Pure in-process Go evaluation against a typed Context — no shell roundtrip.
+
+| Tool | Capability | Reference |
+|---|---|---|
+| RulesCheck | Evaluate `.clawtool/rules.toml` against a Context (event + changed paths + commit message + tool calls + args). Returns Verdict with passed/warned/blocked per rule. | [docs/rules.md](docs/rules.md) |
+
+### Authoring scaffolders
+Authoring tools provide agents and users with the ability to create new capabilities on the fly. Whether it is a new subagent persona, an agentskills.io skill, or a complete MCP server, these scaffolders ensure that new additions follow project conventions.
+
+| Tool | Capability | Reference |
+|---|---|---|
+| AgentNew | Scaffold a new subagent persona and dispatcher manifest. | |
+| SkillNew | Generate a new agentskills.io-standard skill directory with SKILL.md and assets. | |
+| McpList | Walk and discover local MCP server projects based on the `.clawtool/mcp.toml` marker. | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
+| McpNew | Scaffold a fresh, compilable MCP server project in Go, Python, or TypeScript. | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
+| McpRun | Development-mode runner for local MCP projects speaking over stdio. | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
+| McpBuild | Packaging and build tool for MCP server projects (binary, npm, or Docker). | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
+| McpInstall | Build and register a local project as an aggregated MCP source in config.toml. | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
+
+### Browser + Portal
+Browser and Portal tools enable agents to interact with modern web applications and authenticated UI targets. The Obscura engine handles complex JavaScript rendering, while Portals allow for saved, repeatable interaction flows with saved auth state.
+
+| Tool | Capability | Reference |
+|---|---|---|
+| BrowserFetch | Stateless rendering of hydrated SPA content using the Obscura V8+CDP headless engine. | [ADR-017](wiki/decisions/017-browser-tools-not-transport.md) |
+| BrowserScrape | Bulk parallel rendering and JS-expression extraction across multiple URLs. | [ADR-017](wiki/decisions/017-browser-tools-not-transport.md) |
+| PortalList | Enumerate saved web-UI targets, including base URLs and authenticated login state. | [ADR-018](wiki/decisions/018-portal-feature.md) |
+| PortalAsk | Drive a saved portal through its login flow and interaction predicate to extract data. | [ADR-018](wiki/decisions/018-portal-feature.md) |
+| PortalUse | Set the sticky-default portal for subsequent PortalAsk calls in the current context. | [ADR-018](wiki/decisions/018-portal-feature.md) |
+| PortalWhich | Identify the active portal resolving via environment variables or sticky config files. | [ADR-018](wiki/decisions/018-portal-feature.md) |
+| PortalUnset | Clear the current sticky portal selection for the project or global context. | [ADR-018](wiki/decisions/018-portal-feature.md) |
+| PortalRemove | Delete a portal configuration and its associated secrets from the local store. | [ADR-018](wiki/decisions/018-portal-feature.md) |
+
+### Sandbox
+Sandbox tools manage the isolation of agent operations on the host system. By defining profiles that restrict filesystem access, network connectivity, and resource consumption, clawtool provides a layer of security over powerful agent tools.
+
+| Tool | Capability | Reference |
+|---|---|---|
+| SandboxList | List configured sandbox profiles and their isolation policy types. | [ADR-020](wiki/decisions/020-sandbox-feature.md) |
+| SandboxShow | Display the detailed path, network, env, and resource constraints of a specific profile. | [ADR-020](wiki/decisions/020-sandbox-feature.md) |
+| SandboxDoctor | Diagnostic report on host engine support for bwrap, sandbox-exec, or docker fallback. | [ADR-020](wiki/decisions/020-sandbox-feature.md) |
+
+### Bridges + Recipes
+Bridges and Recipes manage the connection to other agent ecosystems and the application of project-wide standards. Bridges wire up external CLIs, while Recipes inject canonical configuration for CI, linting, and release management.
+
+| Tool | Capability | Reference |
+|---|---|---|
+| BridgeList | List installable and active bridges to agent CLIs with current install state. | |
+| BridgeAdd | Install a canonical bridge for a supported agent family (codex, opencode, gemini, hermes). | [ADR-014](wiki/decisions/014-clawtool-relay-and-cli-multiplexer.md) |
+| BridgeRemove | Uninstall an agent bridge and clear sticky instance pointers. | |
+| BridgeUpgrade | Refresh a bridge to its latest version and re-run its registration. | |
+| RecipeList | Enumerate available project-setup recipes (governance, CI, release, etc.). | |
+| RecipeStatus | Report on the detection and application state of recipes for the current repo. | |
+| RecipeApply | Execute a recipe to inject canonical configuration and upstream glue. | |
+
+## Architecture
+
+```
+agent (Claude / Codex / Gemini / Opencode)
+    │  MCP (stdio)
+    ▼
+clawtool serve
+├── core tools (Bash, Read, Edit, ...)        ← timeout-safe / structured / format-aware
+├── BIAM dispatch + TaskNotify fan-in         ← async multi-agent supervision
+├── sandbox profiles (bwrap / sandbox-exec / docker)
+├── portals (saved web-UI targets)
+├── MCP scaffolder (Mcp* tools)
+└── aggregated MCP source servers (github, slack, postgres, …)
+```
+
+clawtool operates as a centralized tool and agent supervisor. It aggregates native capabilities, third-party MCP sources, and other coding-agent CLIs into a single, cohesive surface. By wrapping every operation in a timeout-safe and structured-output layer, clawtool ensures that agents never hang on a shell child and always receive parseable responses.
+
+The project adheres to a **three-plane shipping contract** ([docs/feature-shipping-contract.md](docs/feature-shipping-contract.md)) to maintain consistency across the entire ecosystem. Every new feature or tool must land in three places within the same commit:
+1.  **MCP Plane**: The core logic and tool registration on the MCP server.
+2.  **Marketplace Plane**: The surface area exposed to the Claude Code marketplace (slash commands and manifest).
+3.  **Skill Plane**: The routing-bias and prompt-engineering rows that teach the model how and when to use the new feature.
+
+This supervisor-orchestrator pattern ([ADR-016](wiki/decisions/016-supervisor-orchestrator-pattern.md)) allows clawtool to act as the "nervous system" for AI coding agents, wiring together specialized capabilities with a uniform delivery guarantee.
 
 ## Configuration
+- `~/.config/clawtool/config.toml` — The primary configuration file (XDG compliant) where you manage core tool status, source instances, agent supervisor policies, and global hooks.
+- `~/.config/clawtool/secrets.toml` — A dedicated, mode-0600 credential store for API keys, database passwords, and OAuth tokens. Keeping secrets separate allows `config.toml` to be safely committed to public dotfile repositories.
+- `~/.local/share/clawtool/biam.db` — The persistent SQLite database for the Bidirectional Inter-Agent Messaging (BIAM) protocol, storing task status, message history, and signed Ed25519 identity envelopes.
+- `./.clawtool/<name>.toml` — Project-scoped overrides and metadata markers (e.g., `mcp.toml`, `brain.toml`) used for repository-specific sandbox profiles, portals, and authoring state.
 
-A single TOML file at `~/.config/clawtool/config.toml`:
+You can inspect and troubleshoot your environment using the diagnostic suite: `clawtool doctor` for a general host health check, `clawtool tools list` for per-selector tool resolution, `clawtool source check` for credential verification, and `clawtool sandbox show <profile>` to see active isolation constraints.
 
-```toml
-[core_tools]
-[core_tools.Bash]
-enabled = true
-
-[sources.github]
-type = "mcp"
-command = ["npx", "-y", "@modelcontextprotocol/server-github"]
-[sources.github.env]
-GITHUB_TOKEN = "${GITHUB_TOKEN}"
-
-[tools."github.delete_repo"]
-enabled = false
-
-[profile]
-active = "default"
-```
-
-Secrets live separately at `~/.config/clawtool/secrets.toml` (mode
-`0600`) so `config.toml` can be safely committed to dotfiles repos.
-`${VAR}` references in env maps are resolved against secrets first,
-then the process env.
-
-## CLI reference
-
-```
-clawtool serve                        Run as an MCP server (stdio).
-clawtool serve --listen :8080 [--token-file <p>] [--mcp-http]
-                                      HTTP gateway: bearer-auth /v1 endpoints
-                                      (health, agents, send_message, recipes,
-                                      recipe/apply) plus optional MCP over
-                                      Streamable HTTP at /mcp. Full schema +
-                                      Postman/cURL examples: docs/http-api.md.
-clawtool serve init-token [<path>]    Generate a 256-bit hex bearer token (mode 0600).
-clawtool init [--yes]                 Interactive setup wizard. --yes for
-                                      non-interactive Stable defaults.
-clawtool version                      Print the build version.
-
-clawtool recipe list [--category <c>] List project-setup recipes by category.
-clawtool recipe status [<name>]       Detect status for one or all recipes.
-clawtool recipe apply  <name> [--force] [k=v…]
-                                      Apply a single recipe. --force lets it
-                                      overwrite an unmanaged user file.
-
-clawtool doctor                       Survey the local install + suggest fixes.
-
-clawtool tools list                   List core tools and resolved enabled state.
-clawtool tools enable  <selector>     Enable a tool.
-clawtool tools disable <selector>     Disable a tool (refuses ambiguous selectors).
-clawtool tools status  <selector>     Show resolved state + rule that won.
-
-clawtool source add <name> [--as <instance>]
-                                      Resolve <name> from the built-in catalog.
-clawtool source list                  Configured sources + auth status.
-clawtool source remove <instance>     Drop from config (secrets retained).
-clawtool source set-secret <instance> <KEY> [--value <v>]
-                                      Store a credential (stdin fallback).
-clawtool source check                 Verify required env per source.
-
-clawtool agents list                  Show registered agent adapters.
-clawtool agents claim   <agent> [--dry-run]
-                                      Disable native equivalents in <agent>.
-clawtool agents release <agent> [--dry-run]
-                                      Reverse a previous claim.
-clawtool agents status  [<agent>]     Per-agent claim state.
-
-clawtool bridge add/list/remove/upgrade
-                                      Manage codex/opencode/gemini bridges
-                                      (remove returns a manual hint today).
-clawtool agent use/which/unset        Set, inspect, or clear the sticky default
-                                      target for `clawtool send`.
-clawtool send --async [--agent <i>] "<prompt>"
-                                      Submit a BIAM task and print task_id;
-                                      pair with `clawtool task wait`.
-clawtool send --isolated [--keep-on-error] "<prompt>"
-                                      Dispatch inside an ephemeral git worktree.
-clawtool task list/get/wait           List, inspect, or block on BIAM tasks.
-clawtool worktree list/show/gc        Inspect or reap isolated worktrees.
-clawtool onboard                      First-run host wizard: detect CLIs, install
-                                      bridges, generate BIAM identity, telemetry
-                                      consent, optional chain into `clawtool init`.
-clawtool hooks list                   List configured hook events + entry counts.
-clawtool hooks show <event>           Print hook entries for one event.
-clawtool hooks test <event> [--payload <json>]
-                                      Run configured entries against a synthetic
-                                      event so you can debug shell snippets without
-                                      firing the real lifecycle.
-clawtool upgrade [--check]            Self-update via the GitHub release artefacts,
-                                      or report the latest version without installing.
-```
-
-## Development
-
-```sh
-make build              # → ./bin/clawtool
-make test               # go test -race ./...
-make e2e                # spawn binary, drive MCP over stdio, assert
-make install            # atomic copy to ~/.local/bin/clawtool
-make changelog          # regenerate CHANGELOG.md from git history
-make release-snapshot   # GoReleaser dry-run (no publish)
-```
-
-Test totals at v0.9: **~200 Go unit + 68 e2e green** across
-12 packages, race-clean.
-
-The release pipeline is fully automated:
-[Conventional Commits](https://www.conventionalcommits.org) on `main`
-→ [release-please](https://github.com/googleapis/release-please) opens
-a "release PR" → merging the PR cuts the tag → [GoReleaser](https://goreleaser.com)
-publishes signed tarballs to GitHub Releases. Manual `git tag` is
-deprecated.
-
-## Status
-
-Path to v1.0 is gated by six criteria:
-
-|                                          | Status                  |
-|------------------------------------------|-------------------------|
-| Real-world soak (≥ 1 week)               | ⏳ pending               |
-| Canonical core list shipped              | ✅ v0.8.6                |
-| CI matrix on linux + macOS               | ✅ v0.8.6                |
-| Signed binary release pipeline           | 🟢 GoReleaser + Releases |
-| Versioned API stability promise          | ⏳ pending               |
-| Multi-instance against ≥ 3 real upstreams | ⏳ pending               |
-| Plugin packaging for Claude Code         | ✅ v0.8.6                |
-
-Until all are green, every increment is a patch (`v0.8.x`).
+## Roadmap
+- **ADR-022 Checkpoint** (drafting) — Commit core tool with Conventional Commits validation, autocommit, and dirty-tree guards.
+- **ADR-023 Unattended mode** (planned) — Background supervisor to keep agents productive between user prompts.
+- **ADR-024 A2A networking** (planned) — Agent-to-Agent protocol with mDNS discovery and Tailscale tsnet integration.
+- **Tool Manifest Registry refactor** (planned) — Consolidation of hand-maintained tool registrations into a typed registry.
+- **Hermes-agent bridge** (planned for v0.20) — Integration with the NousResearch agent ecosystem.
+- **Aider + Goose bridges** (radar) — Candidates for v0.21 bridge expansions.
 
 ## Contributing
+Refer to [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/feature-shipping-contract.md](docs/feature-shipping-contract.md) for development guidelines.
 
-PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow
-(Conventional Commits required, test discipline) and
-[SECURITY.md](SECURITY.md) for vulnerability disclosure.
+We strictly enforce the no-Co-Authored-By rule for AI agents and require all changes to satisfy the three-plane review checklist.
 
 ## License
-
 [MIT](LICENSE)
