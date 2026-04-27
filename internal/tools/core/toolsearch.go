@@ -254,6 +254,12 @@ func CoreToolDocs() []search.Doc {
 			Keywords:    []string{"task", "biam", "list", "recent", "history"},
 		},
 		{
+			Name:        "TaskNotify",
+			Description: "Block until ANY of the watched task_ids reaches terminal — first finisher wins. Edge-triggered via in-process notifier (no SQLite poll). Use when you have multiple async dispatches in flight and want to act on whichever returns first.",
+			Type:        "core",
+			Keywords:    []string{"task", "biam", "notify", "wait", "any", "fan-in", "fan-out", "race", "first", "completion", "push", "subscribe"},
+		},
+		{
 			Name:        "BrowserFetch",
 			Description: "Render a URL inside a real headless browser (Obscura, V8 + Chrome DevTools Protocol) and return clean prose for HTML or the value of a custom JS expression. Use when WebFetch returns empty SPA shells (Next.js / React / hydrated pages). Stateless per call; for cookies + multi-step interaction use BrowserAction.",
 			Type:        "core",
