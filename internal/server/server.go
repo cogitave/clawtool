@@ -264,6 +264,11 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// internal/skillgen package.
 	core.RegisterSkillNew(s)
 
+	// AgentNew scaffolds a Claude Code subagent persona —
+	// USER-DEFINED, not a bridge / instance. Same template the
+	// `clawtool agent new` CLI emits via internal/agentgen.
+	core.RegisterAgentNew(s)
+
 	// Aggregated source tools — one entry per (running instance × tool),
 	// already named in wire form `<instance>__<tool>`.
 	for _, st := range mgr.AggregatedTools() {
