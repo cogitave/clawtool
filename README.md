@@ -64,14 +64,14 @@ The core toolset replaces the standard Bash, File, and Search operations with hi
 
 | Tool | Capability | Reference |
 |---|---|---|
-| Bash | Run shell commands with timeout safety and structured JSON (supports `background=true` for async execution). | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
-| BashOutput | Snapshot of a background Bash task — live stdout, stderr, and terminal exit status. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
-| BashKill | Cancel a background Bash task via SIGKILL to the entire process group. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
-| Read | Format-aware file reader with stable line cursors; supports PDF, Word, Excel, HTML, Jupyter, and more. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
-| Edit | Precise substring replacement with atomic temp+rename, BOM preservation, and ambiguity guards. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
-| Write | Atomic file creation or replacement with parent directory auto-create and BOM preservation. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
-| Grep | High-performance regex content search powered by ripgrep with .gitignore-aware traversal. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
-| Glob | Directory traversal and file matching with double-star support via the doublestar engine. | [ADR-021](wiki/decisions/021-core-tools-polish.md) |
+| Bash | Run shell commands with timeout safety and structured JSON (supports `background=true` for async execution). | |
+| BashOutput | Snapshot of a background Bash task — live stdout, stderr, and terminal exit status. | |
+| BashKill | Cancel a background Bash task via SIGKILL to the entire process group. | |
+| Read | Format-aware file reader with stable line cursors; supports PDF, Word, Excel, HTML, Jupyter, and more. | |
+| Edit | Precise substring replacement with atomic temp+rename, BOM preservation, and ambiguity guards. | |
+| Write | Atomic file creation or replacement with parent directory auto-create and BOM preservation. | |
+| Grep | High-performance regex content search powered by ripgrep with .gitignore-aware traversal. | |
+| Glob | Directory traversal and file matching with double-star support via the doublestar engine. | |
 | WebFetch | Retrieve URLs and return clean article text via Mozilla Readability with a 10MB body cap. | |
 | WebSearch | Ranked web search results via Brave Search, Tavily, or SearXNG backends. | |
 | ToolSearch | Search-first discovery across the tool catalog using bleve BM25 ranking and field boosts. | |
@@ -83,12 +83,12 @@ Multi-agent dispatch allows agents to communicate and delegate tasks to one anot
 
 | Tool | Capability | Reference |
 |---|---|---|
-| SendMessage | Forward prompts to Claude, Codex, Gemini, or Opencode instances with async/bidi support. | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
+| SendMessage | Forward prompts to Claude, Codex, Gemini, or Opencode instances with async/bidi support. | |
 | AgentList | Snapshot of the supervisor's agent registry, including family, bridge, and callable status. | |
-| TaskGet | Retrieve the current status, metadata, and full message history for a specific BIAM task. | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
-| TaskWait | Block the caller until a BIAM task reaches a terminal state (done, failed, or cancelled). | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
-| TaskList | Enumeration of recent BIAM task history for the current supervisor instance. | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
-| TaskNotify | Edge-triggered notification that wakes the caller as soon as any watched task completes. | [ADR-015](wiki/decisions/015-bidirectional-inter-agent-messaging.md) |
+| TaskGet | Retrieve the current status, metadata, and full message history for a specific BIAM task. | |
+| TaskWait | Block the caller until a BIAM task reaches a terminal state (done, failed, or cancelled). | |
+| TaskList | Enumeration of recent BIAM task history for the current supervisor instance. | |
+| TaskNotify | Edge-triggered notification that wakes the caller as soon as any watched task completes. | |
 
 ### Rules engine
 Predicate-based invariants the operator declares in `.clawtool/rules.toml` and enforces at lifecycle events (pre-commit, post-edit, session-end, pre-send, pre-unattended). Pure in-process Go evaluation against a typed Context — no shell roundtrip.
@@ -104,34 +104,34 @@ Authoring tools provide agents and users with the ability to create new capabili
 |---|---|---|
 | AgentNew | Scaffold a new subagent persona and dispatcher manifest. | |
 | SkillNew | Generate a new agentskills.io-standard skill directory with SKILL.md and assets. | |
-| McpList | Walk and discover local MCP server projects based on the `.clawtool/mcp.toml` marker. | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
-| McpNew | Scaffold a fresh, compilable MCP server project in Go, Python, or TypeScript. | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
-| McpRun | Development-mode runner for local MCP projects speaking over stdio. | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
-| McpBuild | Packaging and build tool for MCP server projects (binary, npm, or Docker). | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
-| McpInstall | Build and register a local project as an aggregated MCP source in config.toml. | [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
+| McpList | Walk and discover local MCP server projects based on the `.clawtool/mcp.toml` marker. | |
+| McpNew | Scaffold a fresh, compilable MCP server project in Go, Python, or TypeScript. | |
+| McpRun | Development-mode runner for local MCP projects speaking over stdio. | |
+| McpBuild | Packaging and build tool for MCP server projects (binary, npm, or Docker). | |
+| McpInstall | Build and register a local project as an aggregated MCP source in config.toml. | |
 
 ### Browser + Portal
 Browser and Portal tools enable agents to interact with modern web applications and authenticated UI targets. The Obscura engine handles complex JavaScript rendering, while Portals allow for saved, repeatable interaction flows with saved auth state.
 
 | Tool | Capability | Reference |
 |---|---|---|
-| BrowserFetch | Stateless rendering of hydrated SPA content using the Obscura V8+CDP headless engine. | [ADR-017](wiki/decisions/017-browser-tools-not-transport.md) |
-| BrowserScrape | Bulk parallel rendering and JS-expression extraction across multiple URLs. | [ADR-017](wiki/decisions/017-browser-tools-not-transport.md) |
-| PortalList | Enumerate saved web-UI targets, including base URLs and authenticated login state. | [ADR-018](wiki/decisions/018-portal-feature.md) |
-| PortalAsk | Drive a saved portal through its login flow and interaction predicate to extract data. | [ADR-018](wiki/decisions/018-portal-feature.md) |
-| PortalUse | Set the sticky-default portal for subsequent PortalAsk calls in the current context. | [ADR-018](wiki/decisions/018-portal-feature.md) |
-| PortalWhich | Identify the active portal resolving via environment variables or sticky config files. | [ADR-018](wiki/decisions/018-portal-feature.md) |
-| PortalUnset | Clear the current sticky portal selection for the project or global context. | [ADR-018](wiki/decisions/018-portal-feature.md) |
-| PortalRemove | Delete a portal configuration and its associated secrets from the local store. | [ADR-018](wiki/decisions/018-portal-feature.md) |
+| BrowserFetch | Stateless rendering of hydrated SPA content using the Obscura V8+CDP headless engine. | |
+| BrowserScrape | Bulk parallel rendering and JS-expression extraction across multiple URLs. | |
+| PortalList | Enumerate saved web-UI targets, including base URLs and authenticated login state. | |
+| PortalAsk | Drive a saved portal through its login flow and interaction predicate to extract data. | |
+| PortalUse | Set the sticky-default portal for subsequent PortalAsk calls in the current context. | |
+| PortalWhich | Identify the active portal resolving via environment variables or sticky config files. | |
+| PortalUnset | Clear the current sticky portal selection for the project or global context. | |
+| PortalRemove | Delete a portal configuration and its associated secrets from the local store. | |
 
 ### Sandbox
 Sandbox tools manage the isolation of agent operations on the host system. By defining profiles that restrict filesystem access, network connectivity, and resource consumption, clawtool provides a layer of security over powerful agent tools.
 
 | Tool | Capability | Reference |
 |---|---|---|
-| SandboxList | List configured sandbox profiles and their isolation policy types. | [ADR-020](wiki/decisions/020-sandbox-feature.md) |
-| SandboxShow | Display the detailed path, network, env, and resource constraints of a specific profile. | [ADR-020](wiki/decisions/020-sandbox-feature.md) |
-| SandboxDoctor | Diagnostic report on host engine support for bwrap, sandbox-exec, or docker fallback. | [ADR-020](wiki/decisions/020-sandbox-feature.md) |
+| SandboxList | List configured sandbox profiles and their isolation policy types. | |
+| SandboxShow | Display the detailed path, network, env, and resource constraints of a specific profile. | |
+| SandboxDoctor | Diagnostic report on host engine support for bwrap, sandbox-exec, or docker fallback. | |
 
 ### Bridges + Recipes
 Bridges and Recipes manage the connection to other agent ecosystems and the application of project-wide standards. Bridges wire up external CLIs, while Recipes inject canonical configuration for CI, linting, and release management.
@@ -139,7 +139,7 @@ Bridges and Recipes manage the connection to other agent ecosystems and the appl
 | Tool | Capability | Reference |
 |---|---|---|
 | BridgeList | List installable and active bridges to agent CLIs with current install state. | |
-| BridgeAdd | Install a canonical bridge for a supported agent family (codex, opencode, gemini, hermes). | [ADR-014](wiki/decisions/014-clawtool-relay-and-cli-multiplexer.md) |
+| BridgeAdd | Install a canonical bridge for a supported agent family (codex, opencode, gemini, hermes). | |
 | BridgeRemove | Uninstall an agent bridge and clear sticky instance pointers. | |
 | BridgeUpgrade | Refresh a bridge to its latest version and re-run its registration. | |
 | RecipeList | Enumerate available project-setup recipes (governance, CI, release, etc.). | |
@@ -168,7 +168,7 @@ The project adheres to a **three-plane shipping contract** ([docs/feature-shippi
 2.  **Marketplace Plane**: The surface area exposed to the Claude Code marketplace (slash commands and manifest).
 3.  **Skill Plane**: The routing-bias and prompt-engineering rows that teach the model how and when to use the new feature.
 
-This supervisor-orchestrator pattern ([ADR-016](wiki/decisions/016-supervisor-orchestrator-pattern.md)) allows clawtool to act as the "nervous system" for AI coding agents, wiring together specialized capabilities with a uniform delivery guarantee.
+This supervisor-orchestrator pattern allows clawtool to act as the "nervous system" for AI coding agents, wiring together specialized capabilities with a uniform delivery guarantee.
 
 ## Configuration
 - `~/.config/clawtool/config.toml` — The primary configuration file (XDG compliant) where you manage core tool status, source instances, agent supervisor policies, and global hooks.
@@ -179,12 +179,11 @@ This supervisor-orchestrator pattern ([ADR-016](wiki/decisions/016-supervisor-or
 You can inspect and troubleshoot your environment using the diagnostic suite: `clawtool doctor` for a general host health check, `clawtool tools list` for per-selector tool resolution, `clawtool source check` for credential verification, and `clawtool sandbox show <profile>` to see active isolation constraints.
 
 ## Roadmap
-- **ADR-022 Checkpoint** (drafting) — Commit core tool with Conventional Commits validation, autocommit, and dirty-tree guards.
-- **ADR-023 Unattended mode** (planned) — Background supervisor to keep agents productive between user prompts.
-- **ADR-024 A2A networking** (planned) — Agent-to-Agent protocol with mDNS discovery and Tailscale tsnet integration.
-- **Tool Manifest Registry refactor** (planned) — Consolidation of hand-maintained tool registrations into a typed registry.
-- **Hermes-agent bridge** (planned for v0.20) — Integration with the NousResearch agent ecosystem.
-- **Aider + Goose bridges** (radar) — Candidates for v0.21 bridge expansions.
+- **Checkpoint feature — phase 2+** (drafting) — Autocommit on `wip/<session>` branches, snapshot/restore via `refs/clawtool/checkpoints/<id>` namespace, dirty-tree guard middleware around risky Bash/Edit/Write. (Phase 1 — `Commit` core tool with Conventional Commits + Co-Authored-By block + rules gate — ships in v0.20.0.)
+- **Unattended mode v1.1** (planned) — Per-instance flag elevation in the transport layer (`--dangerously-skip-permissions` injection on the claude transport, equivalent on codex/aider/plandex/hermes), self-paced wake-up via `ScheduleWakeup`-style scheduling, watch-event resumption (PR merged, CI failed, file changed). v1 (CLI flag + per-repo trust + JSONL audit + disclosure panel) ships in v0.20.0.
+- **A2A networking** (planned) — Agent2Agent protocol (Linux Foundation / Google), mDNS LAN discovery, Tailscale tsnet for cross-WAN, capability tier model with default-deny per peer.
+- **Tool Manifest Registry refactor** (planned) — Consolidation of hand-maintained tool registrations into a typed registry. Drift detection foundation already lands in v0.20.0; the full registry collapse follows.
+- **Aider + Goose bridges** (radar) — Candidates for the v0.21 bridge family expansion. Hermes-agent (NousResearch) ships as the fifth callable family in v0.20.0.
 
 ## Contributing
 Refer to [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/feature-shipping-contract.md](docs/feature-shipping-contract.md) for development guidelines.
