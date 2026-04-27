@@ -45,7 +45,9 @@ func RegisterBash(s *server.MCPServer) {
 		mcp.WithDescription(
 			"Run a shell command via /bin/bash. "+
 				"Returns structured JSON with stdout, stderr, exit_code, duration_ms, "+
-				"timed_out, and cwd. Output is preserved even when the command times out.",
+				"timed_out, and cwd. Output is preserved even when the command times out. "+
+				"Set background=true to fire-and-forget: returns a task_id immediately; "+
+				"poll output via BashOutput, terminate via BashKill.",
 		),
 		mcp.WithString("command",
 			mcp.Required(),
@@ -57,9 +59,40 @@ func RegisterBash(s *server.MCPServer) {
 		mcp.WithNumber("timeout_ms",
 			mcp.Description("Hard timeout in milliseconds. Default 120000 (2m), max 600000 (10m)."),
 		),
+		mcp.WithBoolean("background",
+			mcp.Description("Run asynchronously. Returns a task_id immediately. Poll via BashOutput. Default false."),
+		),
 	)
 
 	s.AddTool(tool, runBash)
+}
+
+// bashBackgroundResult is the JSON envelope emitted when a Bash call uses
+// background=true. The agent receives task_id immediately and polls via
+// BashOutput; the synchronous bashResult shape would have to wait for
+// the process to exit, defeating the purpose.
+type bashBackgroundResult struct {
+	BaseResult
+	Command   string `json:"command"`
+	Cwd       string `json:"cwd"`
+	TaskID    string `json:"task_id"`
+	TimeoutMs int    `json:"timeout_ms"`
+}
+
+func (r bashBackgroundResult) Render() string {
+	if r.IsError() {
+		return r.ErrorLine(r.Command)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "$ %s &\n", r.Command)
+	fmt.Fprintf(&b, "task_id: %s\n", r.TaskID)
+	fmt.Fprintf(&b, "(poll via BashOutput · kill via BashKill)\n")
+	b.WriteByte('\n')
+	b.WriteString(r.FooterLine(
+		fmt.Sprintf("cwd: %s", r.Cwd),
+		fmt.Sprintf("timeout: %dms", r.TimeoutMs),
+	))
+	return b.String()
 }
 
 func runBash(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -75,6 +108,25 @@ func runBash(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	}
 	if timeoutMs > maxTimeoutMs {
 		timeoutMs = maxTimeoutMs
+	}
+
+	if req.GetBool("background", false) {
+		resolvedCwd := cwd
+		if resolvedCwd == "" {
+			resolvedCwd = homeDir()
+		}
+		id, err := SubmitBackgroundBash(ctx, command, resolvedCwd, timeoutMs)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		out := bashBackgroundResult{
+			BaseResult: BaseResult{Operation: "Bash"},
+			Command:    command,
+			Cwd:        resolvedCwd,
+			TaskID:     id,
+			TimeoutMs:  timeoutMs,
+		}
+		return resultOf(out), nil
 	}
 
 	res := executeBash(ctx, command, cwd, time.Duration(timeoutMs)*time.Millisecond)

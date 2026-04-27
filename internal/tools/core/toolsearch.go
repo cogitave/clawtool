@@ -123,9 +123,21 @@ func CoreToolDocs() []search.Doc {
 	return []search.Doc{
 		{
 			Name:        "Bash",
-			Description: "Run a shell command via /bin/bash. Returns structured JSON with stdout, stderr, exit_code, duration_ms, timed_out, cwd. Output preserved on timeout via process-group SIGKILL.",
+			Description: "Run a shell command via /bin/bash. Returns structured JSON with stdout, stderr, exit_code, duration_ms, timed_out, cwd. Output preserved on timeout via process-group SIGKILL. Set background=true to fire-and-forget — returns a task_id you poll via BashOutput / kill via BashKill.",
 			Type:        "core",
-			Keywords:    []string{"shell", "execute", "run", "command", "terminal"},
+			Keywords:    []string{"shell", "execute", "run", "command", "terminal", "background", "async", "long-running"},
+		},
+		{
+			Name:        "BashOutput",
+			Description: "Snapshot of a background Bash task — live stdout, stderr, status (active / done / failed / cancelled), exit_code once terminal. Pair with `Bash background=true`.",
+			Type:        "core",
+			Keywords:    []string{"bash", "background", "poll", "tail", "output", "task", "async", "long-running"},
+		},
+		{
+			Name:        "BashKill",
+			Description: "Cancel a background Bash task — SIGKILL to the whole process group. No-op when terminal. Returns the task's snapshot post-kill.",
+			Type:        "core",
+			Keywords:    []string{"bash", "background", "kill", "cancel", "stop", "abort", "task", "async"},
 		},
 		{
 			Name:        "Grep",
