@@ -199,6 +199,8 @@ func (a *App) Run(argv []string) int {
 		return a.runUnattended(argv[1:])
 	case "a2a":
 		return a.runA2A(argv[1:])
+	case "dashboard", "tui":
+		return a.runDashboard(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
