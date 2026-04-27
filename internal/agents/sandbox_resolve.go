@@ -15,11 +15,19 @@
 //	agent.Sandbox config field                          → resolved against cfg
 //	otherwise                                            → opts unchanged (no sandbox)
 //
-// Resolution failures (profile name doesn't exist in cfg, or
-// ParseProfile rejects it) DROP the sandbox silently — the
-// dispatch proceeds unsandboxed. We log via stderr but don't
-// block the prompt; the operator sees the issue when
-// `clawtool sandbox show <name>` reports the parse error.
+// Resolution semantics (Codex c1b00f10 audit fix #202):
+//
+//   - Per-call override (opts["sandbox"] = "<name>") — fail-CLOSED.
+//     If the operator passed --sandbox <name> on send, they made an
+//     explicit security choice. A missing or invalid profile MUST
+//     refuse the dispatch with ErrSandboxUnresolvable — silently
+//     running unsandboxed defeats the entire feature.
+//   - Agent-config sandbox (cfg.Agent.Sandbox) — fail-open, log.
+//     A misconfigured agent block is a config bug, not an active
+//     security request. We log and drop the key so the dispatch
+//     still runs; the operator sees the issue via
+//     `clawtool sandbox show <name>`.
+//   - No sandbox configured — pass through unchanged.
 //
 // Anti-pattern guard: opts is the caller's map. We MUST NOT
 // mutate it — failover chain dispatches reuse the same map, and
@@ -29,6 +37,7 @@
 package agents
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -36,39 +45,49 @@ import (
 	"github.com/cogitave/clawtool/internal/sandbox"
 )
 
+// ErrSandboxUnresolvable is returned by withSandboxResolved when an
+// EXPLICIT per-call sandbox name fails to resolve. Per audit fix
+// #202: operator's `--sandbox <name>` is a security choice — refuse
+// the dispatch rather than silently fall through to unsandboxed.
+var ErrSandboxUnresolvable = errors.New("sandbox profile cannot be resolved (refusing to dispatch unsandboxed)")
+
 // withSandboxResolved returns opts (or a shallow clone) with
 // opts["sandbox"] populated as a *sandbox.Profile when applicable.
 // loadCfg is the supervisor's snapshot fetcher; we pull the live
 // view rather than caching so a `clawtool config reload` mid-
 // session picks up new sandbox blocks without restarting.
-func withSandboxResolved(opts map[string]any, agent Agent, loadCfg func() (config.Config, error)) map[string]any {
+//
+// Returns ErrSandboxUnresolvable when the caller explicitly
+// requested a sandbox by name (opts["sandbox"] = "<name>") and
+// resolution fails. Per-instance config sandbox failures are
+// fail-open (logged, dropped from opts).
+func withSandboxResolved(opts map[string]any, agent Agent, loadCfg func() (config.Config, error)) (map[string]any, error) {
 	// 1. Per-call override already in opts as a typed Profile? Pass through.
 	if _, ok := opts["sandbox"].(*sandbox.Profile); ok {
-		return opts
+		return opts, nil
 	}
 
-	// 2. Per-call override as a string name? Resolve.
+	// 2. Per-call override as a string name? Resolve. Fail-CLOSED:
+	//    explicit operator request must succeed or refuse.
 	if name, ok := opts["sandbox"].(string); ok && name != "" {
-		if p := lookupSandbox(name, loadCfg); p != nil {
-			out := cloneOpts(opts)
-			out["sandbox"] = p
-			return out
+		p := lookupSandbox(name, loadCfg)
+		if p == nil {
+			return nil, fmt.Errorf("%w: %q (per-call) — check `clawtool sandbox list`", ErrSandboxUnresolvable, name)
 		}
-		// Resolution failed — log and drop the sandbox key so
-		// the transport's nil-Sandbox fast path runs.
-		fmt.Fprintf(os.Stderr,
-			"clawtool: sandbox profile %q (per-call) not found or invalid; dispatching unsandboxed\n", name)
 		out := cloneOpts(opts)
-		delete(out, "sandbox")
-		return out
+		out["sandbox"] = p
+		return out, nil
 	}
 
-	// 3. Agent-config sandbox? Resolve.
+	// 3. Agent-config sandbox? Resolve. Fail-open: a misconfigured
+	//    agent block is a config bug, not an active security
+	//    request, so drop the key + log + run unsandboxed. The
+	//    operator surfaces it via `clawtool sandbox show <name>`.
 	if agent.Sandbox != "" {
 		if p := lookupSandbox(agent.Sandbox, loadCfg); p != nil {
 			out := cloneOpts(opts)
 			out["sandbox"] = p
-			return out
+			return out, nil
 		}
 		fmt.Fprintf(os.Stderr,
 			"clawtool: sandbox profile %q (instance %q) not found or invalid; dispatching unsandboxed\n",
@@ -76,7 +95,7 @@ func withSandboxResolved(opts map[string]any, agent Agent, loadCfg func() (confi
 	}
 
 	// 4. No sandbox configured. Pass through unchanged.
-	return opts
+	return opts, nil
 }
 
 // lookupSandbox loads the config snapshot and parses the named
