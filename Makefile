@@ -41,6 +41,10 @@ integration: build ## Multi-instance soak against real upstream MCP servers (npx
 stub-server: ## Build the stub MCP server used as a test fixture.
 	$(GO) build -o test/e2e/stub-server/stub-server ./test/e2e/stub-server
 
+.PHONY: portal-integration
+portal-integration: ## Drive portal.Ask through real Chrome against an httptest fake portal. Requires Chrome / Chromium on PATH.
+	$(GO) test -tags integration -count=1 -v -run TestAsk_RealChrome ./internal/portal/
+
 install: build ## Copy the binary to $(INSTALL_DIR) atomically + run postinstall cleanup.
 	@mkdir -p $(INSTALL_DIR)
 	@# Atomic replace via rename; survives a binary that's currently
