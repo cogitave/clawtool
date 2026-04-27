@@ -47,7 +47,7 @@ func (codexTransport) Send(ctx context.Context, prompt string, opts map[string]a
 	args = append(args, o.ExtraArgs...)
 	args = append(args, prompt)
 
-	rc, err := startStreamingExecWith(ctx, "codex", args, o.Cwd, o.Sandbox)
+	rc, err := startStreamingExecFull(ctx, "codex", args, o.Cwd, o.Sandbox, o.Env)
 	if err != nil {
 		return nil, ErrBinaryMissing{Family: "codex", Binary: "codex"}
 	}
