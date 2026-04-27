@@ -51,10 +51,9 @@ type HTTPOptions struct {
 // server (so the same agents/recipes/tools are available), then
 // route HTTP requests through it.
 //
-// The MCP-over-HTTP transport (when MCPHTTP=true) is wired in a
-// follow-up patch — Phase 2's first iteration ships the v1 REST
-// endpoints and bearer auth; mcp-go's StreamableHTTPServer plug-in
-// lands as polish.
+// MCP-over-HTTP (`--mcp-http`) mounts the full toolset at /mcp via
+// mark3labs/mcp-go's StreamableHTTPServer (the persistent shared
+// daemon every host fans into; see internal/daemon).
 func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 	if strings.TrimSpace(opts.Listen) == "" {
 		return errors.New("--listen is required (e.g. ':8080')")

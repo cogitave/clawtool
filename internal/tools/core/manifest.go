@@ -1,13 +1,13 @@
-// Package core — typed manifest of clawtool's MCP tools (#173
-// Step 2 of Codex's #1 ROI refactor).
+// Package core — typed manifest of clawtool's MCP tools (#173, the
+// "Tool Manifest Registry" refactor).
 //
 // BuildManifest assembles a *registry.Manifest with one ToolSpec
-// per shipped tool. Step 2 (this commit) ONLY adds entries for
-// the youngest six tools — Commit, RulesCheck, AgentNew,
-// BashOutput, BashKill, TaskNotify. server.go still calls each
-// tool's RegisterX directly; the manifest is not yet consumed
-// at boot. That hookup lands in Step 3, after the older tools
-// (Bash / Read / Edit / Write / Grep / Glob / WebFetch /
+// per shipped tool. server.go reads this manifest at boot and
+// invokes each ToolSpec.Register; there is no separate per-tool
+// init wiring. Adding a new tool is one ToolSpec entry plus one
+// RegisterX function — no surface_drift_test edits required since
+// the manifest is the single source of truth (Bash / Read / Edit
+// / Write / Grep / Glob / WebFetch /
 // WebSearch / ToolSearch) get the same treatment.
 //
 // Why incremental: a single big-bang manifest migration carries
