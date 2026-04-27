@@ -13,6 +13,7 @@
 package agents
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -127,6 +128,12 @@ func (s *streamingProcess) Close() error {
 // startStreamingExec spawns the given command and returns a ReadCloser
 // that streams stdout. stderr is captured but discarded — transports
 // surface CLI errors via the exit code on Close.
+//
+// Stdin is explicitly bound to a closed reader. Some upstream CLIs
+// (codex exec, opencode acp) read from stdin to pick up *additional*
+// prompt input and will block forever if stdin is left attached to
+// the parent process or to a still-open pipe. A pre-closed reader
+// signals "no extra input" cleanly.
 func startStreamingExec(ctx context.Context, name string, args []string, cwd string) (io.ReadCloser, error) {
 	if _, err := exec.LookPath(name); err != nil {
 		return nil, err
@@ -135,6 +142,7 @@ func startStreamingExec(ctx context.Context, name string, args []string, cwd str
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
+	cmd.Stdin = bytes.NewReader(nil)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
