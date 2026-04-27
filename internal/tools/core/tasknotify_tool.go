@@ -84,8 +84,8 @@ func (r taskNotifyResult) Render() string {
 }
 
 const (
-	taskNotifyDefaultTimeoutS = 600   // 10 min
-	taskNotifyMaxTimeoutS     = 3600  // 1 hour
+	taskNotifyDefaultTimeoutS = 600  // 10 min
+	taskNotifyMaxTimeoutS     = 3600 // 1 hour
 	taskNotifyMaxIDs          = 64
 )
 

@@ -24,18 +24,18 @@ import (
 
 type rulesCheckResult struct {
 	BaseResult
-	RulesPath string         `json:"rules_path,omitempty"`
+	RulesPath  string        `json:"rules_path,omitempty"`
 	Configured bool          `json:"configured"`
-	Verdict   rules.Verdict  `json:"verdict"`
-	Summary   rulesSummary   `json:"summary"`
+	Verdict    rules.Verdict `json:"verdict"`
+	Summary    rulesSummary  `json:"summary"`
 }
 
 type rulesSummary struct {
-	Total    int `json:"total"`
-	Passed   int `json:"passed"`
-	Warned   int `json:"warned"`
-	Blocked  int `json:"blocked"`
-	Skipped  int `json:"skipped"` // rules whose `when` didn't match the event
+	Total   int `json:"total"`
+	Passed  int `json:"passed"`
+	Warned  int `json:"warned"`
+	Blocked int `json:"blocked"`
+	Skipped int `json:"skipped"` // rules whose `when` didn't match the event
 }
 
 func (r rulesCheckResult) Render() string {

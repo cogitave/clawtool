@@ -22,14 +22,14 @@ func TestValidateMessage_Conventional(t *testing.T) {
 	}
 
 	bad := map[string]string{
-		"":                            "empty",
-		"   \n  ":                     "whitespace-only",
-		"updated stuff":               "no type prefix",
-		"FIX: caps":                   "uppercase type",
-		"feat":                        "no colon, no subject",
-		"feat:":                       "missing subject",
-		"feat: ":                      "empty subject",
-		"random(scope): subject":      "unknown type",
+		"":                       "empty",
+		"   \n  ":                "whitespace-only",
+		"updated stuff":          "no type prefix",
+		"FIX: caps":              "uppercase type",
+		"feat":                   "no colon, no subject",
+		"feat:":                  "missing subject",
+		"feat: ":                 "empty subject",
+		"random(scope): subject": "unknown type",
 	}
 	for m, why := range bad {
 		if err := ValidateMessage(m, CommitOptions{RequireConventional: true, ForbidCoauthor: true}); err == nil {
@@ -40,7 +40,7 @@ func TestValidateMessage_Conventional(t *testing.T) {
 
 func TestValidateMessage_Coauthor(t *testing.T) {
 	cases := []struct {
-		msg     string
+		msg        string
 		shouldFail bool
 	}{
 		{"feat: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>", true},
@@ -87,10 +87,10 @@ func TestValidateMessage_OnlyConventional(t *testing.T) {
 
 func TestFirstLine(t *testing.T) {
 	cases := map[string]string{
-		"single":         "single",
-		"first\nsecond":  "first",
-		"\nleading":      "",
-		"trail\n":        "trail",
+		"single":        "single",
+		"first\nsecond": "first",
+		"\nleading":     "",
+		"trail\n":       "trail",
 	}
 	for in, want := range cases {
 		if got := firstLine(in); got != want {

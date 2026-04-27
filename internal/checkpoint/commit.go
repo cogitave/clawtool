@@ -69,12 +69,12 @@ type CommitOptions struct {
 
 // CommitResult is the structured return shape.
 type CommitResult struct {
-	Sha        string    `json:"sha"`
-	ShortSha   string    `json:"short_sha"`
-	Branch     string    `json:"branch,omitempty"`
-	Subject    string    `json:"subject"`
-	Files      []string  `json:"files,omitempty"`
-	Pushed     bool      `json:"pushed"`
+	Sha         string    `json:"sha"`
+	ShortSha    string    `json:"short_sha"`
+	Branch      string    `json:"branch,omitempty"`
+	Subject     string    `json:"subject"`
+	Files       []string  `json:"files,omitempty"`
+	Pushed      bool      `json:"pushed"`
 	CommittedAt time.Time `json:"committed_at"`
 }
 
