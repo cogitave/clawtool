@@ -173,6 +173,7 @@ func TestSurfaceDrift_SlashCommandsHaveBackingTool(t *testing.T) {
 		"clawtool-source-list.md": true,
 		"clawtool-tools-list.md":  true,
 		"clawtool-unattended.md":  true, // CLI verb — `clawtool unattended <grant|revoke|...>`
+		"clawtool-a2a.md":         true, // CLI verb — `clawtool a2a card` (no MCP-tool counterpart yet, phase 2 will add A2ACard / A2APeerList)
 	}
 
 	known := map[string]bool{}
