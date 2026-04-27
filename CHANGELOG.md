@@ -5,7 +5,24 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.21.4] - 2026-04-27
+## [0.21.5] - 2026-04-27
+
+### Chores
+
+- **release:** V0.21.5 — Codex c1b00f10 audit fixes (security) (613e1d0)
+### Documentation
+
+- Clean stale "phase X lands later" comments (audit #206) (2d66cfa)
+- **changelog:** Regenerate for v0.21.4 [skip ci] (51b4362)
+### Features
+
+- **biam:** Runner.Cancel + true async + `clawtool task cancel` (audit #204) (98de7d0)
+- **agents:** Per-instance secrets-store env injection (audit #205) (23f4f7a)
+### Fixes
+
+- **sandbox:** Bwrap fail-closes when policy can't be enforced (audit #203) (3d60f2c)
+- **sandbox:** Per-call resolution fail-closed (audit #202) (6c8fb55)
+- **unattended:** Inject elevation flags into upstream CLI args (ADR-023) (5ba2370)## [0.21.4] - 2026-04-27
 
 ### Chores
 
