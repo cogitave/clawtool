@@ -57,7 +57,7 @@ func (hermesTransport) Send(ctx context.Context, prompt string, opts map[string]
 
 	args = append(args, o.ExtraArgs...)
 
-	rc, err := startStreamingExec(ctx, "hermes", args, o.Cwd)
+	rc, err := startStreamingExecWith(ctx, "hermes", args, o.Cwd, o.Sandbox)
 	if err != nil {
 		return nil, ErrBinaryMissing{Family: "hermes", Binary: "hermes"}
 	}

@@ -46,7 +46,7 @@ func (geminiTransport) Send(ctx context.Context, prompt string, opts map[string]
 	// the transport layer. A future polish iteration may synthesise
 	// a transient GEMINI.md from prior turns when SessionID is set.
 
-	rc, err := startStreamingExec(ctx, "gemini", args, o.Cwd)
+	rc, err := startStreamingExecWith(ctx, "gemini", args, o.Cwd, o.Sandbox)
 	if err != nil {
 		return nil, ErrBinaryMissing{Family: "gemini", Binary: "gemini"}
 	}

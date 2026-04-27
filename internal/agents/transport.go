@@ -21,6 +21,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/cogitave/clawtool/internal/sandbox"
 )
 
 // Transport forwards a prompt to an already-installed upstream CLI
@@ -44,6 +46,18 @@ type SendOptions struct {
 	Format    string   // "text" | "json" | "stream-json" — passed through where supported
 	Cwd       string   // working directory for the upstream CLI
 	ExtraArgs []string // raw passthrough argv appended to the upstream command
+
+	// Sandbox is the resolved sandbox.Profile to wrap the upstream
+	// process in (ADR-020). When non-nil, startStreamingExec
+	// applies the host-native sandbox.Engine.Wrap on the spawned
+	// cmd before Start. Nil = no sandbox (legacy path, default).
+	//
+	// We use the typed Profile rather than the profile name
+	// string because profile resolution (config lookup, validation,
+	// per-instance override) is the supervisor's job — transports
+	// stay platform-agnostic. Caller wires this from
+	// config.SandboxConfig + sandbox.ParseProfile.
+	Sandbox *sandbox.Profile
 }
 
 // ParseOptions extracts the well-known keys from a free-form opts map.
@@ -70,6 +84,12 @@ func ParseOptions(opts map[string]any) SendOptions {
 				out.ExtraArgs = append(out.ExtraArgs, s)
 			}
 		}
+	}
+	// Sandbox is typed at the supervisor's site; it's a *Profile
+	// pointer in opts. Anything else is silently dropped — keeps
+	// the contract loose for callers that don't care.
+	if v, ok := opts["sandbox"].(*sandbox.Profile); ok {
+		out.Sandbox = v
 	}
 	return out
 }
@@ -149,7 +169,27 @@ func (s *streamingProcess) Close() error {
 // prompt input and will block forever if stdin is left attached to
 // the parent process or to a still-open pipe. A pre-closed reader
 // signals "no extra input" cleanly.
+//
+// This is the legacy entry point — kept for callers that don't need
+// sandbox enforcement. New code should use startStreamingExecWith.
 func startStreamingExec(ctx context.Context, name string, args []string, cwd string) (io.ReadCloser, error) {
+	return startStreamingExecWith(ctx, name, args, cwd, nil)
+}
+
+// startStreamingExecWith is the sandbox-aware spawn primitive
+// (ADR-020 §"Sandbox surface" wired into ADR-014's transport
+// layer). When profile is non-nil, the host-native engine
+// (sandbox.SelectEngine) wraps the cmd BEFORE Start so the
+// spawned process inherits the sandbox's path / network / env /
+// resource constraints.
+//
+// Engine selection is implicit: SelectEngine returns bwrap on
+// Linux, sandbox-exec on macOS, docker as cross-platform
+// fallback, or noop when none is available. The noop engine's
+// Wrap returns a clear error so a caller that explicitly
+// requested a sandbox doesn't silently fall through to an
+// unsandboxed run.
+func startStreamingExecWith(ctx context.Context, name string, args []string, cwd string, profile *sandbox.Profile) (io.ReadCloser, error) {
 	if _, err := exec.LookPath(name); err != nil {
 		return nil, err
 	}
@@ -158,6 +198,19 @@ func startStreamingExec(ctx context.Context, name string, args []string, cwd str
 		cmd.Dir = cwd
 	}
 	cmd.Stdin = bytes.NewReader(nil)
+
+	// Sandbox wrap fires BEFORE the StdoutPipe call so the
+	// engine can swap cmd.Path / Args (e.g. bwrap rewrites the
+	// argv to `bwrap … -- claude -p prompt`). Doing it after
+	// would leave the pipe attached to the unwrapped binary.
+	if profile != nil {
+		eng := sandbox.SelectEngine()
+		if err := eng.Wrap(ctx, cmd, profile); err != nil {
+			return nil, fmt.Errorf("sandbox %s wrap (engine=%s): %w",
+				profile.Name, eng.Name(), err)
+		}
+	}
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
