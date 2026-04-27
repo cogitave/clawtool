@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/sysproc"
 )
 
 // Event is the canonical name string. Locked at v0.15; new events
@@ -142,28 +143,31 @@ func runEntry(ctx context.Context, e config.HookEntry, body []byte) error {
 	cmd.Stdout = &combined
 	cmd.Stderr = &combined
 
+	// Process group setup so timeout / parent-cancel kills the whole
+	// child tree, not just the shell. Without this a `sleep` child
+	// keeps stdio pipes open and Wait() stalls past the deadline.
+	sysproc.ApplyGroup(cmd)
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("hook start: %w", err)
 	}
-	timedOut := false
+	var timedOut atomic.Bool
 	timer := time.AfterFunc(timeout, func() {
-		timedOut = true
-		_ = cmd.Process.Kill()
+		timedOut.Store(true)
+		sysproc.KillGroup(cmd)
 	})
-	// Honour parent ctx cancellation too — kill the hook if the
-	// originating operation already exited.
 	stop := make(chan struct{})
 	go func() {
 		select {
 		case <-ctx.Done():
-			_ = cmd.Process.Kill()
+			sysproc.KillGroup(cmd)
 		case <-stop:
 		}
 	}()
 	err := cmd.Wait()
 	close(stop)
 	timer.Stop()
-	if timedOut {
+	if timedOut.Load() {
 		return fmt.Errorf("hook timeout after %s: %s", timeout, truncate(combined.String(), 256))
 	}
 	if err != nil {

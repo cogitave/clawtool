@@ -10,7 +10,7 @@
 > **Define a toolset once. Use it in every AI coding agent.**
 > clawtool is the standard layer across Claude Code, Codex, and OpenCode.
 
-A single Go binary that does three things:
+A single Go binary that does four things:
 
 1. **Canonical toolset.** Every MCP-aware agent gets the same
    higher-quality `Bash` / `Read` / `Edit` / `Write` / `Grep` / `Glob` /
@@ -29,6 +29,13 @@ A single Go binary that does three things:
    Commits CI, Dependabot, CODEOWNERS, an SPDX-licensed `LICENSE`, an
    Obsidian-backed memory layer) — running each upstream's own init,
    never re-implementing them.
+4. **First-run onboarding + lifecycle hooks.** `clawtool onboard`
+   detects host CLIs, offers bridge installs, generates a BIAM
+   identity, records telemetry consent, and can chain into
+   `clawtool init`. Hooks run user shell snippets on nine lifecycle
+   events (dispatch, edits, bridge add, recipe apply, BIAM task
+   completion, server start/stop) — same pattern as Claude Code's
+   own hooks.
 
 ```sh
 curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
@@ -50,6 +57,7 @@ license texts are SPDX. clawtool is the wizard, not a fork.
 - **Dispatch surface** grew bridge management (`clawtool bridge add/list/remove/upgrade`), sticky `agent use`, round-robin / failover / tag-routed policies, and per-instance rate / concurrency limits.
 - **`clawtool send --isolated`** runs agents in ephemeral git worktrees; `clawtool worktree list/show/gc` inspects and reaps them.
 - **`mem0`** joins the knowledge recipes, **`clawtool upgrade`** self-updates, optional **OTel observability** spans trace dispatch, and **`Edit`/`Write`** return auto-lint findings.
+- **Hooks + onboarding** add `clawtool onboard`, nine lifecycle events under `[hooks.events.<name>]`, `clawtool hooks list/show/test`, and process-group reaping so hook timeouts kill the whole shell child tree.
 
 ### How to use BIAM async dispatch
 
@@ -61,6 +69,26 @@ clawtool task wait "$TASK" --timeout 10m
 ```
 
 From inside Claude Code, the model calls `mcp__clawtool__SendMessage` with `bidi=true`, gets back a `task_id`, and pulls the result later via `mcp__clawtool__TaskWait` — no blocking the conversation while codex thinks.
+
+### First-run setup: `onboard` vs `init`
+
+`clawtool onboard` is the **host** bootstrap (run once per machine): detects which agent CLIs are installed, offers to add missing bridges, generates the BIAM identity at `~/.config/clawtool/identity.ed25519`, asks for telemetry consent, and (optionally) chains into `init` for the current repo. `clawtool init` is the **project** bootstrap (run per repo): picks recipes — release-please, dependabot, commit-format-ci, brain, mem0, … — and applies them. Different scopes, no overlap.
+
+### Lifecycle hooks
+
+Drop user shell snippets in `~/.config/clawtool/config.toml` under `[hooks.events.<name>]`. Nine events fire today (`pre_send`, `post_send`, `on_task_complete`, `pre_edit`, `post_edit`, `pre_bridge_add`, `post_recipe_apply`, `on_server_start`, `on_server_stop`). The JSON event envelope lands on the script's stdin so user code skips argv parsing. `timeout_ms` reaps the whole process group; `block_on_error = true` lets a guard-rail hook veto the originating operation.
+
+```toml
+[[hooks.events.pre_send]]
+cmd = "echo dispatching | tee -a ~/.cache/clawtool/dispatch.log"
+timeout_ms = 1000
+
+[[hooks.events.on_task_complete]]
+cmd = "notify-send 'clawtool' 'BIAM task complete'"
+timeout_ms = 1000
+```
+
+Use `clawtool hooks list / show <event> / test <event>` to debug snippets without triggering the real lifecycle.
 
 ---
 
@@ -349,6 +377,15 @@ clawtool send --isolated [--keep-on-error] "<prompt>"
                                       Dispatch inside an ephemeral git worktree.
 clawtool task list/get/wait           List, inspect, or block on BIAM tasks.
 clawtool worktree list/show/gc        Inspect or reap isolated worktrees.
+clawtool onboard                      First-run host wizard: detect CLIs, install
+                                      bridges, generate BIAM identity, telemetry
+                                      consent, optional chain into `clawtool init`.
+clawtool hooks list                   List configured hook events + entry counts.
+clawtool hooks show <event>           Print hook entries for one event.
+clawtool hooks test <event> [--payload <json>]
+                                      Run configured entries against a synthetic
+                                      event so you can debug shell snippets without
+                                      firing the real lifecycle.
 clawtool upgrade [--check]            Self-update via the GitHub release artefacts,
                                       or report the latest version without installing.
 ```

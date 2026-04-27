@@ -179,6 +179,8 @@ func (a *App) Run(argv []string) int {
 		return a.runUpgrade(argv[1:])
 	case "onboard":
 		return a.runOnboard(argv[1:])
+	case "hooks":
+		return a.runHooks(argv[1:])
 	case "recipe":
 		return a.runRecipe(argv[1:])
 	case "doctor":

@@ -34,6 +34,20 @@ type Config struct {
 	Observability ObservabilityConfig        `toml:"observability,omitempty"`
 	AutoLint      AutoLintConfig             `toml:"auto_lint,omitempty"`
 	Hooks         HooksConfig                `toml:"hooks,omitempty"`
+	Telemetry     TelemetryConfig            `toml:"telemetry,omitempty"`
+}
+
+// TelemetryConfig drives anonymous PostHog event emission. Default
+// disabled; clawtool onboard records the user's choice here. Per
+// ADR-007 we wrap posthog/posthog-go.
+//
+// Events emitted: command name, version, OS/arch, duration_ms,
+// exit_code, error_class. NO prompts, NO paths, NO secrets, NO env
+// values — the CLI dispatcher strips arg slices before forwarding.
+type TelemetryConfig struct {
+	Enabled bool   `toml:"enabled,omitempty"`
+	APIKey  string `toml:"api_key,omitempty"` // PostHog project key (optional; defaults baked into the binary at release time)
+	Host    string `toml:"host,omitempty"`    // override the default https://app.posthog.com endpoint
 }
 
 // HooksConfig wires user shell commands to clawtool lifecycle events
