@@ -256,4 +256,11 @@ func init() {
 		upstream:    "https://github.com/sst/opencode",
 		binaryName:  "opencode",
 	})
+	setup.Register(bridgeRecipe{
+		name:        "hermes-bridge",
+		family:      "hermes",
+		description: "Hermes bridge: NousResearch hermes-agent — self-improving CLI agent with 47 built-in tools, 20+ inference providers (OpenRouter, Anthropic, Codex, Gemini, NIM, Bedrock, Ollama). Headless mode via `hermes chat -q`. No Claude Code plugin — recipe verifies the hermes binary is on PATH.",
+		upstream:    "https://github.com/nousresearch/hermes-agent",
+		binaryName:  "hermes",
+	})
 }

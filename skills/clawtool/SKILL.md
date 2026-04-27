@@ -86,6 +86,24 @@ It returns ranked candidates with name, score, description, type
 (`core` / `sourced`), and source instance. This is cheaper than scanning
 every tool's schema in context.
 
+## Bridges (which families clawtool can dispatch to)
+
+After `clawtool bridge add <family>` (or marketplace install), these
+upstreams become callable via `mcp__clawtool__SendMessage agent:"<family>"`:
+
+| Family | Bridge type | Headless mode |
+|---|---|---|
+| `claude` | built-in | `claude -p` |
+| `codex` | Claude Code plugin (openai/codex-plugin-cc) | `codex exec` |
+| `gemini` | Claude Code plugin (abiswas97/gemini-plugin-cc) | `gemini -p` |
+| `opencode` | binary on PATH | `opencode run` (ACP-capable via `opencode acp`) |
+| `hermes` | binary on PATH | `hermes chat -q` (NousResearch hermes-agent) |
+
+`AgentList` returns the live registry so the agent should call it
+when it isn't sure what's available. The operator's memory feedback:
+**opencode is research-only — code-writing tasks route to codex,
+gemini, claude, or hermes**, never opencode.
+
 ## Sourced tools
 
 When the user has run `clawtool source add <name>`, additional tools
