@@ -58,7 +58,7 @@ echo "$list_response" | grep -q '"name":"Bash"' \
   || fail "tools/list: Bash tool missing"
 pass "tools/list: Bash tool registered (PascalCase per ADR-006)"
 
-for t in Glob ToolSearch WebFetch WebSearch Edit Write SendMessage AgentList BridgeList BridgeAdd BridgeRemove BridgeUpgrade; do
+for t in Glob ToolSearch WebFetch WebSearch Edit Write SendMessage AgentList BridgeList BridgeAdd BridgeRemove BridgeUpgrade Verify; do
   if ! echo "$list_response" | grep -q "\"name\":\"$t\""; then
     fail "tools/list: $t missing"
   fi
@@ -869,6 +869,41 @@ rm -f /tmp/clawtool_mcp_resp
 
 kill $MCP_HTTP_PID 2>/dev/null || true
 wait $MCP_HTTP_PID 2>/dev/null || true
+
+# ── 18. Verify MCP tool (ADR-014 T4) ─────────────────────────────────────
+echo ""
+echo "▶ test: Verify MCP tool"
+
+VERIFY_TMP=$(mktemp -d)
+# A tiny passing Go module
+cat > "$VERIFY_TMP/go.mod" <<EOF
+module verify_e2e
+
+go 1.25
+EOF
+cat > "$VERIFY_TMP/x_test.go" <<EOF
+package verify_e2e
+
+import "testing"
+
+func TestPasses(t *testing.T) {}
+EOF
+
+verify_resp=$(printf '%s\n%s\n%s\n' \
+  "$initialize_msg" \
+  "$initialized_notification" \
+  "$(printf '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"Verify\",\"arguments\":{\"repo\":\"%s\"}}}' "$VERIFY_TMP")" \
+  | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 60 "$BIN" serve 2>/dev/null)
+
+echo "$verify_resp" | grep structuredContent | grep -qF '"overall":"pass"' \
+  || fail "Verify: expected overall=pass — got: $verify_resp"
+pass "Verify: detects go module + reports pass"
+
+echo "$verify_resp" | grep structuredContent | grep -qF '"name":"go test ./..."' \
+  || fail "Verify: expected runner name 'go test ./...'"
+pass "Verify: runner name carried in response"
+
+rm -rf "$VERIFY_TMP"
 
 # ── done ──────────────────────────────────────────────────────────────────
 

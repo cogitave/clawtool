@@ -20,6 +20,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/lint"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -27,12 +29,13 @@ import (
 // EditResult is the uniform shape returned to the agent.
 type EditResult struct {
 	BaseResult
-	Path                string `json:"path"`
-	Replaced            bool   `json:"replaced"`
-	OccurrencesReplaced int    `json:"occurrences_replaced"`
-	SizeBytesBefore     int64  `json:"size_bytes_before"`
-	SizeBytesAfter      int64  `json:"size_bytes_after"`
-	LineEndings         string `json:"line_endings"`
+	Path                string         `json:"path"`
+	Replaced            bool           `json:"replaced"`
+	OccurrencesReplaced int            `json:"occurrences_replaced"`
+	SizeBytesBefore     int64          `json:"size_bytes_before"`
+	SizeBytesAfter      int64          `json:"size_bytes_after"`
+	LineEndings         string         `json:"line_endings"`
+	LintFindings        []lint.Finding `json:"lint_findings,omitempty"`
 }
 
 // RegisterEdit adds the Edit tool to the given MCP server.
@@ -60,7 +63,7 @@ func RegisterEdit(s *server.MCPServer) {
 	s.AddTool(tool, runEdit)
 }
 
-func runEdit(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func runEdit(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	path, err := req.RequireString("path")
 	if err != nil {
 		return mcp.NewToolResultError("missing required argument: path"), nil
@@ -74,8 +77,36 @@ func runEdit(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, e
 	cwd := req.GetString("cwd", "")
 
 	res := executeEdit(resolvePath(path, cwd), oldStr, newStr, replaceAll)
+	if !res.IsError() && lintEnabled() {
+		if findings, _ := globalLintRunner.Lint(ctx, res.Path); len(findings) > 0 {
+			res.LintFindings = findings
+		}
+	}
 	return resultOf(res), nil
 }
+
+// globalLintRunner is the package-level Runner Edit/Write call. Init
+// at package load (process boot) so we don't pay reflection on every
+// call. Tests can swap via SetLintRunner.
+var globalLintRunner lint.Runner = lint.New()
+
+// SetLintRunner replaces the package-level Runner — used by tests to
+// inject deterministic findings.
+func SetLintRunner(r lint.Runner) { globalLintRunner = r }
+
+// lintEnabled reads the package-level autoLintEnabled flag set by the
+// server boot. Default = true (matches lint.IsEnabled(nil)).
+var autoLintEnabled = true
+
+// SetAutoLintEnabled lets server.go's boot path flip the flag based on
+// config.AutoLint.Enabled. Idempotent.
+func SetAutoLintEnabled(enabled bool) { autoLintEnabled = enabled }
+
+func lintEnabled() bool { return autoLintEnabled }
+
+// init: ensure the config import is referenced for forward-compat
+// when AutoLintConfig grows additional fields the runner consumes.
+var _ = config.AutoLintConfig{}
 
 // Render satisfies the Renderer contract. Single-line success/failure;
 // stateless tools don't need a multi-line body.

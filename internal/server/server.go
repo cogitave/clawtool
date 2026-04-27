@@ -23,7 +23,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/observability"
 	"github.com/cogitave/clawtool/internal/search"
 	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/cogitave/clawtool/internal/sources"
@@ -64,6 +66,27 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	sec, err := secrets.LoadOrEmpty(secrets.DefaultPath())
 	if err != nil {
 		return nil, nil, cfg, nil, fmt.Errorf("load secrets: %w", err)
+	}
+
+	// Observability — wires OTLP/HTTP exporter and registers the
+	// process-wide observer agents.NewSupervisor picks up
+	// automatically. Disabled-by-default: zero overhead when off.
+	// Init failures are logged but non-fatal — clawtool keeps serving.
+	obs := observability.New()
+	if err := obs.Init(ctx, cfg.Observability); err != nil {
+		fmt.Fprintf(os.Stderr, "clawtool: observability init failed (continuing without traces): %v\n", err)
+	} else if cfg.Observability.Enabled {
+		agents.SetGlobalObserver(obs)
+		fmt.Fprintf(os.Stderr, "clawtool: observability enabled (exporter=%s)\n", cfg.Observability.ExporterURL)
+	}
+
+	// Auto-lint guardrails (ADR-014 T2). Default = on; explicit
+	// AutoLint.Enabled = false flips the package-level flag in
+	// internal/tools/core. The Runner detects the linter binary
+	// per-call so missing tools (e.g. ruff on a Go-only repo) are a
+	// silent skip, not an error.
+	if cfg.AutoLint.Enabled != nil {
+		core.SetAutoLintEnabled(*cfg.AutoLint.Enabled)
 	}
 
 	mgr := sources.NewManager(cfg, sec)
@@ -133,6 +156,12 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// registry surface over MCP. Same call site as `clawtool send`
 	// CLI and the future HTTP gateway.
 	core.RegisterAgentTools(s)
+
+	// Verify runs a repo's tests/lints/typechecks via whichever
+	// runner the repo declares (Make/pnpm/npm/go/pytest/ruby/cargo/
+	// just) and returns one structured pass/fail per check. ADR-014
+	// T4. Always registered.
+	core.RegisterVerify(s)
 
 	// SkillNew lets a model scaffold an agentskills.io-standard
 	// skill from inside a conversation. Same template the
