@@ -191,6 +191,8 @@ func (a *App) Run(argv []string) int {
 		return a.runSkill(argv[1:])
 	case "mcp":
 		return a.runMcp(argv[1:])
+	case "uninstall":
+		return a.runUninstall(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -422,6 +424,10 @@ Usage:
                             and ./.claude/skills).
   clawtool skill path [<name>]
                             Print the on-disk path of a skill.
+  clawtool uninstall [--yes] [--dry-run] [--purge-binary] [--keep-config]
+                            Remove every artifact clawtool drops on the host
+                            (config, secrets, caches, data, BIAM, sticky
+                            pointers). Useful when test installs pile up.
   clawtool version          Print the build version.
   clawtool help             Show this help.
 
