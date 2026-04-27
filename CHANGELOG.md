@@ -5,8 +5,41 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [unreleased]
+## [0.21.4] - 2026-04-27
 
+### Chores
+
+- **release:** V0.21.4 — shared MCP fan-in + onboard wiring (b56440c)
+### Features
+
+- **onboard:** Wire MCP host claim + add hermes detection (36ab6a0)
+- **agents:** Shared HTTP MCP fan-in via persistent daemon (codex/gemini) (b71bca5)
+- **rules:** `clawtool rules` CLI surface + RulesAdd MCP tool (7f181bc)
+### Fixes
+
+- **tui:** Dashboard live tick + viewport-aware + plain mode (operator feedback) (0e351eb)
+- **commit:** Populate ChangedPaths from staged index before rules eval (389bbd0)## [0.21.3] - 2026-04-27
+
+### CI
+
+- Bump every action to @v6 + fix dependabot Conventional-Commits prefix (e49b589)
+### Chores
+
+- **release:** V0.21.3 — TUI dashboard + release.yml CHANGELOG fix (c3ac2ea)
+### Features
+
+- **tui:** Clawtool dashboard — three-pane Bubble Tea runtime view (40ef761)
+### Fixes
+
+- **release:** Re-invoke git-cliff action for CHANGELOG regen step (d9f6c90)## [0.21.2] - 2026-04-27
+
+### Chores
+
+- **release:** V0.21.2 — re-tag (v0.21.1 trigger missed) (fabf572)## [0.21.1] - 2026-04-27
+
+### Chores
+
+- **release:** V0.21.1 — CHANGELOG auto-regen + sandbox dispatch + task watch + Hermes plugin fix (2fa6416)
 ### Features
 
 - **task:** `clawtool task watch` — stream BIAM transitions to Monitor (ADR-026) (e057ba9)
