@@ -74,6 +74,7 @@ the routing-target provides.
 | Scaffold a new Claude subagent | hand-edit `~/.claude/agents/*.md` | `AgentNew` (kebab-case name + description + allowed-tools + optional default instance) |
 | Scaffold a new Claude skill | hand-edit `~/.claude/skills/*/SKILL.md` | `SkillNew` (agentskills.io standard template) |
 | Check operator invariants before committing / ending session | shell out to `git diff` and guess | `RulesCheck` (event=pre_commit / session_end / pre_send + structured Context — returns Verdict with passed/warned/blocked) |
+| Run agents without permission prompts (operator absent) | silently set `--dangerously-skip-permissions` | `clawtool send --unattended` (ADR-023; one-time per-repo disclosure + audit log + hard kill switch). `--yolo` is a deliberate alias. |
 
 If you don't see the intent here, fall back to `ToolSearch` —
 it ranks every loaded tool against a natural-language query and
