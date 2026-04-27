@@ -65,6 +65,16 @@ func BuildManifest() *registry.Manifest {
 			RegisterRulesCheck(s)
 		},
 	})
+	m.Append(registry.ToolSpec{
+		Name:        "RulesAdd",
+		Description: "Append a new rule to .clawtool/rules.toml (local) or ~/.config/clawtool/rules.toml (user). Same writer `clawtool rules new` uses — both surfaces share the canonical TOML emitter. Use this when the operator wants to enforce an invariant programmatically (e.g. 'README must update when core tools change') without hand-editing the toml.",
+		Keywords:    []string{"rules", "add", "new", "create", "policy", "invariant", "lint", "gate", "doc-sync", "pre-commit", "scope", "user", "local"},
+		Category:    registry.CategoryCheckpoint,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterRulesAdd(s)
+		},
+	})
 
 	// ─── Authoring ─────────────────────────────────────────────
 	m.Append(registry.ToolSpec{
