@@ -7,17 +7,17 @@ import (
 
 func TestIsValidName(t *testing.T) {
 	cases := map[string]bool{
-		"deep-grep":         true,
-		"codex-rescue":      true,
-		"a":                 true,
-		"agent-1":           true,
-		"":                  false,
-		"-leading":          false,
-		"trailing-":         false,
-		"With-Caps":         false,
-		"snake_case":        false,
-		"has spaces":        false,
-		"multi--dash":       true, // permitted; doublestar not banned
+		"deep-grep":    true,
+		"codex-rescue": true,
+		"a":            true,
+		"agent-1":      true,
+		"":             false,
+		"-leading":     false,
+		"trailing-":    false,
+		"With-Caps":    false,
+		"snake_case":   false,
+		"has spaces":   false,
+		"multi--dash":  true, // permitted; doublestar not banned
 	}
 	for name, want := range cases {
 		if got := IsValidName(name); got != want {
@@ -28,12 +28,12 @@ func TestIsValidName(t *testing.T) {
 
 func TestParseTools(t *testing.T) {
 	cases := map[string][]string{
-		"":                            nil,
-		"   ":                         nil,
-		"a":                           {"a"},
-		"a, b ,c":                     {"a", "b", "c"},
+		"":        nil,
+		"   ":     nil,
+		"a":       {"a"},
+		"a, b ,c": {"a", "b", "c"},
 		"mcp__clawtool__SendMessage,mcp__clawtool__TaskNotify": {"mcp__clawtool__SendMessage", "mcp__clawtool__TaskNotify"},
-		" trailing , , empty ":        {"trailing", "empty"},
+		" trailing , , empty ":                                 {"trailing", "empty"},
 	}
 	for in, want := range cases {
 		got := ParseTools(in)

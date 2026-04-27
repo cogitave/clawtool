@@ -38,14 +38,14 @@ var surfaceAllowlist = map[string]string{
 	// Multi-agent dispatch surface — these don't get slash
 	// commands because they're agent-facing primitives, not user
 	// verbs. SendMessage gets one via /clawtool-send (future).
-	"AgentList":   "agent-facing primitive; no user verb",
-	"TaskGet":     "agent-facing primitive",
-	"TaskWait":    "agent-facing primitive",
-	"TaskList":    "agent-facing primitive",
-	"TaskNotify":  "agent-facing primitive (fan-in completion push)",
-	"BashOutput":  "companion to Bash background mode; agent-facing",
-	"BashKill":    "companion to Bash background mode; agent-facing",
-	"RulesCheck":  "agent-facing primitive; rules.toml is the user surface",
+	"AgentList":  "agent-facing primitive; no user verb",
+	"TaskGet":    "agent-facing primitive",
+	"TaskWait":   "agent-facing primitive",
+	"TaskList":   "agent-facing primitive",
+	"TaskNotify": "agent-facing primitive (fan-in completion push)",
+	"BashOutput": "companion to Bash background mode; agent-facing",
+	"BashKill":   "companion to Bash background mode; agent-facing",
+	"RulesCheck": "agent-facing primitive; rules.toml is the user surface",
 
 	// Sourced/aggregated tools land per-source under wire names
 	// like `<instance>__<tool>` — they don't have plugin slash

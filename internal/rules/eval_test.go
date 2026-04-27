@@ -143,9 +143,9 @@ func TestEval_LogicalOps(t *testing.T) {
 		ChangedPaths: []string{"internal/tools/core/bash.go"},
 	}
 	cases := map[string]bool{
-		`changed("internal/**/*.go") and changed("README.md")`: false,
-		`changed("internal/**/*.go") or changed("README.md")`:  true,
-		`changed("internal/**/*.go") and not changed("docs/**/*.md")`: true,
+		`changed("internal/**/*.go") and changed("README.md")`:                  false,
+		`changed("internal/**/*.go") or changed("README.md")`:                   true,
+		`changed("internal/**/*.go") and not changed("docs/**/*.md")`:           true,
 		`(changed("nonexistent") or changed("internal/**/*.go")) and not false`: true,
 	}
 	for src, want := range cases {
