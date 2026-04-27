@@ -117,7 +117,7 @@ func TestDetectHost_MissingBridgeList(t *testing.T) {
 	if state.Found["opencode"] || state.Found["gemini"] {
 		t.Errorf("found map wrong (false-positives): %+v", state.Found)
 	}
-	wantMissing := map[string]bool{"opencode": true, "gemini": true}
+	wantMissing := map[string]bool{"opencode": true, "gemini": true, "hermes": true}
 	for _, fam := range state.MissingBridges {
 		if !wantMissing[fam] {
 			t.Errorf("unexpected missing-bridge entry: %q", fam)
