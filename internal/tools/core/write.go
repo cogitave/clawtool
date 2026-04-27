@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/lint"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -26,10 +27,11 @@ import (
 // WriteResult is the uniform shape returned to the agent.
 type WriteResult struct {
 	BaseResult
-	Path         string `json:"path"`
-	BytesWritten int64  `json:"bytes_written"`
-	Created      bool   `json:"created"`
-	LineEndings  string `json:"line_endings"`
+	Path         string         `json:"path"`
+	BytesWritten int64          `json:"bytes_written"`
+	Created      bool           `json:"created"`
+	LineEndings  string         `json:"line_endings"`
+	LintFindings []lint.Finding `json:"lint_findings,omitempty"`
 }
 
 // RegisterWrite adds the Write tool to the given MCP server.
@@ -58,7 +60,7 @@ func RegisterWrite(s *server.MCPServer) {
 	s.AddTool(tool, runWrite)
 }
 
-func runWrite(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func runWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	path, err := req.RequireString("path")
 	if err != nil {
 		return mcp.NewToolResultError("missing required argument: path"), nil
@@ -73,6 +75,11 @@ func runWrite(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, 
 	cwd := req.GetString("cwd", "")
 
 	res := executeWrite(resolvePath(path, cwd), content, createParents, preserveEndings, LineEndings(forced))
+	if !res.IsError() && lintEnabled() {
+		if findings, _ := globalLintRunner.Lint(ctx, res.Path); len(findings) > 0 {
+			res.LintFindings = findings
+		}
+	}
 	return resultOf(res), nil
 }
 

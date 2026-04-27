@@ -22,15 +22,48 @@ import (
 
 // Config is the full on-disk shape of ~/.config/clawtool/config.toml.
 type Config struct {
-	CoreTools map[string]CoreTool        `toml:"core_tools,omitempty"`
-	Sources   map[string]Source          `toml:"sources,omitempty"`
-	Tools     map[string]ToolOverride    `toml:"tools,omitempty"`
-	Tags      map[string]TagRule         `toml:"tags,omitempty"`
-	Groups    map[string]GroupDef        `toml:"groups,omitempty"`
-	Profile   ProfileConfig              `toml:"profile,omitempty"`
-	Agents    map[string]AgentConfig     `toml:"agents,omitempty"`
-	Bridges   map[string]BridgeOverrides `toml:"bridge,omitempty"`
-	Dispatch  Dispatch                   `toml:"dispatch,omitempty"`
+	CoreTools     map[string]CoreTool        `toml:"core_tools,omitempty"`
+	Sources       map[string]Source          `toml:"sources,omitempty"`
+	Tools         map[string]ToolOverride    `toml:"tools,omitempty"`
+	Tags          map[string]TagRule         `toml:"tags,omitempty"`
+	Groups        map[string]GroupDef        `toml:"groups,omitempty"`
+	Profile       ProfileConfig              `toml:"profile,omitempty"`
+	Agents        map[string]AgentConfig     `toml:"agents,omitempty"`
+	Bridges       map[string]BridgeOverrides `toml:"bridge,omitempty"`
+	Dispatch      Dispatch                   `toml:"dispatch,omitempty"`
+	Observability ObservabilityConfig        `toml:"observability,omitempty"`
+	AutoLint      AutoLintConfig             `toml:"auto_lint,omitempty"`
+}
+
+// ObservabilityConfig drives the OpenTelemetry instrumentation that
+// Supervisor.Send and Transport.startStreamingExec emit. Disabled by
+// default — the no-op observer pays no allocation cost beyond a
+// pointer check, so leaving it off has zero overhead. See ADR-014
+// Phase 4 carry-over (T1) for the full design pulled from the
+// 2026-04-26 multi-CLI fan-out.
+type ObservabilityConfig struct {
+	Enabled     bool    `toml:"enabled,omitempty"`      // master gate; default false
+	ExporterURL string  `toml:"exporter_url,omitempty"` // OTLP/HTTP endpoint (e.g. http://localhost:4318)
+	SampleRate  float64 `toml:"sample_rate,omitempty"`  // [0.0, 1.0]; 0 or unset → 1.0 when enabled
+
+	// Langfuse-style auth headers. When LangfusePublicKey + Secret are
+	// set, the exporter sends `Authorization: Basic base64(public:secret)`
+	// and Langfuse picks the spans up via its OTel ingest endpoint. Empty
+	// means a generic OTLP collector with no auth.
+	LangfuseHost      string `toml:"langfuse_host,omitempty"`
+	LangfusePublicKey string `toml:"langfuse_public_key,omitempty"`
+	LangfuseSecretKey string `toml:"langfuse_secret_key,omitempty"`
+
+	// ServiceName tags the resource emitted on every span. Defaults
+	// to "clawtool" when empty.
+	ServiceName string `toml:"service_name,omitempty"`
+}
+
+// AutoLintConfig drives the post-write lint hook in Edit/Write. Per
+// ADR-014's T2 design (2026-04-26), enabled by default — agents
+// self-correct in the next turn from the findings ride-along.
+type AutoLintConfig struct {
+	Enabled *bool `toml:"enabled,omitempty"` // pointer so nil means default-on; explicit false disables
 }
 
 // AgentConfig declares one runtime agent instance per ADR-006 instance

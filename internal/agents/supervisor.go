@@ -23,6 +23,8 @@ import (
 	"strings"
 
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/observability"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // Agent is one row in the supervisor's registry. Same shape across
@@ -54,9 +56,23 @@ type Supervisor interface {
 type supervisor struct {
 	loadConfig func() (config.Config, error)
 	transports map[string]Transport
-	stickyPath string           // override for tests; default is computed
-	rrState    *roundRobinState // round-robin counters; one supervisor = one rotation state
+	stickyPath string                  // override for tests; default is computed
+	rrState    *roundRobinState        // round-robin counters; one supervisor = one rotation state
+	observer   *observability.Observer // optional; nil → no instrumentation
 }
+
+// globalObserver is the process-wide OTel observer NewSupervisor
+// attaches by default. Server boot calls SetGlobalObserver after
+// successfully initialising the observer; everything else (CLI,
+// MCP tools, HTTP gateway) calls plain NewSupervisor and gets the
+// instrumentation attached automatically.
+//
+// Tests that need a per-call observer use NewSupervisorWithObserver.
+var globalObserver *observability.Observer
+
+// SetGlobalObserver registers the process-wide observer. Pass nil to
+// disable. Idempotent.
+func SetGlobalObserver(obs *observability.Observer) { globalObserver = obs }
 
 // NewSupervisor wires the default supervisor. Tests inject custom
 // loaders / transports.
@@ -69,8 +85,18 @@ func NewSupervisor() Supervisor {
 			"opencode": OpencodeTransport(),
 			"gemini":   GeminiTransport(),
 		},
-		rrState: &roundRobinState{},
+		rrState:  &roundRobinState{},
+		observer: globalObserver,
 	}
+}
+
+// NewSupervisorWithObserver wires the default supervisor and attaches
+// the given observer. Used by tests to inject in-memory exporters
+// without touching the global.
+func NewSupervisorWithObserver(obs *observability.Observer) Supervisor {
+	s := NewSupervisor().(*supervisor)
+	s.observer = obs
+	return s
 }
 
 func defaultLoadConfig() (config.Config, error) {
@@ -220,7 +246,20 @@ func (s *supervisor) Send(ctx context.Context, instance, prompt string, opts map
 // walks `fallback` in order. The first successful Send "wins" and its
 // io.ReadCloser is returned — failover never runs once bytes have
 // started streaming.
+//
+// Per ADR-014 T1 (observability): every dispatch opens
+// `agents.Supervisor.dispatch` span; each Transport.Send call inside
+// the failover chain opens an `agents.Transport.Send` child span.
+// Spans carry the resolved instance/family/bridge as attributes; on
+// fall-through the parent span's status records the last error.
 func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Agent, prompt string, opts map[string]any) (io.ReadCloser, error) {
+	ctx, end := s.observer.StartSpan(ctx, "agents.Supervisor.dispatch",
+		attribute.String("agent.primary", primary.Instance),
+		attribute.String("agent.family", primary.Family),
+		attribute.Int("agent.fallback_count", len(fallback)),
+	)
+	defer end()
+
 	chain := append([]Agent{primary}, fallback...)
 	var lastErr error
 	for _, a := range chain {
@@ -237,16 +276,42 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 		// per-instance env (ANTHROPIC_API_KEY, OPENAI_API_KEY, …). For
 		// Phase 1 the upstream CLI inherits the parent process env
 		// unchanged.
-		rc, err := tr.Send(ctx, prompt, opts)
+		sendCtx, sendEnd := s.observer.StartSpan(ctx, "agents.Transport.Send",
+			attribute.String("agent.instance", a.Instance),
+			attribute.String("agent.family", a.Family),
+			attribute.String("agent.bridge", a.Bridge),
+		)
+		rc, err := tr.Send(sendCtx, prompt, opts)
 		if err == nil {
-			return rc, nil
+			// Don't end the child span here — let the caller end it
+			// when the stream closes. We attach the close to the
+			// returned reader by wrapping it.
+			return &observedReadCloser{ReadCloser: rc, end: sendEnd}, nil
 		}
+		s.observer.RecordError(sendCtx, err)
+		sendEnd()
 		lastErr = fmt.Errorf("send to %q (%s): %w", a.Instance, a.Family, err)
 	}
 	if lastErr == nil {
 		lastErr = errors.New("dispatch failed: no callable agent")
 	}
+	s.observer.RecordError(ctx, lastErr)
 	return nil, lastErr
+}
+
+// observedReadCloser ends the per-dispatch span when the caller closes
+// the stream. Without this, an attached span would be leaked because
+// Transport.Send returns control before the upstream finishes
+// streaming.
+type observedReadCloser struct {
+	io.ReadCloser
+	end observability.EndFunc
+}
+
+func (o *observedReadCloser) Close() error {
+	err := o.ReadCloser.Close()
+	o.end()
+	return err
 }
 
 // Resolve applies the ADR-014 precedence chain to pick an Agent for

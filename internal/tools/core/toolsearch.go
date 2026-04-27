@@ -211,5 +211,11 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"upgrade", "update", "bridge", "plugin", "refresh"},
 		},
+		{
+			Name:        "Verify",
+			Description: "Run a repo's tests / lints / typechecks via whichever runner it declares (Make / pnpm / npm / go / pytest / ruby / cargo / just). Returns one structured pass/fail per check. Buffered single payload — for streaming output use Bash.",
+			Type:        "core",
+			Keywords:    []string{"verify", "test", "tests", "check", "ci", "make", "pnpm", "npm", "go-test", "pytest", "cargo", "just", "validate"},
+		},
 	}
 }
