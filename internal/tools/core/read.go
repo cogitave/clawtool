@@ -51,6 +51,17 @@ type ReadResult struct {
 	Format     string `json:"format"`
 	Truncated  bool   `json:"truncated"`
 
+	// FileHash is SHA-256 of the file's raw bytes (hex). Edit /
+	// Write check this against the recorded read-time hash to
+	// detect "file changed since you last looked" (ADR-021).
+	FileHash string `json:"file_hash,omitempty"`
+
+	// RangeHash is SHA-256 of the canonical returned content
+	// (after format-aware decoding for PDF / DOCX / XLSX). Lets
+	// range-based Edits prove they're operating on the slice
+	// the model just saw.
+	RangeHash string `json:"range_hash,omitempty"`
+
 	// Sheets is populated only for spreadsheet formats; lets the agent
 	// page through workbook structure without re-reading the file.
 	Sheets []string `json:"sheets,omitempty"`
@@ -77,6 +88,8 @@ func RegisterRead(s *server.MCPServer) {
 			mcp.Description("Last line to return, 1-indexed inclusive. Default end of file.")),
 		mcp.WithString("sheet",
 			mcp.Description("For .xlsx: name of the sheet to render. Defaults to the first sheet.")),
+		mcp.WithBoolean("with_line_numbers",
+			mcp.Description("Prefix each rendered line with its 1-indexed line number (e.g. '  42 | foo'). Default false. Hashes + structured `content` are unaffected — only the human-readable render changes.")),
 	)
 	s.AddTool(tool, runRead)
 }
@@ -99,9 +112,54 @@ func runRead(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	}
 	lineEnd := int(req.GetFloat("line_end", 0)) // 0 = EOF
 	sheet := req.GetString("sheet", "")
+	withLineNumbers := req.GetBool("with_line_numbers", false)
 
 	res := executeRead(ctx, path, lineStart, lineEnd, sheet)
+
+	// Hash + record (ADR-021). FileHash always; RangeHash only
+	// when a range was actually returned. Skip when the read
+	// itself errored — there's nothing to hash, nothing to track.
+	if !res.IsError() {
+		if h, hErr := HashFile(res.Path); hErr == nil {
+			res.FileHash = h
+		}
+		if res.Content != "" {
+			res.RangeHash = HashString(res.Content)
+		}
+		Sessions.RecordRead(SessionKeyFromContext(ctx), ReadRecord{
+			Path:      res.Path,
+			FileHash:  res.FileHash,
+			RangeHash: res.RangeHash,
+			LineStart: res.LineStart,
+			LineEnd:   res.LineEnd,
+			ReadAt:    time.Now(),
+		})
+	}
+
+	if withLineNumbers && !res.IsError() && res.Content != "" {
+		res.Content = prefixLineNumbers(res.Content, res.LineStart)
+	}
 	return resultOf(res), nil
+}
+
+// prefixLineNumbers attaches "%4d | " prefixes to each line
+// starting at startLine. Width is fixed at 4 — if line numbers
+// exceed 9999 the formatter still works but the columns
+// misalign. Acceptable trade-off for the readable case.
+func prefixLineNumbers(content string, startLine int) string {
+	if content == "" {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	// strings.Split on "a\nb\n" yields ["a", "b", ""]; drop the
+	// trailing empty so we don't emit a numbered blank line.
+	if n := len(lines); n > 0 && lines[n-1] == "" {
+		lines = lines[:n-1]
+	}
+	for i, line := range lines {
+		lines[i] = fmt.Sprintf("%4d | %s", startLine+i, line)
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // Render satisfies the Renderer contract. The body is the file
