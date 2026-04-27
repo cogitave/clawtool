@@ -375,10 +375,11 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 			lastErr = fmt.Errorf("agent %q is not callable: status=%s (run `clawtool bridge add %s`)", a.Instance, a.Status, a.Family)
 			continue
 		}
-		// TODO(v0.10.x): apply [secrets.<a.AuthScope>] resolution to set
-		// per-instance env (ANTHROPIC_API_KEY, OPENAI_API_KEY, …). For
-		// Phase 1 the upstream CLI inherits the parent process env
-		// unchanged.
+		// Audit fix #205: resolve [secrets.<a.AuthScope>] into a
+		// typed env map and stash it on opts. Transports merge it
+		// onto cmd.Env so each child CLI gets ONLY the keys it
+		// needs — parent env stays sticky as the source of truth
+		// (resolver never overrides existing keys).
 
 		// Per-instance rate limit (v0.15 F1). The limiter blocks
 		// until a token is available + a concurrency slot opens; the
@@ -431,6 +432,10 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 			lastErr = fmt.Errorf("dispatch %q: %w", a.Instance, sandboxErr)
 			continue
 		}
+		// Layer secrets-store env on top so children pick up
+		// ANTHROPIC_API_KEY / OPENAI_API_KEY / etc from
+		// [secrets.<scope>]. No-op when no matching keys exist.
+		callOpts = withSecretsResolved(callOpts, a, configLoadSecrets)
 
 		rc, err := tr.Send(sendCtx, prompt, callOpts)
 		if err == nil {

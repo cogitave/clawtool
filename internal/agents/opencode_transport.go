@@ -37,7 +37,7 @@ func (opencodeTransport) Send(ctx context.Context, prompt string, opts map[strin
 	args = append(args, o.ExtraArgs...)
 	args = append(args, prompt)
 
-	rc, err := startStreamingExecWith(ctx, "opencode", args, o.Cwd, o.Sandbox)
+	rc, err := startStreamingExecFull(ctx, "opencode", args, o.Cwd, o.Sandbox, o.Env)
 	if err != nil {
 		return nil, ErrBinaryMissing{Family: "opencode", Binary: "opencode"}
 	}

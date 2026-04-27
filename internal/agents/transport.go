@@ -69,6 +69,13 @@ type SendOptions struct {
 	// stay platform-agnostic. Caller wires this from
 	// config.SandboxConfig + sandbox.ParseProfile.
 	Sandbox *sandbox.Profile
+
+	// Env carries secrets-store values the supervisor resolved for
+	// this instance (audit #205). Merged onto the parent process
+	// env in startStreamingExecWith so the child sees it as if it
+	// were inherited. Never overrides parent env keys — caller
+	// (withSecretsResolved) only fills missing values.
+	Env map[string]string
 }
 
 // ParseOptions extracts the well-known keys from a free-form opts map.
@@ -107,6 +114,13 @@ func ParseOptions(opts map[string]any) SendOptions {
 	// into upstream-specific elevation flags.
 	if v, ok := opts["unattended"].(bool); ok {
 		out.Unattended = v
+	}
+	// Secrets-store env (audit #205). Supervisor resolves this
+	// per-instance via withSecretsResolved so each upstream CLI
+	// gets the right API key without leaking every credential
+	// from the parent process env.
+	if v, ok := opts["env"].(map[string]string); ok {
+		out.Env = v
 	}
 	return out
 }
@@ -193,6 +207,29 @@ func startStreamingExec(ctx context.Context, name string, args []string, cwd str
 	return startStreamingExecWith(ctx, name, args, cwd, nil)
 }
 
+// mergeEnv layers extra onto os.Environ() — keys already present in
+// the parent env stay (caller's process is authoritative). Returns a
+// fresh slice; never mutates os.Environ.
+func mergeEnv(extra map[string]string) []string {
+	if len(extra) == 0 {
+		return os.Environ()
+	}
+	parent := os.Environ()
+	have := make(map[string]bool, len(parent))
+	for _, kv := range parent {
+		if i := strings.IndexByte(kv, '='); i > 0 {
+			have[kv[:i]] = true
+		}
+	}
+	out := append([]string{}, parent...)
+	for k, v := range extra {
+		if !have[k] {
+			out = append(out, k+"="+v)
+		}
+	}
+	return out
+}
+
 // startStreamingExecWith is the sandbox-aware spawn primitive
 // (ADR-020 §"Sandbox surface" wired into ADR-014's transport
 // layer). When profile is non-nil, the host-native engine
@@ -207,6 +244,13 @@ func startStreamingExec(ctx context.Context, name string, args []string, cwd str
 // requested a sandbox doesn't silently fall through to an
 // unsandboxed run.
 func startStreamingExecWith(ctx context.Context, name string, args []string, cwd string, profile *sandbox.Profile) (io.ReadCloser, error) {
+	return startStreamingExecFull(ctx, name, args, cwd, profile, nil)
+}
+
+// startStreamingExecFull is the env-aware spawn primitive. Only
+// callers that resolved per-instance secrets need the env map; the
+// rest call the simpler startStreamingExecWith wrapper above.
+func startStreamingExecFull(ctx context.Context, name string, args []string, cwd string, profile *sandbox.Profile, env map[string]string) (io.ReadCloser, error) {
 	if _, err := exec.LookPath(name); err != nil {
 		return nil, err
 	}
@@ -215,6 +259,9 @@ func startStreamingExecWith(ctx context.Context, name string, args []string, cwd
 		cmd.Dir = cwd
 	}
 	cmd.Stdin = bytes.NewReader(nil)
+	if len(env) > 0 {
+		cmd.Env = mergeEnv(env)
+	}
 
 	// Sandbox wrap fires BEFORE the StdoutPipe call so the
 	// engine can swap cmd.Path / Args (e.g. bwrap rewrites the
