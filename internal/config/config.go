@@ -35,6 +35,55 @@ type Config struct {
 	AutoLint      AutoLintConfig             `toml:"auto_lint,omitempty"`
 	Hooks         HooksConfig                `toml:"hooks,omitempty"`
 	Telemetry     TelemetryConfig            `toml:"telemetry,omitempty"`
+	Portals       map[string]PortalConfig    `toml:"portals,omitempty"`
+}
+
+// PortalConfig is one saved web-UI target (ADR-018). Selectors,
+// predicates, and browser flags live here; cookies live in
+// secrets.toml under SecretsScope.
+//
+// Per ADR-017 a portal is a Tool-surface concept, not a Transport.
+// PortalAsk drives Obscura's CDP server through the steps declared
+// here; new portals are config-only.
+type PortalConfig struct {
+	Name                  string                `toml:"name,omitempty"`
+	BaseURL               string                `toml:"base_url"`
+	StartURL              string                `toml:"start_url,omitempty"` // defaults to BaseURL
+	SecretsScope          string                `toml:"secrets_scope"`       // points at [scopes."portal.<name>"] in secrets.toml
+	AuthCookieNames       []string              `toml:"auth_cookie_names,omitempty"`
+	TimeoutMs             int                   `toml:"timeout_ms,omitempty"` // default 180000
+	LoginCheck            PortalPredicate       `toml:"login_check,omitempty"`
+	ReadyPredicate        PortalPredicate       `toml:"ready_predicate,omitempty"`
+	Selectors             PortalSelectors       `toml:"selectors"`
+	ResponseDonePredicate PortalPredicate       `toml:"response_done_predicate"`
+	Headers               map[string]string     `toml:"headers,omitempty"`
+	Browser               PortalBrowserSettings `toml:"browser,omitempty"`
+}
+
+// PortalPredicate is a "is this state truthy?" check. Three types:
+//
+//   - selector_exists  — `value` is a CSS selector; truthy when it matches.
+//   - selector_visible — selector matches AND offsetParent != null.
+//   - eval_truthy      — `value` is a JS expression evaluated in-page.
+type PortalPredicate struct {
+	Type  string `toml:"type"`            // selector_exists | selector_visible | eval_truthy
+	Value string `toml:"value,omitempty"` // selector or JS expression depending on Type
+}
+
+// PortalSelectors carries the three CSS selectors every interactive
+// chat portal needs.
+type PortalSelectors struct {
+	Input    string `toml:"input"`              // textarea / input the prompt goes into
+	Submit   string `toml:"submit,omitempty"`   // submit button; optional when Enter dispatch is used
+	Response string `toml:"response,omitempty"` // last-rendered assistant message container
+}
+
+// PortalBrowserSettings tunes the browser context Obscura spawns.
+type PortalBrowserSettings struct {
+	Stealth        bool   `toml:"stealth,omitempty"`
+	ViewportWidth  int    `toml:"viewport_width,omitempty"`
+	ViewportHeight int    `toml:"viewport_height,omitempty"`
+	Locale         string `toml:"locale,omitempty"`
 }
 
 // TelemetryConfig drives anonymous PostHog event emission. Default

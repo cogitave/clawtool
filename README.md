@@ -57,7 +57,9 @@ license texts are SPDX. clawtool is the wizard, not a fork.
 - **Dispatch surface** grew bridge management (`clawtool bridge add/list/remove/upgrade`), sticky `agent use`, round-robin / failover / tag-routed policies, and per-instance rate / concurrency limits.
 - **`clawtool send --isolated`** runs agents in ephemeral git worktrees; `clawtool worktree list/show/gc` inspects and reaps them.
 - **`mem0`** joins the knowledge recipes, **`clawtool upgrade`** self-updates, optional **OTel observability** spans trace dispatch, and **`Edit`/`Write`** return auto-lint findings.
-
+- **Hooks + onboarding** add `clawtool onboard`, nine lifecycle events under `[hooks.events.<name>]`, `clawtool hooks list/show/test`, and process-group reaping so hook timeouts kill the whole shell child tree.
+- **Browser tools** (v0.16) wrap [Obscura](https://github.com/h4ckf0r0day/obscura) (Apache-2.0 V8+CDP headless engine) so agents can render SPA / hydrated pages: `BrowserFetch` for one-off renders, `BrowserScrape` for bulk parallel JS-eval. Full schema: [docs/browser-tools.md](docs/browser-tools.md).
+- **Portals** (v0.16.1) save a web-UI target — base URL + login cookies + selectors + "response done" predicate — under a name. `clawtool portal add/list/use/which/unset/remove/ask` plus the matching `Portal*` MCP tools manage them; the CDP driver behind `portal ask` lands in v0.16.2 (read-only surface ships now so config + cookies can be staged). See [docs/portals.md](docs/portals.md) and [ADR-018](wiki/decisions/018-portal-feature.md).
 
 ### How to use BIAM async dispatch
 
