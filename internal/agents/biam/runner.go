@@ -3,9 +3,11 @@ package biam
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -84,24 +86,85 @@ func (r *Runner) run(prompt *Envelope, instance, promptText string, opts map[str
 		body += "\n\n…[truncated by clawtool BIAM at 4 MiB]"
 	}
 
-	// streamingProcess.Close() surfaces *exec.ExitError when the
-	// upstream CLI exited non-zero. Without folding that signal in,
-	// a crashed dispatch records as TaskDone and downstream pollers
-	// believe the (likely empty / partial) buffer is the real
-	// answer. Persist the body either way so debuggers still see
-	// the partial output.
+	// Two failure signals matter:
+	//   1. Process-level: streamingProcess.Close() returns ExitError
+	//      when the upstream CLI exited non-zero. Easy case.
+	//   2. Stream-level: every modern coding-agent CLI emits NDJSON
+	//      events with a final {"type":"turn.failed"} or
+	//      {"type":"error"} when the run aborts mid-flight (codex's
+	//      content-policy flag, claude's tool-loop overflow, etc.)
+	//      while still exiting 0. Without scanning the tail we record
+	//      these as TaskDone with a useless transcript and downstream
+	//      pollers wait forever for an answer that never comes.
 	closeErr := rc.Close()
+	streamFail := detectStreamFailure(body)
 	terminal := TaskDone
 	kind := KindResult
-	if closeErr != nil {
+	switch {
+	case closeErr != nil:
 		terminal = TaskFailed
 		kind = KindError
 		if body != "" {
 			body += "\n\n"
 		}
 		body += fmt.Sprintf("upstream exited non-zero: %v", closeErr)
+	case streamFail != "":
+		terminal = TaskFailed
+		kind = KindError
+		if body != "" {
+			body += "\n\n"
+		}
+		body += "upstream stream reported failure: " + streamFail
 	}
 	r.recordResult(prompt, kind, body, terminal)
+}
+
+// detectStreamFailure scans the tail of an NDJSON stream-json body for
+// terminal failure events. Returns the failure detail (or empty string
+// when the stream looks healthy). Supports the shapes claude / codex /
+// gemini emit today: top-level {"type":"turn.failed",...},
+// {"type":"error",...}, and codex's {"type":"item.completed","item":{
+// "type":"command_execution","status":"failed"}} which we deliberately
+// IGNORE (tool calls fail individually all the time without ending
+// the turn).
+func detectStreamFailure(body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return ""
+	}
+	lines := strings.Split(body, "\n")
+	// Walk from the tail — only the LAST terminal event matters.
+	for i := len(lines) - 1; i >= 0 && i > len(lines)-12; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || line[0] != '{' {
+			continue
+		}
+		var ev struct {
+			Type    string          `json:"type"`
+			Error   json.RawMessage `json:"error,omitempty"`
+			Message string          `json:"message,omitempty"`
+		}
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			continue
+		}
+		switch ev.Type {
+		case "turn.failed", "error":
+			if msg := strings.TrimSpace(ev.Message); msg != "" {
+				return ev.Type + ": " + msg
+			}
+			if len(ev.Error) > 0 {
+				var inner struct {
+					Message string `json:"message"`
+				}
+				if json.Unmarshal(ev.Error, &inner) == nil && inner.Message != "" {
+					return ev.Type + ": " + inner.Message
+				}
+				return ev.Type + ": " + string(ev.Error)
+			}
+			return ev.Type
+		}
+	}
+	return ""
 }
 
 // recordResult writes the terminal envelope + flips the task row.
