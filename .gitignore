@@ -181,3 +181,10 @@ logs/
 *.pid
 *.seed
 *.pid.lock
+
+# Release-time scratch files
+# git-cliff writes the latest changelog body here for GoReleaser's
+# --release-notes flag (see .github/workflows/release.yml). Local
+# `git-cliff --output BODY.md` runs would otherwise leave it as
+# untracked and trip GoReleaser's "git is in a dirty state" check.
+/BODY.md
