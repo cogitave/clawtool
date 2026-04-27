@@ -12,8 +12,11 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     commit-message:
+      # `include: scope` deliberately omitted — dependabot would
+      # add `(deps)` after our `chore(deps)` prefix, producing the
+      # invalid `chore(deps)(deps): bump foo` shape Conventional
+      # Commits rejects.
       prefix: "chore(deps)"
-      include: scope
     groups:
       # Group all minor/patch dep bumps into one PR per week. Major
       # bumps still get their own PR so they're easier to review.
@@ -32,8 +35,8 @@ updates:
       day: monday
     open-pull-requests-limit: 3
     commit-message:
+      # See gomod block above for why `include: scope` is omitted.
       prefix: "chore(ci)"
-      include: scope
     labels:
       - dependencies
       - ci
