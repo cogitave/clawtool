@@ -163,6 +163,12 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// T4. Always registered.
 	core.RegisterVerify(s)
 
+	// SemanticSearch wraps chromem-go for intent-based code search;
+	// the embedding index is built lazily on first call. Registered
+	// always — missing OPENAI_API_KEY (or absent Ollama daemon) is
+	// surfaced as a per-call error, not a boot failure.
+	core.RegisterSemanticSearch(s)
+
 	// SkillNew lets a model scaffold an agentskills.io-standard
 	// skill from inside a conversation. Same template the
 	// `clawtool skill new` CLI emits — both go through the

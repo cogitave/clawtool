@@ -217,5 +217,11 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"verify", "test", "tests", "check", "ci", "make", "pnpm", "npm", "go-test", "pytest", "cargo", "just", "validate"},
 		},
+		{
+			Name:        "SemanticSearch",
+			Description: "Semantic (intent-based) code search. Use for conceptual queries like 'where do we rotate auth tokens?' or 'how is caching wired?' — Grep stays the literal-regex tool. Wraps chromem-go + an embedding provider; index is built lazily on first call.",
+			Type:        "core",
+			Keywords:    []string{"semantic", "embeddings", "vector", "concept", "intent", "find-code", "rag", "search-code", "discover", "where"},
+		},
 	}
 }
