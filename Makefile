@@ -45,6 +45,25 @@ stub-server: ## Build the stub MCP server used as a test fixture.
 portal-integration: ## Drive portal.Ask through real Chrome against an httptest fake portal. Requires Chrome / Chromium on PATH.
 	$(GO) test -tags integration -count=1 -v -run TestAsk_RealChrome ./internal/portal/
 
+.PHONY: docker docker-smoke
+DOCKER_TAG ?= cogitave/clawtool:dev
+
+docker: ## Build the cogitave/clawtool Docker image (multi-stage, distroless static).
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg BUILD_DATE=$(shell date -u +%Y-%m-%dT%H:%M:%SZ) \
+		-t $(DOCKER_TAG) .
+	@echo "✓ built $(DOCKER_TAG)"
+
+docker-smoke: docker ## Verify the built image responds to MCP `initialize` over stdio.
+	@echo "Running MCP initialize handshake against $(DOCKER_TAG)..."
+	@printf '%s\n' \
+		'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"docker-smoke","version":"0"}}}' \
+		| docker run -i --rm $(DOCKER_TAG) | head -1 \
+		| grep -q '"serverInfo"' \
+		&& echo "✓ image speaks MCP" \
+		|| (echo "✗ image did not return serverInfo on initialize"; exit 1)
+
 install: build ## Copy the binary to $(INSTALL_DIR) atomically + run postinstall cleanup.
 	@mkdir -p $(INSTALL_DIR)
 	@# Atomic replace via rename; survives a binary that's currently

@@ -1,0 +1,32 @@
+# Anything not needed inside the build context — keeps `docker
+# build` fast and makes layer caching meaningful.
+
+.git
+.github
+.idea
+.vscode
+.obsidian
+/wiki
+/_templates
+/.raw
+/CLAUDE.md
+/.envrc
+/.envrc.local
+
+# Build outputs (we re-build inside the container anyway)
+/bin
+/dist
+/test/e2e/stub-server/stub-server
+
+# Local caches
+/.clawtool/state
+*.log
+*.test
+*.out
+
+# Documentation that the runtime container doesn't need
+# (the source is still copied so godoc / embed paths work; only
+# docs/ as a tree is excluded to keep the build context lean).
+/docs
+*.md
+!README.md

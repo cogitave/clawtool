@@ -1,0 +1,32 @@
+# Caddyfile for clawtool HTTP gateway.
+#
+# Adjust the host below to your domain. Caddy auto-provisions
+# Let's Encrypt certs when a public hostname resolves to this
+# host; otherwise it serves on localhost over HTTPS with a
+# self-signed cert (good enough for docker-compose dev).
+#
+# clawtool's bearer-token auth lives INSIDE the gateway, so the
+# token file lives next to the docker-compose stack. Caddy
+# proxies transparently — it doesn't terminate auth.
+
+{$CLAWTOOL_DOMAIN:localhost} {
+    # Forward everything to clawtool. The Authorization header
+    # passes through; clawtool checks the bearer token itself.
+    reverse_proxy clawtool:8080 {
+        # Match clawtool's ReadHeaderTimeout (10s) and a generous
+        # body timeout for streaming dispatches.
+        transport http {
+            response_header_timeout 1s
+            read_buffer 4096
+        }
+        flush_interval -1
+    }
+
+    encode zstd gzip
+
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+}
