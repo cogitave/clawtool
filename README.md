@@ -42,6 +42,28 @@ license texts are SPDX. clawtool is the wizard, not a fork.
 
 ---
 
+## What's new in v0.14 / v0.15
+
+- **BIAM Phase 1** (ADR-015): signed Ed25519 envelopes + SQLite task store + async dispatch via `clawtool send --async` or MCP `SendMessage` with `bidi=true`.
+- **`TaskList` / `TaskGet` / `TaskWait`** expose BIAM state over MCP; `clawtool task list/get/wait` mirrors it in the CLI.
+- **New MCP tools**: `Verify` (structured pass/fail across make/pnpm/npm/go/pytest/cargo/just) and `SemanticSearch` (intent-based code search via chromem-go).
+- **Dispatch surface** grew bridge management (`clawtool bridge add/list/remove/upgrade`), sticky `agent use`, round-robin / failover / tag-routed policies, and per-instance rate / concurrency limits.
+- **`clawtool send --isolated`** runs agents in ephemeral git worktrees; `clawtool worktree list/show/gc` inspects and reaps them.
+- **`mem0`** joins the knowledge recipes, **`clawtool upgrade`** self-updates, optional **OTel observability** spans trace dispatch, and **`Edit`/`Write`** return auto-lint findings.
+
+### How to use BIAM async dispatch
+
+BIAM stores signed task envelopes in `$XDG_DATA_HOME/clawtool/biam.db` and lets callers wait later. From the CLI:
+
+```sh
+TASK=$(clawtool send --async --agent codex "review HEAD")
+clawtool task wait "$TASK" --timeout 10m
+```
+
+From inside Claude Code, the model calls `mcp__clawtool__SendMessage` with `bidi=true`, gets back a `task_id`, and pulls the result later via `mcp__clawtool__TaskWait` — no blocking the conversation while codex thinks.
+
+---
+
 ## Install
 
 ```sh
@@ -314,6 +336,21 @@ clawtool agents claim   <agent> [--dry-run]
 clawtool agents release <agent> [--dry-run]
                                       Reverse a previous claim.
 clawtool agents status  [<agent>]     Per-agent claim state.
+
+clawtool bridge add/list/remove/upgrade
+                                      Manage codex/opencode/gemini bridges
+                                      (remove returns a manual hint today).
+clawtool agent use/which/unset        Set, inspect, or clear the sticky default
+                                      target for `clawtool send`.
+clawtool send --async [--agent <i>] "<prompt>"
+                                      Submit a BIAM task and print task_id;
+                                      pair with `clawtool task wait`.
+clawtool send --isolated [--keep-on-error] "<prompt>"
+                                      Dispatch inside an ephemeral git worktree.
+clawtool task list/get/wait           List, inspect, or block on BIAM tasks.
+clawtool worktree list/show/gc        Inspect or reap isolated worktrees.
+clawtool upgrade [--check]            Self-update via the GitHub release artefacts,
+                                      or report the latest version without installing.
 ```
 
 ## Development
