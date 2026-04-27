@@ -5,6 +5,77 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
+## [0.9.3](https://github.com/cogitave/clawtool/compare/v0.9.2...v0.9.3) (2026-04-27)
+
+
+### Features
+
+* **agents:** ship Phase 1 of ADR-014 — Transport, Supervisor, send/bridge CLI, MCP tools ([c875a54](https://github.com/cogitave/clawtool/commit/c875a549fe48f4e96707b1d5f05c39c8721d7173))
+* **agent:** user-defined personas — `clawtool agent new` + AgentNew tool ([12c701c](https://github.com/cogitave/clawtool/commit/12c701c865ba582a861040684d9f6b844009bb9d))
+* **bash:** background mode + BashOutput / BashKill (ADR-021 phase B) ([3e9a055](https://github.com/cogitave/clawtool/commit/3e9a05552fe94f7fbac61593a50c1558d9459ecf))
+* **biam:** ship ADR-015 Phase 1 (async dispatch + signed envelopes + SQLite store) + 3 polish fixes ([42b4889](https://github.com/cogitave/clawtool/commit/42b48892aa78d55a5593d9a78161bffd71d09d2d))
+* **biam:** TaskNotify — edge-triggered fan-in completion push ([9152d3d](https://github.com/cogitave/clawtool/commit/9152d3d9bd9129b62030d5745c5c66e07a4092ce))
+* **bridges:** hermes-agent — fifth supported family (NousResearch, MIT, 120K stars) ([16313bf](https://github.com/cogitave/clawtool/commit/16313bfe15080efb908674e6a7b16483b1ef1d53))
+* clawtool uninstall — full footprint cleanup ([ce9bed7](https://github.com/cogitave/clawtool/commit/ce9bed7208ac465b6ab56ae4105eb06f4f8d6503))
+* dockerize clawtool — 15MB distroless static image + Compose stack ([0713937](https://github.com/cogitave/clawtool/commit/07139377f38e2b06dc635b003fe4c908e0838e48))
+* **relay:** ship Phase 3 of ADR-014 — Docker image + clawtool-relay recipe ([94130c2](https://github.com/cogitave/clawtool/commit/94130c279b945f58864181c75a09721088f9976a))
+* **rules:** predicate-based invariant engine + RulesCheck tool ([9421e8c](https://github.com/cogitave/clawtool/commit/9421e8cb350e4af8ab80ce82a5d2301296e9c256))
+* **serve:** POST /v1/recipe/apply + GET /v1/recipes + --mcp-http transport, plus claude/gemini transport fixes from live smoke ([4b843ba](https://github.com/cogitave/clawtool/commit/4b843bad5b60e11f464a327199cb2a8ba2582fb1))
+* **serve:** ship Phase 2 of ADR-014 — clawtool serve --listen HTTP gateway ([be91f9f](https://github.com/cogitave/clawtool/commit/be91f9f3d9ab7cf5a0bf9f0e0b81477189949977))
+* **supervisor:** ship Phase 4 of ADR-014 — dispatch policies (round-robin, failover, tag-routed) ([d806663](https://github.com/cogitave/clawtool/commit/d806663e3aa97b8ab17fda4ded29a8f5847606ff))
+* **v0.14:** T1 OTel + T2 auto-lint + T4 Verify MCP tool ([22994f7](https://github.com/cogitave/clawtool/commit/22994f76931016d1093874500fc11ef460d9c506))
+* **v0.14:** T3 mem0 + T5 git-worktree isolation + T6 SemanticSearch ([148f001](https://github.com/cogitave/clawtool/commit/148f0013913a4fd45aba5bcf7ecb00819f2a4518))
+* **v0.15:** F3 hooks subsystem + F4 clawtool onboard wizard ([71334d8](https://github.com/cogitave/clawtool/commit/71334d81a005f7206c9e2eb05ead45fc5a666b68))
+* **v0.15:** F5 telemetry + F6 hooks CLI + F7 process-group reaping + README ([9096d7b](https://github.com/cogitave/clawtool/commit/9096d7bf2d5dc37384d228827603d6f57bdab1b5))
+* **v0.15:** per-instance rate limiter (F1) + clawtool upgrade subcommand (F2) ([9b74041](https://github.com/cogitave/clawtool/commit/9b7404190fe57070c55311fb9043102f0f16a90b))
+* **v0.16.1:** Portal feature — saved web-UI targets (ADR-018) ([0171284](https://github.com/cogitave/clawtool/commit/01712846edd7341e1c0b74cda9fe41a7e6ff9561))
+* **v0.16.2:** Portal CDP driver — Ask flow + per-portal MCP aliases ([8067955](https://github.com/cogitave/clawtool/commit/8067955424ec52a8a5b67a013dd94180fa1878f3))
+* **v0.16.3:** portal add interactive wizard (chromedp + Chrome) ([3532ffa](https://github.com/cogitave/clawtool/commit/3532ffaaa8014c0706caa950b12a9d677c163fb7))
+* **v0.16.4:** clawtool mcp authoring noun + surface (ADR-019) ([8301353](https://github.com/cogitave/clawtool/commit/8301353ebd5bcfea344d9dc93020cba0604ff36e))
+* **v0.16:** BrowserFetch + BrowserScrape — Obscura-backed JS render ([6cbec23](https://github.com/cogitave/clawtool/commit/6cbec23e895f201bf3c72d8837b28f0af60d8342))
+* **v0.17:** clawtool mcp generator — Go / Python / TypeScript scaffolds ([b6a3359](https://github.com/cogitave/clawtool/commit/b6a33593eabff109ddf6ebc3ef842d074c7cc67f))
+* **v0.18.1:** bwrap engine real Wrap — Profile→argv compiler + live sandbox enforcement ([01cd88e](https://github.com/cogitave/clawtool/commit/01cd88e6b5c5b83d9b0f55a032b192f687d7e924))
+* **v0.18.4:** core tools polish phase A — Read hashes, Write Read-before-Write, Edit diff (ADR-021) ([ec2dd44](https://github.com/cogitave/clawtool/commit/ec2dd44d9da2a5f1b16c456615fa75a463e4ad27))
+* **v0.18.6:** core tools polish phase B — Glob .gitignore + WebFetch SSRF guard ([ab1647c](https://github.com/cogitave/clawtool/commit/ab1647c68634478e7dc242f33762e219b4a6e559))
+* **v0.18:** clawtool sandbox surface + ADR-020 (bwrap/sandbox-exec/docker) ([8c81e37](https://github.com/cogitave/clawtool/commit/8c81e37f488e9d188ddd5d18804b4c6c7f0d1702))
+* **websearch:** provider-neutral filter shape — domains / recency / country / topic ([1ea710d](https://github.com/cogitave/clawtool/commit/1ea710d42434bd04a64b48604d224f3882b502a3))
+
+
+### Fixes
+
+* **agents:** codex --skip-git-repo-check + transport closes stdin explicitly ([aa52402](https://github.com/cogitave/clawtool/commit/aa52402749b33c6bb57ece7ddaac1835bbaeac12))
+* **biam:** surface NDJSON turn.failed/error events as TaskFailed ([39a3b93](https://github.com/cogitave/clawtool/commit/39a3b93c704160e55f497c54483d78b22deb7b7d))
+* **ci:** make e2e EXIT trap tolerate already-dead background process ([4b4b269](https://github.com/cogitave/clawtool/commit/4b4b269945daf81524625c527b4bb1aa341a8ec6))
+* **v0.15:** MEDIUM polish — TaskGet/TaskWait surface MessagesFor errors; store decode failures stop silently dropping rows ([758aea3](https://github.com/cogitave/clawtool/commit/758aea346a85882abb8abb660315b5ff921b1bbe))
+* **v0.15:** polish-worker HIGH+MEDIUM batch — limiter/round-robin singleton, BIAM Close errors, identity race, secret-aware index ([deb19a1](https://github.com/cogitave/clawtool/commit/deb19a1e08a9b5f2e935e3be542e5801b3769db6))
+* **worktree:** EvalSymlinks comparison for macOS /var → /private/var ([e0f2987](https://github.com/cogitave/clawtool/commit/e0f2987c7ae36db7287bf548649acf20f3d55d9b))
+
+
+### Refactor
+
+* **portal:** swap hand-rolled CDP for chromedp (ADR-007) ([e6af0f2](https://github.com/cogitave/clawtool/commit/e6af0f2641f9140e008567bf13a88c77e2cc3940))
+
+
+### Documentation
+
+* **http:** add docs/http-api.md + README link — Postman & cURL recipes ([c45132c](https://github.com/cogitave/clawtool/commit/c45132c22c6ca7570c91b82f68fa122d986396d4))
+* **plugin:** adopt 'Tools. Agents. Wired.' tagline ([1099ae5](https://github.com/cogitave/clawtool/commit/1099ae5b44d1894b9f298334361f9d67b49b13ec))
+* **plugin:** refresh About — canonical tool layer + multi-agent supervisor ([ee17735](https://github.com/cogitave/clawtool/commit/ee17735c23e49ff347acf72abbdd6aab2eeabb40))
+* **readme:** full rewrite — "Tools. Agents. Wired." tagline + complete tool table ([bb3811f](https://github.com/cogitave/clawtool/commit/bb3811f0a0f60c3ac775d3a9cc172c56b65ff737))
+* **readme:** v0.14 / v0.15 surface — BIAM, bridges, send --async, worktree, upgrade ([498a241](https://github.com/cogitave/clawtool/commit/498a24174655abe282755ecaec6bf90eb3b3e20b))
+* three-plane feature shipping contract + SKILL.md routing map ([cf43c92](https://github.com/cogitave/clawtool/commit/cf43c92858e77a22083864ad13bcd5a2d8047638))
+
+
+### Tests
+
+* **portal:** add Ask integration test (fake Browser + tagged real-Chrome) ([5935e20](https://github.com/cogitave/clawtool/commit/5935e2072776fb2bb78ad7649b961a99f756e6a0))
+* **server:** surface drift detection — three-plane contract enforced ([f96de85](https://github.com/cogitave/clawtool/commit/f96de8523e71af8e407f1ca05fd5c3c515f3cc9e))
+
+
+### CI
+
+* bump Go to 1.26.0 (chromedp dep requires it) ([4ab2eaf](https://github.com/cogitave/clawtool/commit/4ab2eafad8cff1b6e43bb9f915bc23183828e34c))
+
 ## [0.9.2](https://github.com/cogitave/clawtool/compare/v0.9.1...v0.9.2) (2026-04-26)
 
 
