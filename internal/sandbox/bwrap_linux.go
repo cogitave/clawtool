@@ -92,25 +92,47 @@ func buildBwrapArgs(p *Profile) ([]string, error) {
 	}
 
 	// Network: --unshare-net unless the profile asks for "open".
+	//
+	// Audit fix #203: previously "allowlist" silently degraded to
+	// --share-net (full host networking), defeating the policy.
+	// Codex c1b00f10 verbatim: "Network allowlist degrades to full
+	// host networking via --share-net." Now fail-CLOSED: operator
+	// must either drop the allowlist into open/loopback/none, or
+	// pair bwrap with a host-side firewall and pass open here. The
+	// engine refuses to launch a profile whose network policy it
+	// cannot honour. Same rule for resource limits below.
 	switch strings.ToLower(p.Network.Mode) {
 	case "", "none":
 		args = append(args, "--unshare-net")
 	case "loopback":
 		// bubblewrap doesn't ship a built-in loopback-only mode.
-		// Closest match: unshare-net + a future helper that
-		// configures lo. Today we treat loopback like none and
-		// surface a warning at higher layers.
+		// We treat loopback like none — egress blocked, only the
+		// in-namespace lo interface is visible. This is stricter
+		// than the operator might expect (no actual lo iface
+		// configured today), but it's the SAFER fail-closed
+		// interpretation: the sandboxed process can't reach
+		// anything off-host. Future helper will configure lo.
 		args = append(args, "--unshare-net")
 	case "allowlist":
-		// Same here — bwrap can't filter egress; the operator
-		// pairs bwrap with a separate firewall layer (nftables /
-		// systemd-resolved). For v0.18.1 we share the host net
-		// when allowlist is requested AND log the limitation.
-		args = append(args, "--share-net")
+		return nil, fmt.Errorf(
+			"sandbox %q: network.policy=\"allowlist\" cannot be enforced by bwrap alone (bwrap has no egress filter); pair with a host-side firewall and switch to policy=\"open\", or drop allowlist for none|loopback. Refusing to dispatch unsandboxed",
+			p.Name)
 	case "open":
 		args = append(args, "--share-net")
 	default:
 		return nil, fmt.Errorf("sandbox: unknown network mode %q", p.Network.Mode)
+	}
+
+	// Resource limits: bwrap doesn't apply them. If the operator
+	// set any, refuse the profile rather than pretend they were
+	// honoured. Codex c1b00f10: "resource limits are parsed and not
+	// enforced." Operators who want enforcement run inside docker
+	// (engine adapter handles cgroup limits there) or pair with
+	// systemd-run --scope --p MemoryMax=... etc.
+	if p.Limits.MemoryBytes > 0 || p.Limits.CPUShares > 0 || p.Limits.ProcessCount > 0 {
+		return nil, fmt.Errorf(
+			"sandbox %q: resource limits (memory / cpu_shares / process_count) cannot be enforced by bwrap; switch the profile's engine to docker, run via systemd-run --scope, or drop the limits. Refusing to dispatch with phantom limits",
+			p.Name)
 	}
 
 	// Filesystem: emit --ro-bind / --bind / --tmpfs depending on
