@@ -269,6 +269,13 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// `clawtool agent new` CLI emits via internal/agentgen.
 	core.RegisterAgentNew(s)
 
+	// RulesCheck evaluates .clawtool/rules.toml against a
+	// caller-supplied Context (event + changed_paths + commit_message
+	// + tool_calls + args) and returns Verdict (passed / warned /
+	// blocked). Read-only — enforcement at tool-call time lands
+	// when the Tool Manifest Registry refactor adds middleware.
+	core.RegisterRulesCheck(s)
+
 	// Aggregated source tools — one entry per (running instance × tool),
 	// already named in wire form `<instance>__<tool>`.
 	for _, st := range mgr.AggregatedTools() {
