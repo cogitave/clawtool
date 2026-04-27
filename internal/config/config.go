@@ -88,7 +88,23 @@ type AgentConfig struct {
 //	Mode = "failover"     → primary + cascade on error (uses AgentConfig.FailoverTo)
 //	Mode = "tag-routed"   → caller passes --tag/tag; supervisor picks any matching healthy instance
 type Dispatch struct {
-	Mode string `toml:"mode,omitempty"`
+	Mode   string         `toml:"mode,omitempty"`
+	Limits DispatchLimits `toml:"limits,omitempty"`
+}
+
+// DispatchLimits caps how often / concurrently a single instance can
+// be dispatched to. Per-call enforcement happens inside Supervisor;
+// CLI / MCP / HTTP all share the bucket. v0.15 ROI feature F1 (per
+// codex's R3 research).
+//
+// Rate is "<n>/<duration>" (e.g. "30/m", "5/s", "1000/h"). Empty
+// string disables the limiter (no waits, no errors).
+// Burst is the token-bucket peak; defaults to Rate when zero.
+// MaxConcurrent caps in-flight dispatches per instance; 0 = unlimited.
+type DispatchLimits struct {
+	Rate          string `toml:"rate,omitempty"`
+	Burst         int    `toml:"burst,omitempty"`
+	MaxConcurrent int    `toml:"max_concurrent,omitempty"`
 }
 
 // BridgeOverrides lets a power user point a bridge family at a
