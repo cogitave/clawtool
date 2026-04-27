@@ -289,5 +289,35 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"portal", "ask", "browser", "chat", "deepseek", "perplexity", "phind", "send", "drive", "automate", "cdp"},
 		},
+		{
+			Name:        "McpList",
+			Description: "List MCP server projects under a root path (default cwd). Detects via the .clawtool/mcp.toml marker the v0.17 generator writes. ADR-019. Sister of `clawtool skill list` for MCP authoring.",
+			Type:        "core",
+			Keywords:    []string{"mcp", "scaffold", "author", "list", "projects", "server", "build"},
+		},
+		{
+			Name:        "McpNew",
+			Description: "Scaffold a new MCP server project (Go via mcp-go, Python via FastMCP, TypeScript via @modelcontextprotocol/sdk). Wizard asks for description / language / transport / packaging / tools. ADR-019. Generator lands in v0.17 — today returns a deferred-feature error.",
+			Type:        "core",
+			Keywords:    []string{"mcp", "scaffold", "new", "create", "generate", "author", "go", "python", "typescript"},
+		},
+		{
+			Name:        "McpRun",
+			Description: "Run an MCP server project in dev mode (stdio). ADR-019. Lands v0.17.",
+			Type:        "core",
+			Keywords:    []string{"mcp", "run", "dev", "stdio"},
+		},
+		{
+			Name:        "McpBuild",
+			Description: "Build / package an MCP server project (binary, npm, pypi, or Docker image). ADR-019. Lands v0.17.",
+			Type:        "core",
+			Keywords:    []string{"mcp", "build", "compile", "package", "docker"},
+		},
+		{
+			Name:        "McpInstall",
+			Description: "Build + register a local MCP server project as [sources.<instance>] in config.toml — same surface as `clawtool source add` but auto-discovers the launch command from the project's `.clawtool/mcp.toml`. ADR-019. Lands v0.17.",
+			Type:        "core",
+			Keywords:    []string{"mcp", "install", "register", "source", "local"},
+		},
 	}
 }

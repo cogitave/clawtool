@@ -189,6 +189,8 @@ func (a *App) Run(argv []string) int {
 		return a.runDoctor(argv[1:])
 	case "skill":
 		return a.runSkill(argv[1:])
+	case "mcp":
+		return a.runMcp(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -408,6 +410,14 @@ Usage:
                             agentskills.io standard (SKILL.md + scripts/
                             references/ assets/). MCP equivalent:
                             mcp__clawtool__SkillNew.
+  clawtool mcp new <project> [--output <dir>] [--yes]
+                            Scaffold a new MCP server (Go / Python /
+                            TypeScript). ADR-019. mcp = MCP server source
+                            code; skill = Agent Skill folder. Generator
+                            lands in v0.17.
+  clawtool mcp list / run / build / install
+                            Walk / run / compile / register MCP server
+                            projects. See 'clawtool mcp --help'.
   clawtool skill list       Enumerate installed skills (~/.claude/skills
                             and ./.claude/skills).
   clawtool skill path [<name>]
