@@ -21,6 +21,10 @@ const taskUsage = `Usage:
                                                 (ADR-026). Without --all, watches a single task.
                                                 With --all, watches every active dispatch in the
                                                 BIAM store.
+  clawtool task cancel <task_id>                Flip a pending/active task to "cancelled" and
+                                                propagate the signal to the in-flight dispatch
+                                                goroutine (audit fix #204). Idempotent — a
+                                                terminal task is a no-op.
 
 Tasks are created when you dispatch with 'clawtool send --async' or
 'mcp__clawtool__SendMessage --bidi=true'. The store lives at
@@ -80,6 +84,15 @@ func (a *App) runTask(argv []string) int {
 		}
 	case "watch":
 		return a.runTaskWatch(argv[1:])
+	case "cancel":
+		if len(argv) != 2 {
+			fmt.Fprint(a.Stderr, "usage: clawtool task cancel <task_id>\n")
+			return 2
+		}
+		if err := a.TaskCancel(argv[1]); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool task cancel: %v\n", err)
+			return 1
+		}
 	default:
 		fmt.Fprintf(a.Stderr, "clawtool task: unknown subcommand %q\n\n%s", argv[0], taskUsage)
 		return 2
@@ -150,6 +163,42 @@ func (a *App) TaskWait(taskID string, timeout time.Duration) error {
 	enc := json.NewEncoder(a.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
+}
+
+// TaskCancel flips a pending/active task to "cancelled". The CLI
+// invocation is a separate process from the runner that owns the
+// dispatch goroutine, so we do a store-only flip + Notifier publish
+// here — the runner side handles in-process cancel via Runner.Cancel
+// when the same caller already holds it. Cross-process pollers
+// (`clawtool task watch`) wake on the Notifier broadcast.
+//
+// Audit fix #204: pairs with Runner.Cancel — without this the CLI
+// had no way to abort a runaway --async dispatch short of kill -9 on
+// the binary.
+func (a *App) TaskCancel(taskID string) error {
+	store, err := openBiamStore()
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	t, err := store.GetTask(context.Background(), taskID)
+	if err != nil {
+		return err
+	}
+	if t == nil {
+		return fmt.Errorf("task %q not found", taskID)
+	}
+	if t.Status == biam.TaskDone || t.Status == biam.TaskFailed ||
+		t.Status == biam.TaskCancelled || t.Status == biam.TaskExpired {
+		fmt.Fprintf(a.Stdout, "task %s already terminal (status=%s)\n", taskID, t.Status)
+		return nil
+	}
+	if err := store.SetTaskStatus(context.Background(), taskID, biam.TaskCancelled, "cancelled by operator"); err != nil {
+		return err
+	}
+	biam.Notifier.Publish(biam.Task{TaskID: taskID, Status: biam.TaskCancelled, Agent: t.Agent})
+	fmt.Fprintf(a.Stdout, "✓ cancelled task %s\n", taskID)
+	return nil
 }
 
 // openBiamStore returns a fresh handle to the BIAM SQLite file. CLI

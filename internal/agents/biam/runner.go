@@ -29,12 +29,19 @@ type Runner struct {
 	store    *Store
 	identity *Identity
 	send     SendStream
+	// inflight tracks the per-task cancel func of an active
+	// dispatch goroutine. Populated in Submit, cleared in run on
+	// terminal. Cancel(taskID) looks up + invokes the func to
+	// unblock the upstream stream + propagate via the
+	// context-aware Send chain (which SIGINTs the child via
+	// streamingProcess.Close on ctx.Done).
+	inflight map[string]context.CancelFunc
 }
 
 // NewRunner wires the runner. Identity + store are mandatory; send is
 // the supervisor's dispatch func.
 func NewRunner(store *Store, id *Identity, send SendStream) *Runner {
-	return &Runner{store: store, identity: id, send: send}
+	return &Runner{store: store, identity: id, send: send, inflight: map[string]context.CancelFunc{}}
 }
 
 // Submit enqueues an async dispatch. Returns the new task_id
@@ -58,23 +65,70 @@ func (r *Runner) Submit(ctx context.Context, instance, prompt string, opts map[s
 		return "", fmt.Errorf("biam: persist prompt: %w", err)
 	}
 
-	// Detached background dispatch — uses context.Background so the
-	// caller's ctx cancellation doesn't kill the in-flight upstream
-	// when they only meant to stop waiting. Cancel via Cancel().
-	go r.run(env, instance, prompt, opts)
+	// Detached background dispatch with its OWN context so
+	// Cancel(taskID) can unblock the upstream stream without
+	// killing every in-flight dispatch. Caller's ctx is for
+	// envelope persistence only — once Submit returns, the
+	// goroutine owns its lifecycle.
+	runCtx, cancel := context.WithCancel(context.Background())
+	r.mu.Lock()
+	r.inflight[env.TaskID] = cancel
+	r.mu.Unlock()
+	go r.run(runCtx, env, instance, prompt, opts)
 
 	return env.TaskID, nil
+}
+
+// Cancel propagates a cancellation request to the dispatch goroutine
+// for taskID. Idempotent: returns nil for unknown / already-terminal
+// tasks. The actual upstream process kill happens in
+// streamingProcess.Close on ctx.Done — the runner's responsibility
+// here is just to flip the row and wake the goroutine.
+func (r *Runner) Cancel(ctx context.Context, taskID string) error {
+	if r == nil || r.store == nil {
+		return errors.New("biam: runner not initialised")
+	}
+	r.mu.Lock()
+	cancelFn, ok := r.inflight[taskID]
+	r.mu.Unlock()
+	if !ok {
+		// Task already terminal or unknown — best-effort flip the
+		// row to TaskCancelled if it's still pending/active. Soft
+		// failure if the row doesn't exist.
+		if t, err := r.store.GetTask(ctx, taskID); err == nil && t != nil {
+			if t.Status == TaskPending || t.Status == TaskActive {
+				_ = r.store.SetTaskStatus(ctx, taskID, TaskCancelled, "cancelled by operator")
+				Notifier.Publish(Task{TaskID: taskID, Status: TaskCancelled, Agent: t.Agent})
+			}
+		}
+		return nil
+	}
+	cancelFn()
+	return nil
 }
 
 // run drains the upstream stream into the store and finalises the
 // task. Body of the result envelope carries the (capped) full text;
 // large outputs truncate so SQLite stays bounded.
-func (r *Runner) run(prompt *Envelope, instance, promptText string, opts map[string]any) {
+func (r *Runner) run(ctx context.Context, prompt *Envelope, instance, promptText string, opts map[string]any) {
+	defer func() {
+		// Always release the inflight cancel slot, even on early
+		// return so Cancel becomes idempotent post-terminal.
+		r.mu.Lock()
+		delete(r.inflight, prompt.TaskID)
+		r.mu.Unlock()
+	}()
 	bg := context.Background()
 	_ = r.store.SetTaskStatus(bg, prompt.TaskID, TaskActive, "")
 
-	rc, err := r.send(bg, instance, promptText, opts)
+	rc, err := r.send(ctx, instance, promptText, opts)
 	if err != nil {
+		// Distinguish operator cancel from a genuine send failure
+		// so the task row reflects intent.
+		if ctx.Err() != nil {
+			r.recordResult(prompt, KindError, "cancelled by operator before dispatch started", TaskCancelled)
+			return
+		}
 		r.recordResult(prompt, KindError, fmt.Sprintf("send error: %v", err), TaskFailed)
 		return
 	}

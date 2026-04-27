@@ -83,6 +83,7 @@ type sendArgs struct {
 	isolated    bool
 	keepOnError bool
 	async       bool
+	wait        bool // --async + --wait blocks until terminal (legacy 10-min behaviour); without --wait, returns task_id immediately
 	unattended  bool // ADR-023: --unattended | --yolo flag
 	yoloAlias   bool // true when invoked via --yolo (changes banner text)
 }
@@ -130,6 +131,8 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 			out.keepOnError = true
 		case "--async":
 			out.async = true
+		case "--wait":
+			out.wait = true
 		case "--unattended":
 			out.unattended = true
 		case "--yolo":
@@ -252,10 +255,34 @@ func (a *App) Send(args sendArgs) error {
 		}
 		fmt.Fprintln(a.Stdout, taskID)
 
-		// CLI process is about to exit; the runner's goroutine needs
-		// the upstream dispatch to complete before main returns,
-		// otherwise codex/etc. get SIGKILL'd before persisting their
-		// result. Block until the task hits a terminal state.
+		// Audit fix #204: --async without --wait returns
+		// IMMEDIATELY. The runner goroutine owns its lifecycle
+		// (its own context, ref by taskID in r.inflight); the
+		// CLI exit doesn't kill it because the runner uses
+		// context.Background-based runCtx, not the caller's.
+		// Operator polls via `clawtool task get <id>` or
+		// `clawtool task watch <id>`.
+		//
+		// --async --wait keeps the legacy "block up to 10m"
+		// behaviour for callers (CI scripts, --isolated) that
+		// depend on it.
+		if !args.wait {
+			// --isolated worktree must NOT be reaped — the
+			// runner goroutine still owns it. Operator reaps
+			// via `clawtool worktree gc` after the task settles.
+			if cleanup != nil && args.isolated {
+				fmt.Fprintf(a.Stderr,
+					"clawtool: worktree at %s is owned by the dispatched task; reap with `clawtool worktree gc` after `clawtool task get %s` reports terminal\n",
+					opts["cwd"], taskID)
+			}
+			return nil
+		}
+
+		// CLI process is about to exit; the runner's goroutine
+		// needs the upstream dispatch to complete before main
+		// returns, otherwise codex/etc. get SIGKILL'd before
+		// persisting their result. Block until the task hits a
+		// terminal state.
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		store, _ := ensureBIAMRunner()
