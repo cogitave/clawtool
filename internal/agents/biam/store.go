@@ -351,9 +351,22 @@ func (s *Store) MessagesFor(ctx context.Context, taskID string) ([]Envelope, err
 		if signature.Valid {
 			e.Signature = signature.String
 		}
-		_ = json.Unmarshal([]byte(bodyJSON), &e.Body)
-		_ = json.Unmarshal([]byte(traceJSON), &e.Trace)
-		e.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		// Surface a corrupt-row signal — silently dropping a
+		// malformed body / trace would make the message look empty
+		// to the caller. Stop on first error so the agent sees
+		// "row N corrupt" instead of "task has fewer messages
+		// than the count column".
+		if err := json.Unmarshal([]byte(bodyJSON), &e.Body); err != nil {
+			return out, fmt.Errorf("biam: decode body for %s: %w", e.MessageID, err)
+		}
+		if err := json.Unmarshal([]byte(traceJSON), &e.Trace); err != nil {
+			return out, fmt.Errorf("biam: decode trace for %s: %w", e.MessageID, err)
+		}
+		ts, err := time.Parse(time.RFC3339Nano, createdAt)
+		if err != nil {
+			return out, fmt.Errorf("biam: decode created_at for %s: %w", e.MessageID, err)
+		}
+		e.CreatedAt = ts
 		out = append(out, e)
 	}
 	return out, rows.Err()

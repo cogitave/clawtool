@@ -145,7 +145,13 @@ func runTaskGet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	}
 	out.Task = t
 	if t != nil {
-		msgs, _ := biamStore.MessagesFor(ctx, taskID)
+		msgs, mErr := biamStore.MessagesFor(ctx, taskID)
+		if mErr != nil {
+			// Don't drop a corrupt-row signal — surface it so the
+			// agent sees \"task_id valid, replay broken\" instead of
+			// \"task_id valid, no replies yet\".
+			out.ErrorReason = fmt.Sprintf("messages: %v", mErr)
+		}
 		out.Messages = msgs
 	}
 	out.DurationMs = time.Since(start).Milliseconds()
@@ -182,7 +188,10 @@ func runTaskWait(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRes
 		return resultOf(out), nil
 	}
 	out.Task = t
-	msgs, _ := biamStore.MessagesFor(ctx, taskID)
+	msgs, mErr := biamStore.MessagesFor(ctx, taskID)
+	if mErr != nil {
+		out.ErrorReason = fmt.Sprintf("messages: %v", mErr)
+	}
 	out.Messages = msgs
 	out.DurationMs = time.Since(start).Milliseconds()
 	return resultOf(out), nil
