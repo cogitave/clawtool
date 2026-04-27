@@ -10,10 +10,11 @@ import (
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/agents/worktree"
+	"github.com/cogitave/clawtool/internal/unattended"
 )
 
 const sendUsage = `Usage:
-  clawtool send [--agent <instance>] [--tag <label>] [--session <sid>] [--model <m>] [--format <f>] [--isolated [--keep-on-error]] "<prompt>"
+  clawtool send [--agent <instance>] [--tag <label>] [--session <sid>] [--model <m>] [--format <f>] [--isolated [--keep-on-error]] [--unattended | --yolo] "<prompt>"
                                 Stream a prompt to the resolved agent's
                                 upstream CLI. Output streams to stdout
                                 verbatim — wire format depends on the
@@ -82,6 +83,8 @@ type sendArgs struct {
 	isolated    bool
 	keepOnError bool
 	async       bool
+	unattended  bool // ADR-023: --unattended | --yolo flag
+	yoloAlias   bool // true when invoked via --yolo (changes banner text)
 }
 
 func parseSendArgs(argv []string) (sendArgs, error) {
@@ -127,6 +130,11 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 			out.keepOnError = true
 		case "--async":
 			out.async = true
+		case "--unattended":
+			out.unattended = true
+		case "--yolo":
+			out.unattended = true
+			out.yoloAlias = true
 		case "--help", "-h":
 			out.list = false
 			out.prompt = ""
@@ -160,6 +168,40 @@ func (a *App) Send(args sendArgs) error {
 	}
 	if args.tag != "" {
 		opts["tag"] = args.tag
+	}
+
+	// ADR-023 unattended mode: enforce trust + open audit session
+	// BEFORE we touch the supervisor. Disclosure refusal is a hard
+	// stop — return an error rather than silently fall through to
+	// permission-prompted dispatch.
+	var attendedSession *unattended.SessionState
+	if args.unattended {
+		repo, _ := os.Getwd()
+		trusted, err := unattended.IsTrusted(repo)
+		if err != nil {
+			return fmt.Errorf("--unattended: %w", err)
+		}
+		if !trusted {
+			fmt.Fprint(a.Stderr, unattended.DisclosurePanel(repo))
+			return fmt.Errorf(
+				"--unattended: repo %q is not trusted yet. "+
+					"Run `clawtool unattended grant` to confirm and re-try.", repo)
+		}
+		s, err := unattended.Begin(repo, args.yoloAlias)
+		if err != nil {
+			return fmt.Errorf("--unattended: %w", err)
+		}
+		attendedSession = s
+		defer attendedSession.Close()
+
+		fmt.Fprintln(a.Stderr, attendedSession.Banner())
+		// Pass the unattended marker through to the supervisor /
+		// transports so they can opt into per-instance flag
+		// elevation (--dangerously-skip-permissions, etc.) when
+		// the rest of the wiring lands. v1 just records the
+		// attempt; full per-flag plumbing is v1.1.
+		opts["unattended"] = true
+		opts["unattended_session"] = attendedSession.ID
 	}
 
 	// Worktree isolation per ADR-014 T5: when --isolated is set, we
@@ -236,10 +278,25 @@ func (a *App) Send(args sendArgs) error {
 		return nil
 	}
 
+	if attendedSession != nil {
+		attendedSession.Emit(unattended.AuditEntry{
+			Kind:   "dispatch",
+			Agent:  args.agent,
+			Prompt: truncateForAudit(args.prompt, 256),
+		})
+	}
+
 	rc, err := sup.Send(context.Background(), args.agent, args.prompt, opts)
 	if err != nil {
 		if cleanup != nil && !args.keepOnError {
 			cleanup()
+		}
+		if attendedSession != nil {
+			attendedSession.Emit(unattended.AuditEntry{
+				Kind:  "dispatch_error",
+				Agent: args.agent,
+				Error: err.Error(),
+			})
 		}
 		return err
 	}
@@ -252,6 +309,16 @@ func (a *App) Send(args sendArgs) error {
 	if finalErr == nil {
 		finalErr = closeErr
 	}
+	if attendedSession != nil {
+		entry := unattended.AuditEntry{
+			Kind:  "result",
+			Agent: args.agent,
+		}
+		if finalErr != nil {
+			entry.Error = finalErr.Error()
+		}
+		attendedSession.Emit(entry)
+	}
 	if cleanup != nil {
 		if finalErr != nil && args.keepOnError {
 			fmt.Fprintf(a.Stderr, "clawtool: keeping worktree at %s (use `clawtool worktree show` to inspect)\n", opts["cwd"])
@@ -260,6 +327,16 @@ func (a *App) Send(args sendArgs) error {
 		}
 	}
 	return finalErr
+}
+
+// truncateForAudit caps prompt / result bodies stored in the audit
+// log so a multi-MB prompt doesn't bloat audit.jsonl. Head bytes
+// preserved — usually the diagnostic banner of interest.
+func truncateForAudit(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // SendList prints the supervisor's agent registry — same shape as the
