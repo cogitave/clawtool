@@ -57,7 +57,7 @@ license texts are SPDX. clawtool is the wizard, not a fork.
 - **Dispatch surface** grew bridge management (`clawtool bridge add/list/remove/upgrade`), sticky `agent use`, round-robin / failover / tag-routed policies, and per-instance rate / concurrency limits.
 - **`clawtool send --isolated`** runs agents in ephemeral git worktrees; `clawtool worktree list/show/gc` inspects and reaps them.
 - **`mem0`** joins the knowledge recipes, **`clawtool upgrade`** self-updates, optional **OTel observability** spans trace dispatch, and **`Edit`/`Write`** return auto-lint findings.
-- **Hooks + onboarding** add `clawtool onboard`, nine lifecycle events under `[hooks.events.<name>]`, `clawtool hooks list/show/test`, and process-group reaping so hook timeouts kill the whole shell child tree.
+
 
 ### How to use BIAM async dispatch
 

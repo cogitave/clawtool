@@ -241,5 +241,17 @@ func CoreToolDocs() []search.Doc {
 			Type:        "core",
 			Keywords:    []string{"task", "biam", "list", "recent", "history"},
 		},
+		{
+			Name:        "BrowserFetch",
+			Description: "Render a URL inside a real headless browser (Obscura, V8 + Chrome DevTools Protocol) and return clean prose for HTML or the value of a custom JS expression. Use when WebFetch returns empty SPA shells (Next.js / React / hydrated pages). Stateless per call; for cookies + multi-step interaction use BrowserAction.",
+			Type:        "core",
+			Keywords:    []string{"browser", "headless", "spa", "javascript", "render", "obscura", "puppeteer", "playwright", "fetch", "scrape", "react", "next", "hydrated", "cdp"},
+		},
+		{
+			Name:        "BrowserScrape",
+			Description: "Render many URLs in parallel through a real browser engine (Obscura) and capture a JS expression's value per page. Bulk SPA scraping with configurable concurrency. Stateless per URL.",
+			Type:        "core",
+			Keywords:    []string{"browser", "headless", "scrape", "bulk", "parallel", "spa", "obscura", "crawler", "harvest"},
+		},
 	}
 }
