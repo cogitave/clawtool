@@ -18,7 +18,12 @@ concurrency:
 env:
   # Pinned Go version. Bumped via dependabot or a deliberate `chore(ci)`
   # commit — never silently. Keep in sync with go.mod's `go` directive.
-  GO_VERSION: "1.25.5"
+  #
+  # 2026-04-27: bumped 1.25.5 → 1.26.0 because chromedp/chromedp v0.15.x
+  # (pulled by the portal feature, ADR-018/020) requires Go 1.26.
+  # setup-go installs the requested version and GOTOOLCHAIN=local
+  # prevents an automatic upgrade, so the env var is the gate.
+  GO_VERSION: "1.26.0"
 
 jobs:
   # Static analysis — fast feedback so devs see formatting / vet errors
