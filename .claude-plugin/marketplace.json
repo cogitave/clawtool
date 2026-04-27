@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "clawtool — Tools. Agents. Wired. By Bahadır Arda.",
-    "version": "0.8.6"
+    "version": "0.20.0"
   },
   "plugins": [
     {
@@ -17,7 +17,7 @@
         "ref": "main"
       },
       "description": "Tools. Agents. Wired. — wires every AI coding agent (Claude Code / Codex / Opencode / Gemini) onto one timeout-safe, structured-output tool surface. Auto-registers an MCP server on install (no `claude mcp add-json`), biases agent preference via a loaded skill, exposes `/clawtool` slash commands, and dispatches across agents through async BIAM with edge-triggered TaskNotify fan-in. Bundles sandbox profiles (bwrap / sandbox-exec / docker), saved web-UI portals, an MCP scaffolder, and search-first tool discovery. Uninstall removes everything except user data and the binary itself.",
-      "version": "0.8.6",
+      "version": "0.20.0",
       "author": {
         "name": "Bahadır Arda",
         "url": "https://github.com/bahadirarda"
