@@ -166,6 +166,8 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	// can disable any core tool and use the agent's native one instead.
 	if cfg.IsEnabled("Bash").Enabled {
 		core.RegisterBash(s)
+		core.RegisterBashOutput(s)
+		core.RegisterBashKill(s)
 	}
 	if cfg.IsEnabled("Grep").Enabled {
 		core.RegisterGrep(s)
@@ -279,8 +281,17 @@ func buildIndexDocs(cfg config.Config, mgr *sources.Manager) []search.Doc {
 		"Bash": true, "Edit": true, "Glob": true, "Grep": true, "Read": true,
 		"ToolSearch": true, "WebFetch": true, "WebSearch": true, "Write": true,
 	}
+	// BashOutput/BashKill are companions to Bash — gate them on the
+	// same flag rather than introducing a separate config knob.
+	gateAlias := map[string]string{
+		"BashOutput": "Bash",
+		"BashKill":   "Bash",
+	}
 	for _, d := range core.CoreToolDocs() {
 		if gateable[d.Name] && !cfg.IsEnabled(d.Name).Enabled {
+			continue
+		}
+		if alias, ok := gateAlias[d.Name]; ok && !cfg.IsEnabled(alias).Enabled {
 			continue
 		}
 		docs = append(docs, d)
