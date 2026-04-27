@@ -152,3 +152,74 @@ func TestGrep_CaseInsensitive(t *testing.T) {
 			resLower.MatchesCount, resI.MatchesCount)
 	}
 }
+
+func TestGrep_ContextLines(t *testing.T) {
+	if LookupEngine("rg").Bin == "" {
+		t.Skip("ripgrep not on PATH; context lines need rg --json")
+	}
+	dir := t.TempDir()
+	body := "line one\nline two\nMATCH here\nline four\nline five\n"
+	if err := os.WriteFile(filepath.Join(dir, "ctx.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := executeGrep(context.Background(), grepArgs{
+		Pattern:       "MATCH",
+		Patterns:      []string{"MATCH"},
+		Cwd:           dir,
+		Path:          ".",
+		MaxMatches:    10,
+		ContextBefore: 2,
+		ContextAfter:  2,
+	})
+	if res.MatchesCount != 1 {
+		t.Fatalf("matches=%d, want 1", res.MatchesCount)
+	}
+	m := res.Matches[0]
+	if len(m.Before) != 2 {
+		t.Errorf("Before=%v, want 2 lines", m.Before)
+	}
+	if len(m.After) != 2 {
+		t.Errorf("After=%v, want 2 lines", m.After)
+	}
+	if !strings.Contains(strings.Join(m.Before, "\n"), "line two") {
+		t.Errorf("Before missing 'line two': %v", m.Before)
+	}
+	if !strings.Contains(strings.Join(m.After, "\n"), "line four") {
+		t.Errorf("After missing 'line four': %v", m.After)
+	}
+}
+
+func TestGrep_MultiPattern(t *testing.T) {
+	if LookupEngine("rg").Bin == "" {
+		t.Skip("ripgrep not on PATH")
+	}
+	dir := t.TempDir()
+	body := "alpha\nbeta\ngamma\ndelta\n"
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := executeGrep(context.Background(), grepArgs{
+		Pattern:    "alpha",
+		Patterns:   []string{"alpha", "gamma"},
+		Cwd:        dir,
+		Path:       ".",
+		MaxMatches: 10,
+	})
+	if res.MatchesCount != 2 {
+		t.Fatalf("multi-pattern should match 2 lines, got %d: %+v", res.MatchesCount, res.Matches)
+	}
+}
+
+func TestGrep_TruncationMessageMentionsHardCap(t *testing.T) {
+	res := GrepResult{
+		BaseResult:   BaseResult{Operation: "Grep", Engine: "ripgrep"},
+		Pattern:      "x",
+		Matches:      []GrepMatch{{Path: "f", Line: 1, Column: 1, Text: "x"}},
+		MatchesCount: 1,
+		Truncated:    true,
+	}
+	out := res.Render()
+	if !strings.Contains(out, "raise max_matches") {
+		t.Errorf("truncation footer should hint at the cap: %s", out)
+	}
+}

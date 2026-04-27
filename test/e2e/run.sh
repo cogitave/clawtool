@@ -384,9 +384,9 @@ glob_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Glob","arguments":{"pattern":"**/*.md","cwd":"%s","limit":50}}}' "$REPO_ROOT")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
-echo "$glob_resp" | grep -qF '"engine":"doublestar"' \
-  || fail "Glob: engine != doublestar"
-pass "Glob: engine == doublestar"
+echo "$glob_resp" | grep -qE '"engine":"doublestar(\+git-ls-files)?"' \
+  || fail "Glob: engine != doublestar(+git-ls-files)"
+pass "Glob: engine matches doublestar variant (with optional git-ls-files suffix when cwd is a worktree, ADR-021 phase B)"
 
 echo "$glob_resp" | grep -qF 'README.md' \
   || fail "Glob: README.md not in matches"
