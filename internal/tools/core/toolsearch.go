@@ -285,9 +285,9 @@ func CoreToolDocs() []search.Doc {
 		},
 		{
 			Name:        "PortalAsk",
-			Description: "Drive a saved portal with the given prompt and stream the response. v0.16.1 returns a deferred-feature error after validating the resolved portal — the CDP driver lands in v0.16.2.",
+			Description: "Drive a saved portal (ADR-018) with the given prompt and return the rendered response. Spawns Obscura's CDP server, seeds cookies + extra headers, navigates to start_url, runs login_check + ready_predicate, fills the input selector, clicks submit (or dispatches Enter), polls response_done_predicate, and extracts the last response selector's innerText.",
 			Type:        "core",
-			Keywords:    []string{"portal", "ask", "browser", "chat", "deepseek", "perplexity", "phind", "send", "drive", "automate"},
+			Keywords:    []string{"portal", "ask", "browser", "chat", "deepseek", "perplexity", "phind", "send", "drive", "automate", "cdp"},
 		},
 	}
 }

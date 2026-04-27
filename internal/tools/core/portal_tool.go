@@ -16,9 +16,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/portal"
+	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -268,12 +270,14 @@ func runPortalRemove(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 	return resultOf(out), nil
 }
 
-func runPortalAsk(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func runPortalAsk(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	out := portalSimpleResult{BaseResult: BaseResult{Operation: "PortalAsk", Engine: "portal"}}
-	if _, err := req.RequireString("prompt"); err != nil {
+	prompt, err := req.RequireString("prompt")
+	if err != nil {
 		return mcp.NewToolResultError("missing required argument: prompt"), nil
 	}
 	name := strings.TrimSpace(req.GetString("portal", ""))
+	timeoutMs := int(req.GetFloat("timeout_ms", 0))
 
 	cfg, err := config.LoadOrDefault(config.DefaultPath())
 	if err != nil {
@@ -304,9 +308,121 @@ func runPortalAsk(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 		out.ErrorReason = err.Error()
 		return resultOf(out), nil
 	}
-	// Validation passed; the surface works. Defer the actual drive
-	// to v0.16.2 with a clear sentinel.
-	out.ErrorReason = portal.AskNotImplementedError.Error()
+	if timeoutMs > 0 {
+		p.TimeoutMs = timeoutMs
+	}
+	store, err := secrets.LoadOrEmpty(secrets.DefaultPath())
+	if err != nil {
+		out.ErrorReason = fmt.Sprintf("load secrets: %v", err)
+		return resultOf(out), nil
+	}
+	rawCookies, _ := store.Get(p.SecretsScope, "cookies_json")
+	cookies, err := portal.ParseCookies(rawCookies)
+	if err != nil {
+		out.ErrorReason = err.Error()
+		return resultOf(out), nil
+	}
+	// Caller's ctx may be short-lived (MCP request); enforce the
+	// portal's own timeout while still honouring upstream cancel.
+	askCtx := ctx
+	if p.TimeoutMs > 0 {
+		var cancel context.CancelFunc
+		askCtx, cancel = context.WithTimeout(ctx, time.Duration(p.TimeoutMs)*time.Millisecond)
+		defer cancel()
+	}
+	text, err := portal.Ask(askCtx, p, prompt, portal.AskOptions{Cookies: cookies})
+	if err != nil {
+		out.ErrorReason = err.Error()
+		return resultOf(out), nil
+	}
+	out.Detail = text
+	return resultOf(out), nil
+}
+
+// RegisterPortalAliases scans cfg.Portals and binds a thin wrapper
+// `<name>__ask` for each one. Same wire-naming convention as
+// internal/sources/manager.go aggregation. Each alias forwards to
+// PortalAsk with the portal name pre-bound, so the calling model
+// can do `my_deepseek__ask({"prompt":"..."})` without remembering
+// the generic shape.
+func RegisterPortalAliases(s *server.MCPServer, cfg config.Config) {
+	for name, p := range cfg.Portals {
+		if err := portal.Validate(name, p); err != nil {
+			// Skip invalid entries — surface the diagnostic via
+			// PortalList (which doesn't filter), keep boot quiet.
+			continue
+		}
+		aliasName := name + "__ask"
+		boundName := name
+		s.AddTool(
+			mcp.NewTool(
+				aliasName,
+				mcp.WithDescription(fmt.Sprintf(
+					"Ask the %q portal (%s). Thin wrapper over PortalAsk; "+
+						"selectors / cookies / predicates resolved from "+
+						"saved config. ADR-018.",
+					name, p.BaseURL)),
+				mcp.WithString("prompt", mcp.Required(),
+					mcp.Description("Prompt to send through the portal's input selector.")),
+				mcp.WithNumber("timeout_ms",
+					mcp.Description("Override the portal's configured timeout for this call.")),
+			),
+			func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				prompt, err := req.RequireString("prompt")
+				if err != nil {
+					return mcp.NewToolResultError("missing required argument: prompt"), nil
+				}
+				return runPortalAskBound(ctx, boundName, prompt, int(req.GetFloat("timeout_ms", 0)))
+			},
+		)
+	}
+}
+
+// runPortalAskBound is the shared core both PortalAsk and per-portal
+// aliases route through. Pulled out so a typo doesn't cause the two
+// code paths to drift.
+func runPortalAskBound(ctx context.Context, name, prompt string, timeoutMs int) (*mcp.CallToolResult, error) {
+	out := portalSimpleResult{BaseResult: BaseResult{Operation: "PortalAsk", Engine: "portal"}}
+	cfg, err := config.LoadOrDefault(config.DefaultPath())
+	if err != nil {
+		out.ErrorReason = err.Error()
+		return resultOf(out), nil
+	}
+	p, ok := cfg.Portals[name]
+	if !ok {
+		out.ErrorReason = fmt.Sprintf("portal %q no longer in registry — restart serve to refresh aliases", name)
+		return resultOf(out), nil
+	}
+	if err := portal.Validate(name, p); err != nil {
+		out.ErrorReason = err.Error()
+		return resultOf(out), nil
+	}
+	if timeoutMs > 0 {
+		p.TimeoutMs = timeoutMs
+	}
+	store, err := secrets.LoadOrEmpty(secrets.DefaultPath())
+	if err != nil {
+		out.ErrorReason = fmt.Sprintf("load secrets: %v", err)
+		return resultOf(out), nil
+	}
+	rawCookies, _ := store.Get(p.SecretsScope, "cookies_json")
+	cookies, err := portal.ParseCookies(rawCookies)
+	if err != nil {
+		out.ErrorReason = err.Error()
+		return resultOf(out), nil
+	}
+	askCtx := ctx
+	if p.TimeoutMs > 0 {
+		var cancel context.CancelFunc
+		askCtx, cancel = context.WithTimeout(ctx, time.Duration(p.TimeoutMs)*time.Millisecond)
+		defer cancel()
+	}
+	text, err := portal.Ask(askCtx, p, prompt, portal.AskOptions{Cookies: cookies})
+	if err != nil {
+		out.ErrorReason = err.Error()
+		return resultOf(out), nil
+	}
+	out.Detail = text
 	return resultOf(out), nil
 }
 

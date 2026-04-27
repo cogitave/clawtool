@@ -7,6 +7,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/portal"
+	"github.com/cogitave/clawtool/internal/secrets"
 )
 
 const portalUsage = `Usage:
@@ -309,8 +311,24 @@ func (a *App) PortalAsk(argv []string) error {
 	if err := portal.Validate(name, p); err != nil {
 		return err
 	}
-	_ = prompt // accepted for forward-compat; CDP driver in v0.16.2 wires it through
-	return portal.AskNotImplementedError
+	store, err := secrets.LoadOrEmpty(secrets.DefaultPath())
+	if err != nil {
+		return fmt.Errorf("portal ask: load secrets: %w", err)
+	}
+	rawCookies, _ := store.Get(p.SecretsScope, "cookies_json")
+	cookies, err := portal.ParseCookies(rawCookies)
+	if err != nil {
+		return fmt.Errorf("portal ask: %w", err)
+	}
+	resp, err := portal.Ask(context.Background(), p, prompt, portal.AskOptions{
+		Cookies: cookies,
+		Stdout:  a.Stderr, // progress lines on stderr; the answer goes to stdout
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(a.Stdout, resp)
+	return nil
 }
 
 // ── helpers ────────────────────────────────────────────────────────
