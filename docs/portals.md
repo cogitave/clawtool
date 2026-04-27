@@ -78,10 +78,44 @@ choose **Export → JSON**. You'll get an array like:
 > `document.cookie` cannot set httpOnly cookies, so the simpler
 > "inject via eval" path doesn't work for real session auth.
 
-### 2. Add the portal
+> **Wizard tip (v0.16.3+):** `clawtool portal add my-deepseek`
+> spawns Chrome + captures cookies + selectors interactively — no
+> manual export needed. The "export by hand" path below is for
+> automation / non-TTY setups; it stays supported via
+> `clawtool portal add --manual <name>`.
+
+### 2. Add the portal (interactive wizard, default)
 
 ```sh
 clawtool portal add my-deepseek
+```
+
+The wizard runs end-to-end:
+
+1. Asks for the URL.
+2. Spawns Chrome (your installed Chrome / Chromium / Brave / Edge,
+   chromedp auto-detects) with `--headless=false` and a fresh temp
+   profile so your normal login state stays untouched.
+3. Prints a copy/paste prompt for the **Claude in Chrome** side
+   panel (optional — log in manually if you don't have it). The
+   prompt asks Claude to log you in and report the three CSS
+   selectors.
+4. After you confirm login, captures every cookie via
+   `Network.getAllCookies` (httpOnly + secure included), filters
+   to the portal's host, auto-detects auth-cookie names (httpOnly
+   + `session*` / `auth*` / `*_token` patterns).
+5. Asks for the input / submit / response selectors and a
+   `response_done_predicate` template.
+6. Writes `[portals.<name>]` to `config.toml` and the cookies JSON
+   to `secrets.toml` under `[scopes."portal.<name>"]`.
+
+### 2b. Add the portal manually (`--manual`)
+
+If you can't use the interactive wizard (CI, no display, automation
+script), pass `--manual`:
+
+```sh
+clawtool portal add --manual my-deepseek
 ```
 
 This opens `$EDITOR` with a TOML template. Edit it to:
