@@ -47,12 +47,25 @@ func NewRunner(store *Store, id *Identity, send SendStream) *Runner {
 // Submit enqueues an async dispatch. Returns the new task_id
 // immediately; the goroutine streams the response into the store and
 // transitions the task on completion. Cancel via `Cancel(taskID)`.
+//
+// `opts["from_instance"]` overrides the default `from` address. Cross-
+// host bidi: when codex / gemini / opencode dispatch back to claude
+// through the shared daemon, they pass their own family name so the
+// resulting envelope's `from` reflects the actual sender, not the
+// daemon's own identity. Without this, every BIAM thread looked like
+// it originated from one centralised initiator and downstream
+// reply-tracking ambiguated.
 func (r *Runner) Submit(ctx context.Context, instance, prompt string, opts map[string]any) (string, error) {
 	if r == nil || r.store == nil || r.identity == nil || r.send == nil {
 		return "", errors.New("biam: runner not initialised")
 	}
 	to := Address{HostID: r.identity.HostID, InstanceID: instance}
 	from := Address{HostID: r.identity.HostID, InstanceID: r.identity.InstanceID}
+	if v, ok := opts["from_instance"]; ok {
+		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+			from.InstanceID = strings.TrimSpace(s)
+		}
+	}
 
 	env := NewEnvelope(from, to, "", KindPrompt, Body{Text: prompt})
 	if err := env.Sign(r.identity); err != nil {

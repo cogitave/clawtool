@@ -130,6 +130,8 @@ func RegisterAgentTools(s *server.MCPServer) {
 				mcp.Description("Tag-routed dispatch (Phase 4). When set, picks any callable instance whose tags include this label. Overrides the configured dispatch.mode for this call.")),
 			mcp.WithBoolean("bidi",
 				mcp.Description("Async BIAM mode. When true, returns a task_id immediately and persists the upstream stream into the BIAM store; pair with TaskGet / TaskWait. Default false (synchronous, buffered single payload).")),
+			mcp.WithString("from_instance",
+				mcp.Description("BIAM envelope sender label. Override when a non-default host (codex / gemini / opencode) is dispatching back through the shared daemon — the resulting envelope's `from` field reflects the actual sender, so reply threading + audit trails stay accurate. Empty = use the daemon's own identity.")),
 		),
 		runSendMessage,
 	)
@@ -162,6 +164,7 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	cwd := req.GetString("cwd", "")
 	tag := req.GetString("tag", "")
 	bidi := req.GetBool("bidi", false)
+	fromInstance := strings.TrimSpace(req.GetString("from_instance", ""))
 
 	start := time.Now()
 	out := sendMessageResult{BaseResult: BaseResult{Operation: "SendMessage", Engine: "supervisor"}}
@@ -198,6 +201,9 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 	if tag != "" {
 		opts["tag"] = tag
+	}
+	if fromInstance != "" {
+		opts["from_instance"] = fromInstance
 	}
 
 	if bidi {
