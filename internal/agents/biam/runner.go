@@ -341,12 +341,72 @@ func biamOutcome(s TaskStatus) string {
 // summary trims the body to a one-line summary stored on the task row.
 // Long bodies live in the messages table; the task summary is the
 // glanceable headline.
+//
+// NDJSON awareness: codex / gemini / opencode all emit
+// newline-delimited JSON event streams. The very first line is
+// usually `{"type":"thread.started","thread_id":"…"}` — a useless
+// header. The actual reply lives in the LAST event of type
+// `item.completed` with an inner `item.type == "agent_message"`.
+// When we detect the NDJSON shape we walk the tail and lift the
+// agent_message text instead of returning the meaningless header.
+//
+// Non-NDJSON outputs (plain text from claude -p, free-form bodies,
+// error tails) fall through to the legacy first-line-up-to-200
+// behaviour. Empty / unrecognised cases also fall through so the
+// summary always has something visible.
 func summary(s string) string {
-	if len(s) > 200 {
-		s = s[:200] + "…"
+	if v := summaryFromNDJSON(s); v != "" {
+		return clipSummary(v)
 	}
+	return clipSummary(firstLine(s))
+}
+
+// summaryFromNDJSON walks lines of `s` for codex-style NDJSON
+// events. Returns the last `agent_message` text when found, empty
+// when the body is not NDJSON-shaped or no agent_message exists.
+//
+// Why walk forward rather than from the tail: events are sequential
+// and we may have multiple `agent_message` items in a turn; the
+// most-recent one is the right summary. Allocating a single decoder
+// state and overwriting on each match keeps the function O(n) over
+// body bytes.
+func summaryFromNDJSON(s string) string {
+	if len(s) == 0 || s[0] != '{' {
+		return ""
+	}
+	var last string
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line[0] != '{' {
+			continue
+		}
+		var ev struct {
+			Type string `json:"type"`
+			Item struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"item"`
+		}
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			continue
+		}
+		if ev.Type == "item.completed" && ev.Item.Type == "agent_message" && strings.TrimSpace(ev.Item.Text) != "" {
+			last = strings.TrimSpace(ev.Item.Text)
+		}
+	}
+	return last
+}
+
+func firstLine(s string) string {
 	if i := indexNewline(s); i >= 0 {
 		return s[:i]
+	}
+	return s
+}
+
+func clipSummary(s string) string {
+	if len(s) > 200 {
+		return s[:200] + "…"
 	}
 	return s
 }
