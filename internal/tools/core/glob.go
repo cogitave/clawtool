@@ -66,7 +66,7 @@ func RegisterGlob(s *server.MCPServer) {
 		mcp.WithNumber("limit",
 			mcp.Description("Max matches. Default 1000, hard cap 10000.")),
 		mcp.WithBoolean("respect_gitignore",
-			mcp.Description("Honor .gitignore when cwd is a Git worktree. Default true (ADR-021 phase B). Pass false to walk every file the way the legacy v0.5 behaviour did.")),
+			mcp.Description("Honor .gitignore when cwd is a Git worktree. Default true. Pass false to walk every file regardless of ignore rules.")),
 		mcp.WithBoolean("include_hidden",
 			mcp.Description("Include dotfiles + paths whose any segment starts with '.'. Default false. Patterns that explicitly name a dot segment (e.g. '**/.env') still match those files even when this is false.")),
 	)

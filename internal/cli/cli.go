@@ -379,10 +379,10 @@ Usage:
   clawtool agents list      List known agent adapters.
   clawtool bridge add <family>
                             Install the canonical bridge for the family
-                            (codex / opencode / gemini). Per ADR-014:
-                            wraps the upstream's published Claude Code
-                            plugin or built-in subcommand — clawtool
-                            never re-implements the bridge.
+                            (codex / opencode / gemini). Wraps the upstream's
+                            published Claude Code plugin or built-in
+                            subcommand — clawtool never re-implements
+                            the bridge.
   clawtool bridge list      Show installed bridges + status.
   clawtool bridge upgrade <family>
                             Re-run the install (idempotent; pulls the
@@ -400,12 +400,10 @@ Usage:
   clawtool agent which      Show the currently-resolved default agent.
   clawtool agent unset      Clear the sticky default.
   clawtool portal add/list/remove/use/which/unset/ask
-                            Manage saved web-UI targets (ADR-018).
-                            A portal pairs a base URL with login cookies +
-                            selectors + a 'response done' predicate.
-                            v0.16.1 ships the read-only surface; the CDP
-                            driver behind 'ask' lands in v0.16.2.
-                            Full guide: docs/portals.md.
+                            Manage saved web-UI targets. A portal pairs a
+                            base URL with login cookies + selectors + a
+                            'response done' predicate. Full guide:
+                            docs/portals.md.
   clawtool worktree list    List isolated worktrees with marker info.
   clawtool worktree show <taskID>
                             Print path + marker JSON for one worktree.

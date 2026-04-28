@@ -113,10 +113,9 @@ func RegisterBridgeTools(s *server.MCPServer) {
 			"BridgeList",
 			mcp.WithDescription(
 				"List the bridges clawtool can install (codex / opencode / gemini), "+
-					"with current install state. Per ADR-014: a 'bridge' is the "+
-					"connector clawtool installs to talk to another agent CLI; "+
-					"distinct from 'agents' (instance management) and 'recipe' "+
-					"(generic project-setup wizard).",
+					"with current install state. A 'bridge' is the connector clawtool "+
+					"installs to talk to another agent CLI; distinct from 'agents' "+
+					"(instance management) and 'recipe' (generic project-setup wizard).",
 			),
 		),
 		runBridgeList,
@@ -129,9 +128,9 @@ func RegisterBridgeTools(s *server.MCPServer) {
 					"upstream's published Claude Code plugin (codex-plugin-cc, "+
 					"gemini-plugin-cc) or built-in subcommand (opencode acp). "+
 					"Idempotent — re-running on an already-installed bridge "+
-					"short-circuits to verify. Per ADR-014's curated-catalog "+
-					"discipline there is no plugin-shopping parameter; power "+
-					"users override via [bridge.<family>].plugin in config.toml.",
+					"short-circuits to verify. The catalog is curated, so there is "+
+					"no plugin-shopping parameter; power users override via "+
+					"[bridge.<family>].plugin in config.toml.",
 			),
 			mcp.WithString("family", mcp.Required(),
 				mcp.Description("Bridge family: codex | opencode | gemini.")),

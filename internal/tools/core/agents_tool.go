@@ -109,10 +109,10 @@ func RegisterAgentTools(s *server.MCPServer) {
 			"SendMessage",
 			mcp.WithDescription(
 				"Forward a prompt to a configured AI coding-agent CLI (claude / codex / "+
-					"opencode / gemini) and return its streamed reply. Per ADR-014, "+
-					"clawtool wraps each upstream's published headless mode (codex exec, "+
-					"opencode run, gemini -p, claude -p) — we don't re-implement agent "+
-					"loops. Use AgentList to enumerate available instances.",
+					"opencode / gemini) and return its streamed reply. clawtool wraps "+
+					"each upstream's published headless mode (codex exec, opencode run, "+
+					"gemini -p, claude -p) — we don't re-implement agent loops. Use "+
+					"AgentList to enumerate available instances.",
 			),
 			mcp.WithString("agent",
 				mcp.Description("Instance name (claude-personal, claude-work, codex1, …) or bare family name when only one instance of that family exists. Empty = sticky default.")),
@@ -129,7 +129,7 @@ func RegisterAgentTools(s *server.MCPServer) {
 			mcp.WithString("tag",
 				mcp.Description("Tag-routed dispatch (Phase 4). When set, picks any callable instance whose tags include this label. Overrides the configured dispatch.mode for this call.")),
 			mcp.WithBoolean("bidi",
-				mcp.Description("ADR-015 BIAM async mode. When true, returns a task_id immediately + persists the upstream stream into the BIAM store; pair with TaskGet / TaskWait. Default false (synchronous, buffered single payload).")),
+				mcp.Description("Async BIAM mode. When true, returns a task_id immediately and persists the upstream stream into the BIAM store; pair with TaskGet / TaskWait. Default false (synchronous, buffered single payload).")),
 		),
 		runSendMessage,
 	)

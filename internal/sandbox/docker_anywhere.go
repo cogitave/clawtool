@@ -32,7 +32,7 @@ func (dockerEngine) Available() bool {
 
 func (dockerEngine) Wrap(_ context.Context, _ *exec.Cmd, _ *Profile) error {
 	return errors.New(
-		"sandbox: docker engine ships its run-flag compiler in v0.18.3 — " +
-			"the surface works today, enforcement follows. ADR-020.",
+		"sandbox: docker engine is detected but the run-flag compiler " +
+			"is not yet implemented — surface works, enforcement is pending.",
 	)
 }

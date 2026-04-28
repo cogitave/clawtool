@@ -215,4 +215,4 @@ func AssertAuthCookies(have []Cookie, want []string) error {
 // stub Ask path until v0.16.2 lands the CDP driver. CLI / MCP
 // surfaces match against it to give a uniform deferred-feature
 // message.
-var AskNotImplementedError = errors.New("portal ask: CDP driver lands in v0.16.2 — see ADR-018 in the wiki for the full design")
+var AskNotImplementedError = errors.New("portal ask: CDP driver not yet implemented — see docs/portals.md for the full design")

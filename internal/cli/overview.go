@@ -52,7 +52,7 @@ func (a *App) runOverview(argv []string) int {
 	mode := cfg.SandboxWorker.Mode
 	switch {
 	case mode == "" || mode == "off":
-		fmt.Fprintln(w, "sandbox-worker  ·  mode=off          (host execution; ADR-029 to opt in)")
+		fmt.Fprintln(w, "sandbox-worker  ·  mode=off          (host execution; flip [sandbox_worker] mode to opt in)")
 	case cfg.SandboxWorker.URL == "":
 		fmt.Fprintf(w, "sandbox-worker  ⚠  mode=%s URL empty\n", mode)
 	default:

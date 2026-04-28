@@ -75,7 +75,7 @@ func guardReadBeforeWrite(ctx context.Context, path, mode string, mustNotExist, 
 		return errors.New(
 			"Write refused: this session has not Read " + path + " — Read it first " +
 				"(or pass mode=\"create\" for a brand-new file, or " +
-				"unsafe_overwrite_without_read=true to bypass the ADR-021 guardrail).",
+				"unsafe_overwrite_without_read=true to bypass the Read-before-Write guardrail).",
 		)
 	}
 	currentHash, err := HashFile(path)
@@ -126,11 +126,11 @@ func RegisterWrite(s *server.MCPServer) {
 		mcp.WithString("cwd",
 			mcp.Description("Working directory for relative paths. Defaults to $HOME.")),
 		mcp.WithString("mode",
-			mcp.Description("\"create\" to require the file does NOT exist (brand-new file flow); \"overwrite\" to require a prior Read on the same MCP session of an existing file. Default \"overwrite\". ADR-021 Read-before-Write guardrail.")),
+			mcp.Description("\"create\" to require the file does NOT exist (brand-new file flow); \"overwrite\" to require a prior Read on the same MCP session of an existing file. Default \"overwrite\". Enforces the Read-before-Write guardrail.")),
 		mcp.WithBoolean("must_not_exist",
 			mcp.Description("Companion of mode=\"create\": if true, fail when the path already exists. Default false (legacy passthrough; mode=\"create\" implies true).")),
 		mcp.WithBoolean("unsafe_overwrite_without_read",
-			mcp.Description("Bypass the Read-before-Write check. Loud, opt-in. Use only when the operator has confirmed they intend to overwrite a file the agent has not Read this session. ADR-021.")),
+			mcp.Description("Bypass the Read-before-Write check. Loud, opt-in. Use only when the operator has confirmed they intend to overwrite a file the agent has not Read this session.")),
 	)
 	s.AddTool(tool, runWrite)
 }

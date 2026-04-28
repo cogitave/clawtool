@@ -8,187 +8,207 @@
 [![Conventional Commits](https://img.shields.io/badge/conventional--commits-1.0.0-yellow)](https://www.conventionalcommits.org)
 
 > **Tools. Agents. Wired.**
+>
+> One canonical tool layer for every AI coding agent. Install once, use everywhere — across Claude Code, Codex, Gemini, OpenCode, and Hermes.
 
 ## What clawtool is
-- **Canonical core tools**: clawtool replaces native Bash, Read, Edit, Write, Grep, and Glob with higher-quality, timeout-safe, and format-aware equivalents. These tools provide uniform structured JSON output and rigorous process-group reaping, ensuring that agent operations are deterministic and safe across Linux, macOS, and WSL2 environments.
-- **Multi-agent dispatch**: A single `SendMessage` entry point routes prompts to Claude, Codex, Gemini, or Opencode instances. This supervisor layer uses the Bidirectional Inter-Agent Messaging (BIAM) protocol with an async SQLite task store and edge-triggered `TaskNotify` fan-in, allowing one agent to delegate long-running tasks to another without blocking the conversation.
-- **Marketplace plugin**: clawtool is packaged as a first-class Claude Code marketplace plugin. On installation, it auto-registers the MCP server and injects necessary slash commands and skills with zero ceremony. There is no need for manual `claude mcp add-json` editing or complex environment setup.
-- **Search-first discovery**: When a tool catalog grows past a few dozen entries, agents can no longer hold every schema in context. clawtool implements a `ToolSearch` primitive powered by bleve BM25 ranking, allowing agents to discover and bind to the right tool based on natural-language intent.
+
+- **Canonical core tools.** Higher-quality replacements for native Bash, Read, Edit, Write, Grep, Glob, WebFetch — timeout-safe with process-group SIGKILL, structured JSON output (stdout/stderr/exit_code/duration_ms/timed_out/cwd), format-aware reads (PDF, Word, Excel, HTML, Jupyter), atomic writes, deterministic line cursors. Cross-platform parity (Linux, macOS, WSL2).
+- **Multi-agent dispatch.** A single `SendMessage` entry point routes prompts to Claude, Codex, Gemini, OpenCode, or Hermes. Async via the BIAM (Bidirectional Inter-Agent Messaging) protocol — Ed25519-signed envelopes, SQLite task store, edge-triggered `TaskNotify` fan-in. Per-instance secrets injection, per-call sandbox profiles, true async (`--async` returns immediately; `clawtool task cancel` aborts).
+- **Sandbox parity with claude.ai.** Bash/Read/Edit/Write tool calls can route through a separate gVisor/docker container instead of the host process. The `clawtool sandbox-worker` binary mirrors claude.ai's `process_api` (PID 1, WebSocket :2024, bearer auth). The `clawtool egress` proxy mirrors claude.ai's allowlist gateway (HTTP/HTTPS, CONNECT tunnel, 403 with `x-deny-reason`). On-demand skill mount via `SkillList` + `SkillLoad` MCP tools mirrors `/mnt/skills/public`.
+- **Shared MCP fan-in.** A single persistent `clawtool serve --listen --mcp-http` daemon backs every host; codex / gemini / claude all dial it instead of spawning per-host stdio children. One BIAM identity, one task store, one bearer-auth'd endpoint.
+- **Search-first discovery.** A 50+ tool catalog stays usable because models bind to schemas via `ToolSearch` (bleve BM25) instead of holding every JSON schema in context.
+- **Marketplace plugin.** First-class Claude Code plugin: `claude plugin install clawtool@clawtool-marketplace` registers the MCP server, drops slash commands, and loads the routing skill — no manual `claude mcp add-json` editing.
 
 ## Quick install
+
 ```bash
+# Claude Code marketplace path (recommended)
 claude plugin marketplace add cogitave/clawtool
 claude plugin install clawtool@clawtool-marketplace
-```
-Or build from source:
-```bash
+
+# Or direct binary install
+curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
+
+# Or from source
 go install github.com/cogitave/clawtool/cmd/clawtool@latest
 ```
 
-## Onboarding (5-minute walk)
-- **Confirm the install**: Verify the connection between Claude Code and the clawtool MCP server to ensure all core tools are correctly registered.
+## Onboarding
+
 ```bash
-/clawtool
-```
-- **List enabled tools**: Inspect the full catalog of core, bridge, and aggregated third-party tools currently available to your agent instances.
-```bash
-/clawtool-tools-list
-```
-- **Add a source**: Enable a third-party source from the built-in catalog (e.g., GitHub, Slack, or Postgres) to expand your agent's knowledge and action space.
-```bash
-clawtool source add github
-```
-- **Run your first ToolSearch**: Use natural-language queries to discover the right tool for any task, allowing the agent to bind to the specific schema it needs.
-```bash
-mcp__clawtool__ToolSearch query="commit my work"
-```
-- **Set a sandbox profile**: Run the sandbox diagnostic to see supported host engines (bwrap, sandbox-exec, or docker) and pick a profile for isolated execution.
-```bash
-clawtool sandbox doctor
-```
-- **Send your first cross-agent message**: Delegate a complex sub-task to a different agent family (e.g., Codex) via the supervisor's async dispatch layer.
-```bash
-clawtool send --agent codex "audit this repo"
-```
-- **Scaffold a subagent**: Create a new subagent persona with a custom dispatcher manifest, allowed-tools list, and model preference for specialized tasks.
-```bash
-clawtool agent new my-researcher --description "Expert in codebase exploration and dependency mapping"
+clawtool onboard            # interactive wizard — host detection, MCP claims, identity, telemetry consent
+clawtool overview           # one-screen status of daemon + sandbox-worker + agents + bridges
+clawtool doctor             # full diagnostic with fix hints per finding
 ```
 
-## What's in the box
+The wizard:
 
-clawtool ships with a comprehensive catalog of tools designed to replace or augment the native capabilities of AI coding agents. These tools are grouped by their functional area and are designed to work together to provide a seamless, multi-agent developer experience.
-
-### Core tools
-The core toolset replaces the standard Bash, File, and Search operations with higher-fidelity equivalents. These tools are built with a focus on safety, atomic operations, and format-awareness, ensuring that agents can work reliably across different operating systems and file types.
-
-| Tool | Capability | Reference |
-|---|---|---|
-| Bash | Run shell commands with timeout safety and structured JSON (supports `background=true` for async execution). | |
-| BashOutput | Snapshot of a background Bash task — live stdout, stderr, and terminal exit status. | |
-| BashKill | Cancel a background Bash task via SIGKILL to the entire process group. | |
-| Read | Format-aware file reader with stable line cursors; supports PDF, Word, Excel, HTML, Jupyter, and more. | |
-| Edit | Precise substring replacement with atomic temp+rename, BOM preservation, and ambiguity guards. | |
-| Write | Atomic file creation or replacement with parent directory auto-create and BOM preservation. | |
-| Grep | High-performance regex content search powered by ripgrep with .gitignore-aware traversal. | |
-| Glob | Directory traversal and file matching with double-star support via the doublestar engine. | |
-| WebFetch | Retrieve URLs and return clean article text via Mozilla Readability with a 10MB body cap. | |
-| WebSearch | Ranked web search results via Brave Search, Tavily, or SearXNG backends. | |
-| ToolSearch | Search-first discovery across the tool catalog using bleve BM25 ranking and field boosts. | |
-| SemanticSearch | Intent-based code search using vector embeddings; index is built lazily on first call. | |
-| Verify | Multi-runner test/lint execution (Make, pnpm, go, pytest, cargo, just) with log excerpting. | |
-
-### Multi-agent dispatch
-Multi-agent dispatch allows agents to communicate and delegate tasks to one another. By leveraging the BIAM protocol, clawtool enables complex, multi-step workflows where specialized agents handle specific sub-tasks asynchronously.
-
-| Tool | Capability | Reference |
-|---|---|---|
-| SendMessage | Forward prompts to Claude, Codex, Gemini, or Opencode instances with async/bidi support. | |
-| AgentList | Snapshot of the supervisor's agent registry, including family, bridge, and callable status. | |
-| TaskGet | Retrieve the current status, metadata, and full message history for a specific BIAM task. | |
-| TaskWait | Block the caller until a BIAM task reaches a terminal state (done, failed, or cancelled). | |
-| TaskList | Enumeration of recent BIAM task history for the current supervisor instance. | |
-| TaskNotify | Edge-triggered notification that wakes the caller as soon as any watched task completes. | |
-
-### Rules engine
-Predicate-based invariants the operator declares in `.clawtool/rules.toml` and enforces at lifecycle events (pre-commit, post-edit, session-end, pre-send, pre-unattended). Pure in-process Go evaluation against a typed Context — no shell roundtrip.
-
-| Tool | Capability | Reference |
-|---|---|---|
-| RulesCheck | Evaluate `.clawtool/rules.toml` against a Context (event + changed paths + commit message + tool calls + args). Returns Verdict with passed/warned/blocked per rule. | [docs/rules.md](docs/rules.md) |
-
-### Authoring scaffolders
-Authoring tools provide agents and users with the ability to create new capabilities on the fly. Whether it is a new subagent persona, an agentskills.io skill, or a complete MCP server, these scaffolders ensure that new additions follow project conventions.
-
-| Tool | Capability | Reference |
-|---|---|---|
-| AgentNew | Scaffold a new subagent persona and dispatcher manifest. | |
-| SkillNew | Generate a new agentskills.io-standard skill directory with SKILL.md and assets. | |
-| McpList | Walk and discover local MCP server projects based on the `.clawtool/mcp.toml` marker. | |
-| McpNew | Scaffold a fresh, compilable MCP server project in Go, Python, or TypeScript. | |
-| McpRun | Development-mode runner for local MCP projects speaking over stdio. | |
-| McpBuild | Packaging and build tool for MCP server projects (binary, npm, or Docker). | |
-| McpInstall | Build and register a local project as an aggregated MCP source in config.toml. | |
-
-### Browser + Portal
-Browser and Portal tools enable agents to interact with modern web applications and authenticated UI targets. The Obscura engine handles complex JavaScript rendering, while Portals allow for saved, repeatable interaction flows with saved auth state.
-
-| Tool | Capability | Reference |
-|---|---|---|
-| BrowserFetch | Stateless rendering of hydrated SPA content using the Obscura V8+CDP headless engine. | |
-| BrowserScrape | Bulk parallel rendering and JS-expression extraction across multiple URLs. | |
-| PortalList | Enumerate saved web-UI targets, including base URLs and authenticated login state. | |
-| PortalAsk | Drive a saved portal through its login flow and interaction predicate to extract data. | |
-| PortalUse | Set the sticky-default portal for subsequent PortalAsk calls in the current context. | |
-| PortalWhich | Identify the active portal resolving via environment variables or sticky config files. | |
-| PortalUnset | Clear the current sticky portal selection for the project or global context. | |
-| PortalRemove | Delete a portal configuration and its associated secrets from the local store. | |
-
-### Sandbox
-Sandbox tools manage the isolation of agent operations on the host system. By defining profiles that restrict filesystem access, network connectivity, and resource consumption, clawtool provides a layer of security over powerful agent tools.
-
-| Tool | Capability | Reference |
-|---|---|---|
-| SandboxList | List configured sandbox profiles and their isolation policy types. | |
-| SandboxShow | Display the detailed path, network, env, and resource constraints of a specific profile. | |
-| SandboxDoctor | Diagnostic report on host engine support for bwrap, sandbox-exec, or docker fallback. | |
-
-### Bridges + Recipes
-Bridges and Recipes manage the connection to other agent ecosystems and the application of project-wide standards. Bridges wire up external CLIs, while Recipes inject canonical configuration for CI, linting, and release management.
-
-| Tool | Capability | Reference |
-|---|---|---|
-| BridgeList | List installable and active bridges to agent CLIs with current install state. | |
-| BridgeAdd | Install a canonical bridge for a supported agent family (codex, opencode, gemini, hermes). | |
-| BridgeRemove | Uninstall an agent bridge and clear sticky instance pointers. | |
-| BridgeUpgrade | Refresh a bridge to its latest version and re-run its registration. | |
-| RecipeList | Enumerate available project-setup recipes (governance, CI, release, etc.). | |
-| RecipeStatus | Report on the detection and application state of recipes for the current repo. | |
-| RecipeApply | Execute a recipe to inject canonical configuration and upstream glue. | |
+1. Detects host CLIs (claude / codex / gemini / opencode / hermes).
+2. Offers to install missing bridges (Claude Code marketplace plugins for codex / gemini, binary checks for opencode / hermes).
+3. **Registers clawtool as an MCP server in every detected host** (codex / gemini / opencode) — points each at the persistent shared daemon. This is the fan-in step: every host dials one daemon, not a per-host stdio child.
+4. Generates a BIAM identity (Ed25519 keypair, mode 0600) for `clawtool send --async`.
+5. Records telemetry consent.
+6. Optional: drops repo-level recipes via `clawtool init`.
 
 ## Architecture
 
 ```
-agent (Claude / Codex / Gemini / Opencode)
-    │  MCP (stdio)
+hosts (claude / codex / gemini / opencode / hermes)
+    │  MCP — stdio (Claude Code) or HTTP (codex/gemini via `mcp add --url`)
     ▼
-clawtool serve
-├── core tools (Bash, Read, Edit, ...)        ← timeout-safe / structured / format-aware
-├── BIAM dispatch + TaskNotify fan-in         ← async multi-agent supervision
-├── sandbox profiles (bwrap / sandbox-exec / docker)
-├── portals (saved web-UI targets)
-├── MCP scaffolder (Mcp* tools)
-└── aggregated MCP source servers (github, slack, postgres, …)
+clawtool serve --listen --mcp-http (the daemon)
+    │  bearer auth, WebSocket fan-in
+    │
+    ├── core tools (Bash, Read, Edit, Write, Grep, Glob, WebFetch, …)
+    ├── BIAM dispatch + TaskNotify fan-in (Ed25519, SQLite)
+    ├── secrets injection (per-instance API keys)
+    ├── sandbox profiles (bwrap / sandbox-exec / docker)
+    ├── portals (saved web-UI targets)
+    ├── aggregated MCP source servers (github, slack, postgres, …)
+    │
+    └── (optional) sandbox-worker fan-out
+        │  WebSocket dial, bearer auth
+        ▼
+        clawtool sandbox-worker (in a gVisor / docker container)
+            ├── exec / read / write / glob / grep handlers
+            ├── /workspace mount + path-jail (host paths invisible)
+            └── HTTP_PROXY → clawtool egress (allowlist; 403 deny)
 ```
 
-clawtool operates as a centralized tool and agent supervisor. It aggregates native capabilities, third-party MCP sources, and other coding-agent CLIs into a single, cohesive surface. By wrapping every operation in a timeout-safe and structured-output layer, clawtool ensures that agents never hang on a shell child and always receive parseable responses.
+The asymmetry that matters: **the orchestrator dials the worker, not the reverse.** clawtool's daemon owns connection lifetimes for both legs — hosts dial the daemon, the daemon dials the worker. This is the canonical sandbox shape every claude.ai-style mimic converges on. Design context: [wiki/decisions/029-sandbox-worker.md](wiki/decisions/029-sandbox-worker.md).
 
-The project adheres to a **three-plane shipping contract** ([docs/feature-shipping-contract.md](docs/feature-shipping-contract.md)) to maintain consistency across the entire ecosystem. Every new feature or tool must land in three places within the same commit:
-1.  **MCP Plane**: The core logic and tool registration on the MCP server.
-2.  **Marketplace Plane**: The surface area exposed to the Claude Code marketplace (slash commands and manifest).
-3.  **Skill Plane**: The routing-bias and prompt-engineering rows that teach the model how and when to use the new feature.
+The project adheres to a **four-plane shipping contract** ([docs/feature-shipping-contract.md](docs/feature-shipping-contract.md)) — every new feature or tool must land on the MCP plane (core logic + registration), the marketplace plane (slash commands + manifest), the skill plane (SKILL.md routing-map row), and the surface-drift test allowlist (or get a real backing tool). The `TestSurfaceDrift_*` test family enforces this at CI time.
 
-This supervisor-orchestrator pattern allows clawtool to act as the "nervous system" for AI coding agents, wiring together specialized capabilities with a uniform delivery guarantee.
+## What's in the box
+
+### Core tools
+
+| Tool | Capability | Reference |
+|---|---|---|
+| Bash | Shell exec; timeout-safe via process-group SIGKILL; structured JSON; `background=true` for async via BashOutput / BashKill. | [internal/tools/core/bash.go](internal/tools/core/bash.go) |
+| BashOutput | Snapshot of a background Bash task — live stdout / stderr / status / exit_code. | [internal/tools/core/bash_bg_tool.go](internal/tools/core/bash_bg_tool.go) |
+| BashKill | SIGKILL a background Bash task's process group. | [internal/tools/core/bash_bg_tool.go](internal/tools/core/bash_bg_tool.go) |
+| Read | Format-aware (PDF / docx / xlsx / csv / html / ipynb / json / yaml / toml / xml); deterministic line cursors; binary refusal. | [internal/tools/core/read.go](internal/tools/core/read.go) |
+| Edit | Atomic temp+rename; line-ending and BOM preserve; ambiguity guard. | [internal/tools/core/edit.go](internal/tools/core/edit.go) |
+| Write | Atomic write; auto-create parents; Read-before-Write enforcement. | [internal/tools/core/write.go](internal/tools/core/write.go) |
+| Grep | ripgrep first, system grep fallback; .gitignore-aware; multi-pattern. | [internal/tools/core/grep.go](internal/tools/core/grep.go) |
+| Glob | doublestar `**` recursion; .gitignore-aware (toggleable); cross-platform forward-slash output. | [internal/tools/core/glob.go](internal/tools/core/glob.go) |
+| WebFetch | URL → clean article text via Mozilla Readability; SSRF guard; 10 MiB cap. | [internal/tools/core/webfetch.go](internal/tools/core/webfetch.go) |
+| WebSearch | Pluggable backend (Brave / Tavily / SearXNG); secrets-managed API key. | [internal/tools/core/websearch.go](internal/tools/core/websearch.go) |
+| ToolSearch | bleve BM25 ranking across the loaded catalog. | [internal/tools/core/toolsearch.go](internal/tools/core/toolsearch.go) |
+| SemanticSearch | Vector embeddings; lazy index. | [internal/tools/core/semanticsearch.go](internal/tools/core/semanticsearch.go) |
+| Verify | Multi-runner test/lint (Make / pnpm / go / pytest / cargo / just) with log excerpting. | [internal/tools/core/verify.go](internal/tools/core/verify.go) |
+| Commit | Git commit with Conventional Commits validation + Co-Authored-By block + pre_commit rules gate. | [internal/checkpoint/commit.go](internal/checkpoint/commit.go) |
+
+### Multi-agent dispatch
+
+| Tool | Capability | Reference |
+|---|---|---|
+| SendMessage | Forward prompts to claude / codex / gemini / opencode / hermes. `--async` for BIAM, `--unattended` injects the host's elevation flag (claude `--dangerously-skip-permissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini/opencode/hermes `--yolo`). | [internal/agents/supervisor.go](internal/agents/supervisor.go) · [ADR-014](wiki/decisions/014-relay-and-supervisor.md) |
+| AgentList | Snapshot of the supervisor's agent registry. | [internal/tools/core/agents_tool.go](internal/tools/core/agents_tool.go) |
+| TaskGet · TaskWait · TaskList · TaskNotify | BIAM task introspection + edge-triggered fan-in completion. | [internal/agents/biam](internal/agents/biam) · [ADR-015](wiki/decisions/015-biam-protocol.md) |
+
+### Sandbox + worker
+
+| Surface | Capability | Reference |
+|---|---|---|
+| `clawtool serve --listen --mcp-http` | The persistent shared daemon. Bearer-auth WebSocket; hosts dial it. | [internal/server/http.go](internal/server/http.go) |
+| `clawtool daemon start \| stop \| status \| restart \| path \| url` | Lifecycle of the persistent daemon. State at `~/.config/clawtool/daemon.json`. | [internal/daemon/daemon.go](internal/daemon/daemon.go) |
+| `clawtool sandbox-worker --listen :2024` | Worker process inside a docker / runsc container. WebSocket :2024, bearer auth, /workspace mount, path-jail. | [internal/sandbox/worker](internal/sandbox/worker) |
+| `clawtool egress --listen :3128 --allow ...` | HTTP/HTTPS allowlist proxy with CONNECT tunnel. 403 with `x-deny-reason`. | [internal/sandbox/egress](internal/sandbox/egress) |
+| Sandbox profiles | bwrap / sandbox-exec / docker engines. Fail-closed when profile policy can't be enforced. | [internal/sandbox](internal/sandbox) · [ADR-020](wiki/decisions/020-sandbox-feature.md) |
+
+### Rules engine
+
+| Tool | Capability | Reference |
+|---|---|---|
+| RulesCheck | Evaluate `.clawtool/rules.toml` against a Context (event + changed paths + commit message + tool calls). Returns Verdict per rule. | [docs/rules.md](docs/rules.md) · [internal/rules](internal/rules) |
+| RulesAdd | Append a rule to local or user rules.toml — same writer the CLI uses. | [internal/tools/core/rules_add_tool.go](internal/tools/core/rules_add_tool.go) |
+
+### Authoring scaffolders
+
+| Tool | Capability | Reference |
+|---|---|---|
+| AgentNew | Scaffold a Claude Code subagent persona. | [internal/agentgen](internal/agentgen) |
+| SkillNew | Generate an agentskills.io-standard skill folder. | [internal/skillgen](internal/skillgen) |
+| SkillList · SkillLoad | On-demand skill discovery + content load (claude.ai `/mnt/skills/public` mimic). | [internal/tools/core/skill_load_tool.go](internal/tools/core/skill_load_tool.go) |
+| McpList / McpNew / McpRun / McpBuild / McpInstall | MCP server scaffolder, runner, builder, installer (Go / Python / TypeScript). | [internal/mcpgen](internal/mcpgen) · [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
+
+### Browser + Portal
+
+| Tool | Capability | Reference |
+|---|---|---|
+| BrowserFetch · BrowserScrape | Headless browser via Obscura (CDP). | [internal/portal](internal/portal) |
+| Portal* | Saved web-UI targets — `PortalAsk` drives login flow → predicate → response extraction. | [ADR-018](wiki/decisions/018-portal-feature.md) |
+
+### Bridges + Recipes
+
+| Tool | Capability | Reference |
+|---|---|---|
+| BridgeList · BridgeAdd · BridgeRemove · BridgeUpgrade | Install canonical bridges (codex-plugin-cc, gemini-plugin-cc, opencode acp, hermes-agent). | [internal/setup/recipes/bridges](internal/setup/recipes/bridges) · [ADR-014](wiki/decisions/014-relay-and-supervisor.md) |
+| RecipeList · RecipeStatus · RecipeApply | Project-setup recipes (license / codeowners / dependabot / release-please / brain / etc.). | [internal/setup](internal/setup) |
 
 ## Configuration
-- `~/.config/clawtool/config.toml` — The primary configuration file (XDG compliant) where you manage core tool status, source instances, agent supervisor policies, and global hooks.
-- `~/.config/clawtool/secrets.toml` — A dedicated, mode-0600 credential store for API keys, database passwords, and OAuth tokens. Keeping secrets separate allows `config.toml` to be safely committed to public dotfile repositories.
-- `~/.local/share/clawtool/biam.db` — The persistent SQLite database for the Bidirectional Inter-Agent Messaging (BIAM) protocol, storing task status, message history, and signed Ed25519 identity envelopes.
-- `./.clawtool/<name>.toml` — Project-scoped overrides and metadata markers (e.g., `mcp.toml`, `brain.toml`) used for repository-specific sandbox profiles, portals, and authoring state.
 
-You can inspect and troubleshoot your environment using the diagnostic suite: `clawtool doctor` for a general host health check, `clawtool tools list` for per-selector tool resolution, `clawtool source check` for credential verification, and `clawtool sandbox show <profile>` to see active isolation constraints.
+| Path | Purpose |
+|---|---|
+| `~/.config/clawtool/config.toml` | Primary config (XDG). Tool toggles, sources, agents, dispatch policy, sandbox profiles, `[sandbox_worker]` block. |
+| `~/.config/clawtool/secrets.toml` | Mode-0600 credential store for API keys / OAuth tokens / DB passwords. |
+| `~/.config/clawtool/daemon.json` | Persistent daemon state (pid, port, started_at, token_file, log_file). |
+| `~/.config/clawtool/listener-token` | Bearer token shared between hosts and the daemon. Mode 0600. |
+| `~/.config/clawtool/worker-token` | Bearer token shared between daemon and sandbox-worker. |
+| `~/.config/clawtool/identity.ed25519` | BIAM identity keypair (mode 0600). |
+| `~/.local/share/clawtool/biam.db` | SQLite task store (Ed25519-signed envelopes, status, history). |
+| `~/.local/state/clawtool/daemon.log` | Daemon stdout/stderr log. |
+| `./.clawtool/rules.toml` | Project-scoped rules (predicate → verdict). |
+| `./.clawtool/<name>.toml` | Project markers (mcp / brain / etc.). |
+
+Diagnostic surfaces: `clawtool overview` (one-screen status), `clawtool doctor` (deep diagnostic with fix hints), `clawtool dashboard` (live Bubble Tea TUI), `clawtool sandbox doctor` (engine availability), `clawtool source check` (credential verification).
+
+## Sandbox-worker quick path
+
+```bash
+# 1. Generate the worker bearer token
+clawtool sandbox-worker --init-token
+
+# 2. Build the worker image (one-time)
+docker build -f Dockerfile.worker -t clawtool-worker:0.21 .
+
+# 3. Run the worker container
+docker run --rm \
+    -v "$(pwd)":/workspace \
+    -p 127.0.0.1:2024:2024 \
+    -v "$XDG_CONFIG_HOME/clawtool/worker-token":/etc/worker-token:ro \
+    clawtool-worker:0.21 \
+    sandbox-worker --token-file /etc/worker-token
+
+# 4. (Optional) Run the egress allowlist proxy
+clawtool egress --listen :3128 --allow .openai.com,.anthropic.com,.github.com &
+
+# 5. Tell the daemon to route through the worker
+cat >> ~/.config/clawtool/config.toml <<'EOF'
+[sandbox_worker]
+mode = "container"
+url  = "ws://127.0.0.1:2024/ws"
+EOF
+clawtool daemon restart
+```
+
+After this, every Bash tool call (from any host — claude / codex / gemini) executes inside the worker container, behind the egress allowlist, with model-generated code never touching the operator's host process.
 
 ## Roadmap
-- **Checkpoint feature — phase 2+** (drafting) — Autocommit on `wip/<session>` branches, snapshot/restore via `refs/clawtool/checkpoints/<id>` namespace, dirty-tree guard middleware around risky Bash/Edit/Write. (Phase 1 — `Commit` core tool with Conventional Commits + Co-Authored-By block + rules gate — ships in v0.20.0.)
-- **Unattended mode v1.1** (planned) — Per-instance flag elevation in the transport layer (`--dangerously-skip-permissions` injection on the claude transport, equivalent on codex/aider/plandex/hermes), self-paced wake-up via `ScheduleWakeup`-style scheduling, watch-event resumption (PR merged, CI failed, file changed). v1 (CLI flag + per-repo trust + JSONL audit + disclosure panel) ships in v0.20.0.
-- **A2A networking** (planned) — Agent2Agent protocol (Linux Foundation / Google), mDNS LAN discovery, Tailscale tsnet for cross-WAN, capability tier model with default-deny per peer.
-- **Tool Manifest Registry refactor** (planned) — Consolidation of hand-maintained tool registrations into a typed registry. Drift detection foundation already lands in v0.20.0; the full registry collapse follows.
-- **Aider + Goose bridges** (radar) — Candidates for the v0.21 bridge family expansion. Hermes-agent (NousResearch) ships as the fifth callable family in v0.20.0.
+
+- **Cross-host BIAM identity routing** (#196) — per-call `from_instance` parameter on `SendMessage` so codex / gemini / claude can mutually notify each other through the shared daemon. Tasarım turu pending.
+- **Onboarding state machine** (#194, ADR-027) — collapse `init` + `onboard` into one engine; per-feature opt-in matrix; verify-summary at the end (`send --list`, `bridge list`, `source check`, `sandbox doctor`).
+- **Task watch v2** (#185) — Unix socket push from BIAM runner to consumers; eliminates the 250ms poll.
+- **Orchestrator multi-pane TUI** (#191) — live byte-by-byte stdout streaming per dispatched CLI agent. Designed in [ADR-028](wiki/decisions/028-orchestrator-tui.md), implementation pending.
+- **Sandbox-worker phase 2 follow-up** — Read/Edit/Write routing through the worker (Phase 2 covered Bash); per-conversation ephemeral workers; gVisor `runsc` runtime selection wired into the docker engine adapter.
 
 ## Contributing
-Refer to [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/feature-shipping-contract.md](docs/feature-shipping-contract.md) for development guidelines.
 
-We strictly enforce the no-Co-Authored-By rule for AI agents and require all changes to satisfy the three-plane review checklist.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/feature-shipping-contract.md](docs/feature-shipping-contract.md). The four-plane review checklist is enforced by CI; commits append no `Co-Authored-By` trailer for AI agents.
 
 ## License
+
 [MIT](LICENSE)

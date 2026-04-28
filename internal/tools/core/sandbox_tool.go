@@ -35,7 +35,7 @@ func (r sandboxListResult) Render() string {
 	}
 	var b strings.Builder
 	if len(r.Profiles) == 0 {
-		b.WriteString("(no sandbox profiles configured — see ADR-020)\n")
+		b.WriteString("(no sandbox profiles configured — see docs/sandbox.md)\n")
 	} else {
 		fmt.Fprintf(&b, "%d profile(s) (engine: %s)\n\n", len(r.Profiles), r.Engine)
 		fmt.Fprintf(&b, "  %-28s %s\n", "PROFILE", "DESCRIPTION")
@@ -116,9 +116,9 @@ func RegisterSandboxTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"SandboxList",
 			mcp.WithDescription(
-				"List configured sandbox profiles (ADR-020). Returns each "+
-					"profile's name + description and the engine that would "+
-					"run it on this host (bwrap / sandbox-exec / docker / noop).",
+				"List configured sandbox profiles. Returns each profile's name "+
+					"+ description and the engine that would run it on this host "+
+					"(bwrap / sandbox-exec / docker / noop).",
 			),
 		),
 		runSandboxList,

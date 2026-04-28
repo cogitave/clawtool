@@ -25,7 +25,7 @@ func (sandboxExecEngine) Available() bool {
 
 func (sandboxExecEngine) Wrap(_ context.Context, _ *exec.Cmd, _ *Profile) error {
 	return errors.New(
-		"sandbox: sandbox-exec engine ships its .sb profile compiler in " +
-			"v0.18.2 — the surface works today, enforcement follows. ADR-020.",
+		"sandbox: sandbox-exec engine is detected but the .sb profile compiler " +
+			"is not yet implemented — surface works, enforcement is pending.",
 	)
 }

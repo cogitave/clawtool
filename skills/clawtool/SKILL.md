@@ -75,9 +75,9 @@ the routing-target provides.
 | Scaffold a new Claude skill | hand-edit `~/.claude/skills/*/SKILL.md` | `SkillNew` (agentskills.io standard template) |
 | Check operator invariants before committing / ending session | shell out to `git diff` and guess | `RulesCheck` (event=pre_commit / session_end / pre_send + structured Context — returns Verdict with passed/warned/blocked) |
 | Add a new operator rule (e.g. "README must update when X changes") | hand-edit `.clawtool/rules.toml` | `RulesAdd` (validates predicate syntax + scope=local default; ASK operator about local vs user before writing) |
-| Run agents without permission prompts (operator absent) | silently set `--dangerously-skip-permissions` | `clawtool send --unattended` (ADR-023; one-time per-repo disclosure + audit log + hard kill switch). `--yolo` is a deliberate alias. |
+| Run agents without permission prompts (operator absent) | silently set `--dangerously-skip-permissions` | `clawtool send --unattended` (one-time per-repo disclosure + audit log + hard kill switch). `--yolo` is a deliberate alias. |
 | Inspect this instance's A2A Agent Card (peer discovery contract) | hand-write JSON | `clawtool a2a card` (Schema v0.2.x, Linux Foundation A2A. Phase 1: card-only mode — no HTTP/mDNS yet) |
-| See BIAM dispatch progress as inline chat events | poll `TaskGet` repeatedly | `clawtool task watch --all` paired with Monitor tool (`persistent: true`). Each stdout line = one state transition. Use `task watch <id>` for a single task. ADR-026. |
+| See BIAM dispatch progress as inline chat events | poll `TaskGet` repeatedly | `clawtool task watch --all` paired with Monitor tool (`persistent: true`). Each stdout line = one state transition. Use `task watch <id>` for a single task. |
 | Live overhead view of every dispatch + agent + stats | repeated `task list` + `agents` polling | `clawtool dashboard` (alias `clawtool tui`) — Bubble Tea three-pane TUI, 1s refresh. `q` quits. |
 
 If you don't see the intent here, fall back to `ToolSearch` —
@@ -114,9 +114,9 @@ gemini, claude, or hermes**, never opencode.
 
 When the user has run `clawtool source add <name>`, additional tools
 appear with names like `mcp__clawtool__github__create_issue`. The wire
-form is `<instance>__<tool>` (two underscores between instance and tool
-per ADR-006). Treat them as first-class — they're configured by the
-user; they wouldn't be exposed otherwise.
+form is `<instance>__<tool>` — two underscores between instance and
+tool. Treat them as first-class — they're configured by the user;
+they wouldn't be exposed otherwise.
 
 ## Onboarding mode — when the user wants to "set things up"
 

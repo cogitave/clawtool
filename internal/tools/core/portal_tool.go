@@ -79,9 +79,9 @@ func RegisterPortalTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"PortalList",
 			mcp.WithDescription(
-				"List configured web-UI portals (ADR-018). A portal is a "+
-					"named, authenticated browser target with selectors and "+
-					"a 'response done' predicate — `clawtool portal ask "+
+				"List configured web-UI portals. A portal is a named, "+
+					"authenticated browser target with selectors and a "+
+					"'response done' predicate — `clawtool portal ask "+
 					"<name> \"prompt\"` drives it through Obscura. Returns "+
 					"the registry; cookie material lives in secrets.toml "+
 					"and never appears in this response.",
@@ -360,7 +360,7 @@ func RegisterPortalAliases(s *server.MCPServer, cfg config.Config) {
 				mcp.WithDescription(fmt.Sprintf(
 					"Ask the %q portal (%s). Thin wrapper over PortalAsk; "+
 						"selectors / cookies / predicates resolved from "+
-						"saved config. ADR-018.",
+						"saved config.",
 					name, p.BaseURL)),
 				mcp.WithString("prompt", mcp.Required(),
 					mcp.Description("Prompt to send through the portal's input selector.")),

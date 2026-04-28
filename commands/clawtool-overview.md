@@ -19,7 +19,7 @@ Output shape:
 clawtool 0.21.6
 
 daemon          ✓  pid 4895    at http://127.0.0.1:41517/mcp
-sandbox-worker  ·  mode=off          (host execution; ADR-029 to opt in)
+sandbox-worker  ·  mode=off          (host execution; flip [sandbox_worker] mode to opt in)
 
 agents:
   ✓  claude-code    Bash,Edit,Glob,Grep,Read,WebF…

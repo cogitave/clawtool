@@ -86,9 +86,9 @@ func RegisterVerify(s *server.MCPServer) {
 				"structured pass/fail per check. Probes Make, pnpm, npm, go "+
 				"test, pytest, ruby, cargo, just in that order; first match "+
 				"wins. Pin via target. Buffered single payload — for streaming "+
-				"output use Bash with the underlying command. Per ADR-007 it "+
-				"wraps the upstream runners; clawtool ships the polish "+
-				"(timeout reaping, structured JSON, log excerpt cap).",
+				"output use Bash with the underlying command. Wraps the upstream "+
+				"runners; clawtool ships the polish (timeout reaping, structured "+
+				"JSON, log excerpt cap).",
 		),
 		mcp.WithString("repo", mcp.Required(),
 			mcp.Description("Path to the repo root.")),

@@ -17,10 +17,6 @@ const upgradeUsage = `Usage:
 
 The release source is github.com/cogitave/clawtool — same artefacts
 GoReleaser publishes on tag. Per-OS / per-arch tarballs auto-resolved.
-
-Per ADR-007 we wrap creativeprojects/go-selfupdate (Apache-2.0); we
-do not implement the GitHub API client or the atomic-replace logic
-ourselves.
 `
 
 func (a *App) runUpgrade(argv []string) int {

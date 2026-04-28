@@ -81,7 +81,7 @@ func RegisterMcpTools(s *server.MCPServer) {
 			mcp.WithDescription(
 				"List MCP server projects under the given root (default cwd). "+
 					"A project is detected via the `.clawtool/mcp.toml` marker "+
-					"`clawtool mcp new` writes. ADR-019.",
+					"`clawtool mcp new` writes.",
 			),
 			mcp.WithString("root",
 				mcp.Description("Search root path. Defaults to the server's cwd.")),
@@ -93,12 +93,12 @@ func RegisterMcpTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"McpNew",
 			mcp.WithDescription(
-				"Scaffold a new MCP server project (ADR-019). Per ADR-007 "+
-					"each language wraps the canonical SDK: Go via mark3labs/mcp-go, "+
-					"Python via fastmcp, TypeScript via @modelcontextprotocol/sdk. "+
-					"Result lives at <output>/<name>/. .claude-plugin/ is opt-in via "+
-					"the plugin flag. Tool definitions ship a single starter — the "+
-					"agent edits the generated source to add more.",
+				"Scaffold a new MCP server project. Each language wraps the "+
+					"canonical SDK: Go via mark3labs/mcp-go, Python via fastmcp, "+
+					"TypeScript via @modelcontextprotocol/sdk. Result lives at "+
+					"<output>/<name>/. .claude-plugin/ is opt-in via the plugin "+
+					"flag. Tool definitions ship a single starter — the agent "+
+					"edits the generated source to add more.",
 			),
 			mcp.WithString("name", mcp.Required(),
 				mcp.Description("Project name. kebab-case [a-z0-9][a-z0-9-]{1,63}.")),
@@ -125,11 +125,10 @@ func RegisterMcpTools(s *server.MCPServer) {
 	for _, verb := range []string{"Run", "Build", "Install"} {
 		boundVerb := verb
 		hint := fmt.Sprintf(
-			"clawtool MCP scaffolder — %s verb (ADR-019). This operation "+
-				"runs in the operator's shell because it touches the filesystem "+
-				"+ language toolchain (make / npm / pip / docker). Use "+
-				"`clawtool mcp %s <path>` instead. Calling this MCP tool "+
-				"surfaces the same hint.",
+			"clawtool MCP scaffolder — %s verb. This operation runs in the "+
+				"operator's shell because it touches the filesystem + language "+
+				"toolchain (make / npm / pip / docker). Use `clawtool mcp %s "+
+				"<path>` instead. Calling this MCP tool surfaces the same hint.",
 			strings.ToLower(verb), strings.ToLower(verb))
 		s.AddTool(
 			mcp.NewTool(

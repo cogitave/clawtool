@@ -97,7 +97,7 @@ func runPortalAddWizardWithDeps(ctx context.Context, name string, d wizardDeps) 
 				"Chrome opens, log in to the portal as you normally would.\n"+
 				"clawtool watches via the DevTools Protocol and reads cookies\n"+
 				"once you say you're done. Runtime requests use Obscura\n"+
-				"headless. ADR-017 / ADR-018."),
+				"headless."),
 		huh.NewInput().
 			Title("Portal URL").
 			Description("e.g. https://chat.deepseek.com/").

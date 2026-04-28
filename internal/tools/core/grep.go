@@ -82,7 +82,7 @@ func RegisterGrep(s *server.MCPServer) {
 		mcp.WithNumber("context_after",
 			mcp.Description("Lines of source context AFTER each hit (`rg -A`). Default 0.")),
 		mcp.WithString("patterns",
-			mcp.Description("Newline-separated additional patterns OR-ed with `pattern`. Lets the agent find a definition AND its callers in one turn (ADR-021 phase B).")),
+			mcp.Description("Newline-separated additional patterns OR-ed with `pattern`. Lets the agent find a definition AND its callers in one turn.")),
 	)
 	s.AddTool(tool, runGrep)
 }
