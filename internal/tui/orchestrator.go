@@ -43,11 +43,12 @@ import (
 )
 
 const (
-	orchTickInterval   = 500 * time.Millisecond
-	orchPaneCloseAfter = 30 * time.Minute // keep terminal panes browsable in the Done tab
-	orchFrameRingMax   = 500              // ringbuffer cap per task
-	orchOrderCap       = 200              // hard cap on tracked tasks — protects against snapshot floods on reconnect
-	sidebarWidth       = 28
+	orchTickInterval    = 500 * time.Millisecond
+	orchPaneCloseAfter  = 30 * time.Minute // keep terminal panes browsable in the Done tab
+	orchFrameRingMax    = 500              // ringbuffer cap per task
+	orchOrderCap        = 200              // hard cap on tracked tasks — protects against snapshot floods on reconnect
+	orchSystemBannerTTL = 30 * time.Second // how long a SystemNotification stays visible after arrival
+	sidebarWidth        = 28
 )
 
 // orchTab enumerates the two sidebar sections. Active tasks (pending
@@ -83,6 +84,14 @@ type OrchModel struct {
 	err     error
 	connAt  time.Time
 	frameCt int
+
+	// systemBanner is the most-recent SystemNotification the
+	// daemon broadcast (e.g. "clawtool update available") plus
+	// the timestamp it arrived. We render it inline above the
+	// sidebar/detail panes for orchSystemBannerTTL, then it
+	// auto-fades — operator either clicked the action or moved on.
+	systemBanner   *biam.SystemNotification
+	systemBannerAt time.Time
 
 	theme *theme.Theme
 }
@@ -249,6 +258,17 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, watchReadCmd(msg.dec, msg.conn)
 
+	case watchSystemMsg:
+		// Latch the banner; the ticker will sweep it after
+		// orchSystemBannerTTL. Replacing on every event means
+		// a fresher notification (e.g. update_available with a
+		// new tag) overwrites the older one — the operator
+		// always sees the most-recent system event.
+		n := msg.notification
+		m.systemBanner = &n
+		m.systemBannerAt = time.Now()
+		return m, watchReadCmd(msg.dec, msg.conn)
+
 	case watchClosedMsg:
 		m.err = fmt.Errorf("watch socket disconnected — press r to reconnect")
 		return m, nil
@@ -259,6 +279,11 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (only terminal rows have a non-zero terminal stamp).
 		// Re-pick cursor when the selected task disappears.
 		now := time.Now()
+		// Fade the system banner past TTL.
+		if m.systemBanner != nil && now.Sub(m.systemBannerAt) > orchSystemBannerTTL {
+			m.systemBanner = nil
+			m.systemBannerAt = time.Time{}
+		}
 		removed := false
 		newOrder := make([]string, 0, len(m.order))
 		selID := m.selectedTaskID()
@@ -454,7 +479,48 @@ func (m OrchModel) View() string {
 	detail := m.renderDetail()
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, detail)
+
+	// System banner sits between header and body when active, so
+	// it doesn't disturb the panes' geometry — they each compute
+	// their height from m.height-7, and the banner adds at most
+	// one row whose height is included in the global total via
+	// JoinVertical's natural sum.
+	if banner := m.renderSystemBanner(); banner != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, header, banner, body, footer)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
+}
+
+// renderSystemBanner returns the inline banner row for the most
+// recent SystemNotification, or empty when no banner is active.
+// Width matches the terminal so the pill fills the line.
+func (m *OrchModel) renderSystemBanner() string {
+	if m.systemBanner == nil {
+		return ""
+	}
+	t := m.theme
+	style := t.HeaderBar
+	switch m.systemBanner.Severity {
+	case "warning":
+		style = t.HeaderBar.Foreground(t.Warning.GetForeground())
+	case "error":
+		style = t.HeaderBar.Foreground(t.Error.GetForeground())
+	}
+	icon := "📦"
+	switch m.systemBanner.Kind {
+	case "warning":
+		icon = "⚠"
+	case "error":
+		icon = "✘"
+	}
+	row := icon + " " + m.systemBanner.Title
+	if m.systemBanner.ActionHint != "" {
+		row += "  " + t.Dim.Render("→ "+m.systemBanner.ActionHint)
+	}
+	if m.width > 0 {
+		return style.Width(m.width).Render(row)
+	}
+	return style.Render(row)
 }
 
 func (m *OrchModel) renderHeader() string {
@@ -689,6 +755,11 @@ func readNextOrchEnvelope(dec *json.Decoder, conn net.Conn) tea.Msg {
 				continue
 			}
 			return watchFrameMsg{frame: *env.Frame, dec: dec, conn: conn}
+		case "system":
+			if env.System == nil {
+				continue
+			}
+			return watchSystemMsg{notification: *env.System, dec: dec, conn: conn}
 		}
 	}
 }
@@ -698,6 +769,14 @@ type watchFrameMsg struct {
 	frame biam.StreamFrame
 	dec   *json.Decoder
 	conn  net.Conn
+}
+
+// watchSystemMsg carries a daemon-level notification (e.g. update
+// available) the WatchHub broadcasts independent of any task.
+type watchSystemMsg struct {
+	notification biam.SystemNotification
+	dec          *json.Decoder
+	conn         net.Conn
 }
 
 func orchTickCmd() tea.Cmd {
