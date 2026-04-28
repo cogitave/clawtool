@@ -5,7 +5,14 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.6] - 2026-04-28
+## [0.22.7] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.6 [skip ci] (651a232)
+### Features
+
+- **plugin:** SessionStart surfaces "clawtool update available" when newer release ships (2216e97)## [0.22.6] - 2026-04-28
 
 ### Documentation
 
