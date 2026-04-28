@@ -30,8 +30,8 @@ func (clawtoolRelayRecipe) Meta() setup.RecipeMeta {
 	return setup.RecipeMeta{
 		Name:        "clawtool-relay",
 		Category:    setup.CategoryRuntime,
-		Description: "Drop a docker-compose file that runs clawtool's HTTP gateway (POST /v1/send_message + bearer-token auth) plus an optional caddy reverse proxy. Per ADR-014 Phase 3.",
-		Upstream:    "https://github.com/cogitave/clawtool/blob/main/wiki/decisions/014-clawtool-relay-and-cli-multiplexer.md",
+		Description: "Drop a docker-compose file that runs clawtool's HTTP gateway (POST /v1/send_message + bearer-token auth) plus an optional caddy reverse proxy.",
+		Upstream:    "https://github.com/cogitave/clawtool/blob/main/docs/http-api.md",
 		Stability:   setup.StabilityBeta,
 	}
 }

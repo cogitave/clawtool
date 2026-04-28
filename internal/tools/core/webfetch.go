@@ -68,7 +68,7 @@ func RegisterWebFetch(s *server.MCPServer) {
 		mcp.WithNumber("timeout_ms",
 			mcp.Description("Request timeout in milliseconds. Default 30000, max 120000.")),
 		mcp.WithBoolean("allow_private",
-			mcp.Description("Bypass the SSRF guard and allow fetching private / loopback / link-local / cloud-metadata addresses. Default false. Use only when fetching from localhost (e.g. local dev server) is the actual intent. ADR-021 phase B.")),
+			mcp.Description("Bypass the SSRF guard and allow fetching private / loopback / link-local / cloud-metadata addresses. Default false. Use only when fetching from localhost (e.g. local dev server) is the actual intent.")),
 	)
 	s.AddTool(tool, runWebFetch)
 }
