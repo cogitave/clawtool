@@ -5,7 +5,7 @@ cookies, CSS selectors, and a "response done" predicate — that
 clawtool can drive on your behalf so an MCP-aware agent can ask it
 questions like any other agent.
 
-> Portals are a **Tool surface, not a Transport** (ADR-017). The
+> Portals are a **Tool surface, not a Transport**. The
 > supervisor still only dispatches to upstreams that publish a stable
 > headless contract (claude / codex / opencode / gemini). Portals
 > live next to BrowserFetch / BrowserScrape and are explicitly
@@ -235,9 +235,6 @@ non-empty last message).
 
 ## Cross-references
 
-- ADR-017 (`wiki/decisions/017-browser-tools-not-transport.md`) —
-  why portals are Tools, not Transports.
-- ADR-018 (`wiki/decisions/018-portal-feature.md`) — the full design.
 - `docs/browser-tools.md` — `BrowserFetch` / `BrowserScrape`
   surface, install instructions for Obscura.
 - `docs/http-api.md` — running the same surface over HTTP via

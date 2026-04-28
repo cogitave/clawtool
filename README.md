@@ -120,7 +120,7 @@ clawtool serve --listen --mcp-http (the daemon)
             └── HTTP_PROXY → clawtool egress (allowlist; 403 deny)
 ```
 
-The asymmetry that matters: **the orchestrator dials the worker, not the reverse.** clawtool's daemon owns connection lifetimes for both legs — hosts dial the daemon, the daemon dials the worker. This is the canonical sandbox shape every claude.ai-style mimic converges on. Design context: [wiki/decisions/029-sandbox-worker.md](wiki/decisions/029-sandbox-worker.md).
+The asymmetry that matters: **the orchestrator dials the worker, not the reverse.** clawtool's daemon owns connection lifetimes for both legs — hosts dial the daemon, the daemon dials the worker. This is the canonical sandbox shape every claude.ai-style mimic converges on.
 
 The project adheres to a **four-plane shipping contract** ([docs/feature-shipping-contract.md](docs/feature-shipping-contract.md)) — every new feature or tool must land on the MCP plane (core logic + registration), the marketplace plane (slash commands + manifest), the skill plane (SKILL.md routing-map row), and the surface-drift test allowlist (or get a real backing tool). The `TestSurfaceDrift_*` test family enforces this at CI time.
 
@@ -149,9 +149,9 @@ The project adheres to a **four-plane shipping contract** ([docs/feature-shippin
 
 | Tool | Capability | Reference |
 |---|---|---|
-| SendMessage | Forward prompts to claude / codex / gemini / opencode / hermes. `--async` for BIAM, `--unattended` injects the host's elevation flag (claude `--dangerously-skip-permissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini/opencode/hermes `--yolo`). | [internal/agents/supervisor.go](internal/agents/supervisor.go) · [ADR-014](wiki/decisions/014-relay-and-supervisor.md) |
+| SendMessage | Forward prompts to claude / codex / gemini / opencode / hermes. `--async` for BIAM, `--unattended` injects the host's elevation flag (claude `--dangerously-skip-permissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini/opencode/hermes `--yolo`). | [internal/agents/supervisor.go](internal/agents/supervisor.go) |
 | AgentList | Snapshot of the supervisor's agent registry. | [internal/tools/core/agents_tool.go](internal/tools/core/agents_tool.go) |
-| TaskGet · TaskWait · TaskList · TaskNotify | BIAM task introspection + edge-triggered fan-in completion. | [internal/agents/biam](internal/agents/biam) · [ADR-015](wiki/decisions/015-biam-protocol.md) |
+| TaskGet · TaskWait · TaskList · TaskNotify | BIAM task introspection + edge-triggered fan-in completion. | [internal/agents/biam](internal/agents/biam) |
 
 ### Sandbox + worker
 
@@ -161,7 +161,7 @@ The project adheres to a **four-plane shipping contract** ([docs/feature-shippin
 | `clawtool daemon start \| stop \| status \| restart \| path \| url` | Lifecycle of the persistent daemon. State at `~/.config/clawtool/daemon.json`. | [internal/daemon/daemon.go](internal/daemon/daemon.go) |
 | `clawtool sandbox-worker --listen :2024` | Worker process inside a docker / runsc container. WebSocket :2024, bearer auth, /workspace mount, path-jail. | [internal/sandbox/worker](internal/sandbox/worker) |
 | `clawtool egress --listen :3128 --allow ...` | HTTP/HTTPS allowlist proxy with CONNECT tunnel. 403 with `x-deny-reason`. | [internal/sandbox/egress](internal/sandbox/egress) |
-| Sandbox profiles | bwrap / sandbox-exec / docker engines. Fail-closed when profile policy can't be enforced. | [internal/sandbox](internal/sandbox) · [ADR-020](wiki/decisions/020-sandbox-feature.md) |
+| Sandbox profiles | bwrap / sandbox-exec / docker engines. Fail-closed when profile policy can't be enforced. | [internal/sandbox](internal/sandbox) |
 
 ### Rules engine
 
@@ -177,20 +177,20 @@ The project adheres to a **four-plane shipping contract** ([docs/feature-shippin
 | AgentNew | Scaffold a Claude Code subagent persona. | [internal/agentgen](internal/agentgen) |
 | SkillNew | Generate an agentskills.io-standard skill folder. | [internal/skillgen](internal/skillgen) |
 | SkillList · SkillLoad | On-demand skill discovery + content load (claude.ai `/mnt/skills/public` mimic). | [internal/tools/core/skill_load_tool.go](internal/tools/core/skill_load_tool.go) |
-| McpList / McpNew / McpRun / McpBuild / McpInstall | MCP server scaffolder, runner, builder, installer (Go / Python / TypeScript). | [internal/mcpgen](internal/mcpgen) · [ADR-019](wiki/decisions/019-mcp-authoring-scaffolder.md) |
+| McpList / McpNew / McpRun / McpBuild / McpInstall | MCP server scaffolder, runner, builder, installer (Go / Python / TypeScript). | [internal/mcpgen](internal/mcpgen) |
 
 ### Browser + Portal
 
 | Tool | Capability | Reference |
 |---|---|---|
 | BrowserFetch · BrowserScrape | Headless browser via Obscura (CDP). | [internal/portal](internal/portal) |
-| Portal* | Saved web-UI targets — `PortalAsk` drives login flow → predicate → response extraction. | [ADR-018](wiki/decisions/018-portal-feature.md) |
+| Portal* | Saved web-UI targets — `PortalAsk` drives login flow → predicate → response extraction. | [internal/portal](internal/portal) |
 
 ### Bridges + Recipes
 
 | Tool | Capability | Reference |
 |---|---|---|
-| BridgeList · BridgeAdd · BridgeRemove · BridgeUpgrade | Install canonical bridges (codex-plugin-cc, gemini-plugin-cc, opencode acp, hermes-agent). | [internal/setup/recipes/bridges](internal/setup/recipes/bridges) · [ADR-014](wiki/decisions/014-relay-and-supervisor.md) |
+| BridgeList · BridgeAdd · BridgeRemove · BridgeUpgrade | Install canonical bridges (codex-plugin-cc, gemini-plugin-cc, opencode acp, hermes-agent). | [internal/setup/recipes/bridges](internal/setup/recipes/bridges) |
 | RecipeList · RecipeStatus · RecipeApply | Project-setup recipes (license / codeowners / dependabot / release-please / brain / etc.). | [internal/setup](internal/setup) |
 
 ## Configuration
@@ -253,8 +253,8 @@ After this, every Bash tool call (from any host — claude / codex / gemini) exe
 
 ## Roadmap
 
-- **Cross-host BIAM identity routing** (#196) — per-call `from_instance` parameter on `SendMessage` so codex / gemini / claude can mutually notify each other through the shared daemon.
-- **Onboarding state machine** (#194, ADR-027) — collapse `init` + `onboard` into one engine; per-feature opt-in matrix; verify-summary at the end (`send --list`, `bridge list`, `source check`, `sandbox doctor`). The v0.22.13–v0.22.18 nudge + auto-launch + telemetry-verb bundle covers the *discovery* half; the engine collapse is what's left.
+- **Cross-host BIAM identity routing** — per-call `from_instance` parameter on `SendMessage` so codex / gemini / claude can mutually notify each other through the shared daemon.
+- **Onboarding state machine** — collapse `init` + `onboard` into one engine; per-feature opt-in matrix; verify-summary at the end (`send --list`, `bridge list`, `source check`, `sandbox doctor`). The v0.22.13–v0.22.18 nudge + auto-launch + telemetry-verb bundle covers the *discovery* half; the engine collapse is what's left.
 - **Sandbox-worker phase 2 follow-up** — Read/Edit/Write routing through the worker (Phase 2 covered Bash); per-conversation ephemeral workers; gVisor `runsc` runtime selection wired into the docker engine adapter.
 
 ## Contributing

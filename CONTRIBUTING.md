@@ -1,6 +1,6 @@
 # Contributing to clawtool
 
-Thanks for considering a contribution. clawtool is a small focused tool — keeping it that way is a feature, not an oversight. Read [ADR-009](wiki/decisions/009-versioning-policy-and-tooling.md) for the versioning policy and [ADR-007](wiki/decisions/007-leverage-best-in-class-not-reinvent.md) for the engineering discipline before opening a non-trivial PR.
+Thanks for considering a contribution. clawtool is a small focused tool — keeping it that way is a feature, not an oversight. Two non-negotiables before opening a non-trivial PR: (1) we are pre-1.0; patch bumps are the default and breaking changes go in minor bumps with a documented migration, and (2) we **wrap, don't reinvent** — every new core tool must adopt an existing best-in-class engine (ripgrep / pandoc / pdftotext / bleve / …) rather than ship a from-scratch implementation.
 
 ## Quickstart
 
@@ -33,7 +33,7 @@ Every commit subject must match the [Conventional Commits 1.0](https://www.conve
 | `fix` | Bug fix. |
 | `perf` | Performance improvement with no behavioral change. |
 | `refactor` | Internal restructure with no behavioral change. |
-| `docs` | Docs (README, wiki, ADRs, comments) only. |
+| `docs` | Docs (README, comments) only. |
 | `test` | Test code only. |
 | `build` | Build / release / Makefile / GoReleaser / CI scripts. |
 | `ci` | GitHub Actions workflow only. |
@@ -41,13 +41,13 @@ Every commit subject must match the [Conventional Commits 1.0](https://www.conve
 | `style` | Formatting / whitespace; no logic change. |
 | `revert` | Reverts an earlier commit (subject keeps the original under "Reverts:"). |
 
-Use `!` after the scope to mark a breaking change (e.g. `feat(tools)!: rename cwd to working_dir`). Breaking changes are minor-version bumps (per ADR-009) until v1.0.
+Use `!` after the scope to mark a breaking change (e.g. `feat(tools)!: rename cwd to working_dir`). Breaking changes are minor-version bumps until v1.0.
 
 The `commit-format` job in `.github/workflows/ci.yml` enforces this on every PR title.
 
 ## Versioning — patches by default
 
-Per ADR-009, until clawtool reaches v1.0:
+Until clawtool reaches v1.0:
 
 - **Patch (`x.y.Z`)** for non-breaking adds (new tool, new format, new source backend, fix). Default.
 - **Minor (`x.Y.0`)** only for breaking changes to existing tool surface.
@@ -77,13 +77,12 @@ The CI matrix runs unit + e2e on Linux + macOS. If a test relies on a binary the
 
 ## Adding a new core tool
 
-1. Identify the upstream engine (ADR-007: wrap, don't reinvent).
-2. Add the row to [Canonical Tool Implementations Survey](wiki/sources/canonical-tool-implementations-survey-2026-04-26.md) with status "Adopted vX.Y.Z".
-3. Implement under `internal/tools/core/<tool>.go` using the shared polish layer (`engines.go`, `atomic.go`).
-4. Add `RegisterFoo(s)` and wire it in `internal/server/server.go` behind `cfg.IsEnabled("Foo")`.
-5. Add the tool to `KnownCoreTools` in `internal/config/config.go` and append a descriptor to `CoreToolDocs()` in `internal/tools/core/toolsearch.go`.
-6. Tests: `internal/tools/core/<tool>_test.go` + e2e assertions in `test/e2e/run.sh`.
-7. Bump version per ADR-009; commit message starts `feat(tools): add Foo …`.
+1. Identify the upstream engine — wrap an existing best-in-class implementation rather than reinventing.
+2. Implement under `internal/tools/core/<tool>.go` using the shared polish layer (`engines.go`, `atomic.go`).
+3. Add `RegisterFoo(s)` and wire it in `internal/server/server.go` behind `cfg.IsEnabled("Foo")`.
+4. Add the tool to `KnownCoreTools` in `internal/config/config.go` and append a descriptor to `CoreToolDocs()` in `internal/tools/core/toolsearch.go`.
+5. Tests: `internal/tools/core/<tool>_test.go` + e2e assertions in `test/e2e/run.sh`.
+6. Bump version (patch by default); commit message starts `feat(tools): add Foo …`.
 
 ## Adding a new source to the catalog
 
@@ -94,7 +93,7 @@ The CI matrix runs unit + e2e on Linux + macOS. If a test relies on a binary the
 ## Reporting bugs / requesting features
 
 - Bug → file an issue with the `bug` template. Include `clawtool version`, OS, the exact MCP request that misbehaved, and the response body.
-- Feature → `enhancement` template. State which ADR governs the area before proposing.
+- Feature → `enhancement` template.
 - Source request → `source-request` template. Catalog additions are usually trivial; we'll fast-track.
 
 ## Security

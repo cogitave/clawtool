@@ -147,16 +147,6 @@ For agents discovering the surface via `ToolSearch`:
 
 ## Cross-references
 
-- ADR-019 (`wiki/decisions/019-mcp-authoring-scaffolder.md`) —
-  full design + rationale (Codex/Gemini parallel review synthesis).
-- ADR-007 (`wiki/decisions/007-leverage-best-in-class-not-reinvent.md`)
-  — picks the canonical SDK per language; we never write our own
-  MCP wire protocol.
-- ADR-008 (`wiki/decisions/008-curated-source-catalog.md`) —
-  catalog boundary; `mcp install` writes into the same registry
-  the catalog populates.
-- ADR-014 (`wiki/decisions/014-clawtool-relay-and-cli-multiplexer.md`)
-  — `clawtool serve` runtime that consumes the registered source.
 - `docs/portals.md`, `docs/browser-tools.md`, `docs/http-api.md` —
   for custom browser tooling beyond the built-in surface, scaffold
   a dedicated MCP server with `clawtool mcp new`.

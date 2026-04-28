@@ -111,7 +111,7 @@ response back. Body (JSON):
 
 | Field | Meaning |
 | --- | --- |
-| `instance` | Pinned instance name (e.g. `codex1`, `claude-personal`). Empty triggers ADR-014 resolution: `tag` > sticky default > single-callable fallback. |
+| `instance` | Pinned instance name (e.g. `codex1`, `claude-personal`). Empty triggers the supervisor's resolution chain: `tag` > sticky default > single-callable fallback. |
 | `prompt` | Required. Plain text — clawtool does not wrap or templatize. |
 | `tag` | Sugar for `opts.tag`. With `tag` set, dispatch routes via tag-routed policy (any callable instance carrying that tag). |
 | `opts.session_id` | Vendor-specific resume UUID (claude / codex / opencode). Ignored by transports that don't support resume. |

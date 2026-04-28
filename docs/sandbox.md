@@ -1,8 +1,7 @@
 # clawtool Sandbox
 
 `clawtool sandbox` defines per-profile isolation for `clawtool send`
-dispatches. ADR-020 owns the design; this page is the operator-facing
-reference.
+dispatches. This page is the operator-facing reference.
 
 > **Status (v0.18):** surface ships today (`list` / `show` / `doctor`),
 > profile parser is live, engine probes correctly identify bwrap /
@@ -19,8 +18,8 @@ prompt-injection or model-side bug can read `~/.aws/credentials`,
 exfiltrate, wipe disk. Sandbox profiles let the operator opt into
 host-native isolation without touching their dispatch code.
 
-Per ADR-007 we wrap an existing primitive — never reimplement
-seccomp / AppContainer / namespaces.
+We wrap an existing primitive — never reimplement seccomp /
+AppContainer / namespaces.
 
 ## Engines
 
@@ -155,12 +154,6 @@ silently bypassing the sandbox.
 
 ## Cross-references
 
-- ADR-020 (`wiki/decisions/020-sandbox-feature.md`) — full design
-  + Codex/Gemini parallel review synthesis.
-- ADR-007 (`wiki/decisions/007-leverage-best-in-class-not-reinvent.md`)
-  — picks bwrap / sandbox-exec / docker over hand-rolling.
-- ADR-014 (`wiki/decisions/014-clawtool-relay-and-cli-multiplexer.md`)
-  — `clawtool send` runtime that the sandbox wraps.
 - `internal/sandbox/` — package implementation.
 - `docs/portals.md`, `docs/browser-tools.md` — neither composes
   with sandbox in v0.18; portals run in the operator's own

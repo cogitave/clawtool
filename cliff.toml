@@ -1,8 +1,10 @@
 # git-cliff configuration for clawtool.
 #
-# We adopt the Conventional Commits format (per ADR-009). git-cliff
-# parses commit subject prefixes (feat:, fix:, chore: …) and groups
-# them into sections in CHANGELOG.md.
+# Conventional Commits format. git-cliff parses commit subject
+# prefixes (feat:, fix:, chore: …) and groups them into sections in
+# CHANGELOG.md. The commit_preprocessors block strips internal-only
+# refs (ADR-NNN, audit-#NNN, "phase X" tags) from rendered subjects
+# so the public CHANGELOG never surfaces internal doc IDs.
 #
 # Run: `make changelog` (or `git-cliff --output CHANGELOG.md`).
 
@@ -12,8 +14,7 @@ header = """
 
 All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
-project follows [Semantic Versioning](https://semver.org/) — see
-ADR-009 for the policy details.\n
+project follows [Semantic Versioning](https://semver.org/).\n
 """
 body = """
 {% if version -%}
@@ -38,6 +39,15 @@ split_commits = false
 filter_commits = false
 tag_pattern = "v[0-9].*"
 sort_commits = "newest"
+commit_preprocessors = [
+    # Strip "(ADR-NNN[ phase X][, #NNN])" parentheticals.
+    { pattern = '\s*\(ADR-\d+(?:\s+phase\s+\w+)?(?:,\s*#\d+)?\)', replace = "" },
+    # Strip bare "ADR-NNN phase X" / "ADR-NNN" / "audit-#NNN" tokens.
+    { pattern = '\s*—\s*ADR-\d+\s*(?:phase\s+\w+)?', replace = "" },
+    { pattern = '\s*ADR-\d+\s*phase\s+\w+', replace = "" },
+    { pattern = '\s*\bADR-\d+\b', replace = "" },
+    { pattern = '\s*\baudit-#\d+\b', replace = "" },
+]
 commit_parsers = [
     { message = "^feat",     group = "Features" },
     { message = "^fix",      group = "Fixes" },

@@ -1,9 +1,8 @@
 # clawtool rules
 
 Operator-defined invariants enforced by the `internal/rules` engine
-and surfaced via the `RulesCheck` MCP tool. Per ADR-021 (core tools
-polish) and the upcoming ADR-022 (checkpoint), rules give clawtool
-a way to encode "you can't end this session without doing X" without
+and surfaced via the `RulesCheck` MCP tool. Rules give clawtool a way
+to encode "you can't end this session without doing X" without
 hard-coding the policy into individual tools.
 
 ## Where the file lives
