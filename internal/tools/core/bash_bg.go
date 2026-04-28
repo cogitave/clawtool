@@ -169,12 +169,20 @@ func SubmitBackgroundBash(parent context.Context, command, cwd string, timeoutMs
 	// can't OOM the server. We deliberately drop tail bytes when
 	// the cap hits — preferable to summary truncation because the
 	// HEAD of the output usually carries the diagnostic banner.
-	go drainPipe(task, stdoutPipe, &task.stdout)
-	go drainPipe(task, stderrPipe, &task.stderr)
+	var drainWG sync.WaitGroup
+	drainWG.Add(2)
+	go drainPipe(task, stdoutPipe, &task.stdout, &drainWG)
+	go drainPipe(task, stderrPipe, &task.stderr, &drainWG)
 
 	// Wait for the process in a goroutine so Submit returns now.
 	go func() {
 		err := cmd.Wait()
+		// Block until both drain goroutines have flushed every byte
+		// the OS pipe held. Without this join, cmd.Wait can return
+		// (and we can flip status to terminal) while the drainers
+		// are still mid-Read, so a poll racing the goroutine sees
+		// status=done with empty stdout/stderr.
+		drainWG.Wait()
 		task.mu.Lock()
 		task.FinishedAt = time.Now()
 		if err != nil {
@@ -210,9 +218,13 @@ func SubmitBackgroundBash(parent context.Context, command, cwd string, timeoutMs
 // drainPipe streams an io.Reader into buf under the task's lock.
 // Caps total bytes at bashBgBufferCap; once exceeded we silently
 // drop the tail so the task's status field still reflects exit.
+// wg.Done() fires when the pipe closes (process exit + write end
+// closed) — the cmd.Wait goroutine joins on this so terminal
+// status only flips after every byte has been buffered.
 func drainPipe(task *BashTask, r interface {
 	Read(p []byte) (int, error)
-}, buf *bytes.Buffer) {
+}, buf *bytes.Buffer, wg *sync.WaitGroup) {
+	defer wg.Done()
 	tmp := make([]byte, 32*1024)
 	for {
 		n, err := r.Read(tmp)
