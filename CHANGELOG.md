@@ -5,7 +5,14 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.22] - 2026-04-28
+## [0.22.23] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.22 [skip ci] (154fc91)
+### Fixes
+
+- **server:** Kill stdio update_check spam + tag transport on every server.* event (b92783b)## [0.22.22] - 2026-04-28
 
 ### Fixes
 
