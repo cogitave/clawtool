@@ -29,6 +29,7 @@ import (
 
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/setup"
+	"github.com/cogitave/clawtool/internal/telemetry"
 	"github.com/cogitave/clawtool/internal/version"
 
 	// Blank import: ensures every recipe package's init() runs before
@@ -63,11 +64,33 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 		return err
 	}
 
-	mcpSrv, mgr, _, _, err := buildMCPServer(ctx)
+	bootedAt := time.Now()
+	mcpSrv, mgr, _, _, err := buildMCPServer(ctx, "http")
 	if err != nil {
 		return err
 	}
 	defer mgr.Stop()
+	// Pair the server.start emit (fired in buildMCPServer) with a
+	// matching server.stop on the way out. Pre-fix this only fired
+	// for stdio, which made the stdio respawn-spam pattern look
+	// like the only thing producing stop events — codex's diagnosis
+	// of the v0.22.22 PostHog snapshot relied on that. Now both
+	// transports are symmetric.
+	defer func() {
+		if tc := telemetry.Get(); tc != nil && tc.Enabled() {
+			outcome := "success"
+			if err != nil {
+				outcome = "error"
+			}
+			tc.Track("server.stop", map[string]any{
+				"version":     version.Version,
+				"duration_ms": time.Since(bootedAt).Milliseconds(),
+				"outcome":     outcome,
+				"transport":   "http",
+			})
+			_ = tc.Close()
+		}
+	}()
 
 	mux := http.NewServeMux()
 	authed := authMiddleware(token)

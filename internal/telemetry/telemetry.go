@@ -73,6 +73,7 @@ var allowedKeys = map[string]bool{
 	"flags":          true, // CSV of feature-toggle flags used (--async, --unattended, --json, …)
 	"install_method": true, // taxonomy: "script" | "brew" | "go-install" | "release" | "docker" | "manual" | "unknown"
 	"update_outcome": true, // taxonomy: "up_to_date" | "update_available" | "check_failed"
+	"transport":      true, // taxonomy: "stdio" | "http" — distinguishes ServeStdio respawn-per-call from the persistent HTTP daemon (v0.22.23-cycle).
 }
 
 // New initialises the client when telemetry is enabled. Disabled

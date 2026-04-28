@@ -50,7 +50,7 @@ import (
 // unrecoverable error occurs.
 func ServeStdio(ctx context.Context) error {
 	bootedAt := time.Now()
-	s, mgr, _, _, err := buildMCPServer(ctx)
+	s, mgr, _, _, err := buildMCPServer(ctx, "stdio")
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,10 @@ func ServeStdio(ctx context.Context) error {
 		})
 	}
 	// Telemetry: server.stop with uptime + outcome. Pairs with
-	// the server.start event the boot path emits.
+	// the server.start event the boot path emits. transport=stdio
+	// surfaces the respawn-per-call pattern in PostHog when a host
+	// is mis-claimed in stdio mode (the spam-debug case operator
+	// caught at v0.22.22).
 	if tc := telemetry.Get(); tc != nil && tc.Enabled() {
 		outcome := "success"
 		if err != nil {
@@ -75,6 +78,7 @@ func ServeStdio(ctx context.Context) error {
 			"version":     version.Version,
 			"duration_ms": time.Since(bootedAt).Milliseconds(),
 			"outcome":     outcome,
+			"transport":   "stdio",
 		})
 		_ = tc.Close()
 	}
@@ -89,7 +93,7 @@ func ServeStdio(ctx context.Context) error {
 // transport other than stdio (e.g. the Phase 2 HTTP gateway) can run
 // the same server. The Manager is returned alongside so callers can
 // Stop() it on shutdown.
-func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, config.Config, *secrets.Store, error) {
+func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *sources.Manager, config.Config, *secrets.Store, error) {
 	cfg, err := config.LoadOrDefault(config.DefaultPath())
 	if err != nil {
 		return nil, nil, config.Config{}, nil, fmt.Errorf("load config: %w", err)
@@ -136,7 +140,8 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 		tc := telemetry.New(cfg.Telemetry)
 		telemetry.SetGlobal(tc)
 		tc.Track("server.start", map[string]any{
-			"version": version.Version,
+			"version":   version.Version,
+			"transport": transport,
 		})
 		// Fresh-host install event — fires once per host (marker
 		// file lives at $XDG_DATA_HOME/clawtool/install-emitted).
@@ -178,61 +183,80 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 		agents.SetGlobalBiamRunner(runner)
 		core.SetBiamStore(store)
 
-		// Push-based task watch — Unix socket peer of the in-process
-		// WatchHub. `clawtool task watch` dials this and ditches
-		// SQLite polling. Failures are non-fatal: watchers fall back
-		// to polling automatically when the socket is missing.
-		go func() {
-			if err := biam.ServeWatchSocket(ctx, store, biam.Watch, ""); err != nil {
-				fmt.Fprintf(os.Stderr, "clawtool: biam watchsocket: %v\n", err)
-			}
-		}()
+		// The next three goroutines (watchsocket, dispatchsocket,
+		// version poller) are daemon-lifetime services. Running
+		// them inside short-lived stdio respawns is a triple
+		// problem: (1) Unix sockets clobber any other clawtool
+		// daemon's bind, (2) the version poller's first tick fires
+		// CheckForUpdate immediately, so every stdio respawn emits
+		// a `clawtool.update_check` event — operator caught this
+		// as "telemetry spam" against PostHog (~2.2 events/sec
+		// against a host that mis-claimed clawtool over stdio MCP
+		// instead of dialing the persistent HTTP daemon), (3) goroutine
+		// teardown is implicit on process exit, which is cheap but
+		// pointless work in a 400ms-lived child. Gate them on
+		// transport=="http" so only the long-running daemon path
+		// runs them. stdio child processes still serve every MCP
+		// tool call correctly via the parent server.MCPServer; they
+		// just don't spam the daemon-only side channels.
+		if transport == "http" {
+			// Push-based task watch — Unix socket peer of the in-process
+			// WatchHub. `clawtool task watch` dials this and ditches
+			// SQLite polling. Failures are non-fatal: watchers fall back
+			// to polling automatically when the socket is missing.
+			go func() {
+				if err := biam.ServeWatchSocket(ctx, store, biam.Watch, ""); err != nil {
+					fmt.Fprintf(os.Stderr, "clawtool: biam watchsocket: %v\n", err)
+				}
+			}()
 
-		// Dispatch socket — sister of the watch socket. Lets
-		// `clawtool send --async` (a separate CLI process) hand
-		// the dispatch off to THIS daemon's runner so the
-		// goroutine that drains codex/gemini/etc. lives in this
-		// process. Result: every StreamFrame the runner
-		// broadcasts hits this daemon's WatchHub, which is what
-		// the orchestrator's socket subscribers read. Without
-		// this, CLI-side dispatches leak frames into a separate
-		// process's hub and the orchestrator stays empty.
-		go func() {
-			if err := biam.ServeDispatchSocket(ctx, runner, ""); err != nil {
-				fmt.Fprintf(os.Stderr, "clawtool: biam dispatchsocket: %v\n", err)
-			}
-		}()
+			// Dispatch socket — sister of the watch socket. Lets
+			// `clawtool send --async` (a separate CLI process) hand
+			// the dispatch off to THIS daemon's runner so the
+			// goroutine that drains codex/gemini/etc. lives in this
+			// process. Result: every StreamFrame the runner
+			// broadcasts hits this daemon's WatchHub, which is what
+			// the orchestrator's socket subscribers read. Without
+			// this, CLI-side dispatches leak frames into a separate
+			// process's hub and the orchestrator stays empty.
+			go func() {
+				if err := biam.ServeDispatchSocket(ctx, runner, ""); err != nil {
+					fmt.Fprintf(os.Stderr, "clawtool: biam dispatchsocket: %v\n", err)
+				}
+			}()
 
-		// Update poller — hourly GitHub-releases probe. On a
-		// transition into "update available" the poller pushes a
-		// SystemNotification onto the WatchHub; orchestrator /
-		// dashboard / `task watch` subscribers render an inline
-		// banner immediately. SessionStart still injects the
-		// same banner into the very first Claude turn, but the
-		// push channel keeps already-open sessions in the loop
-		// without re-checking on every prompt.
-		go func() {
-			pub := func(kind, severity, title, body, actionHint string) {
-				biam.Watch.BroadcastSystem(biam.SystemNotification{
-					Kind:       kind,
-					Severity:   severity,
-					Title:      title,
-					Body:       body,
-					ActionHint: actionHint,
-					TS:         time.Now().UTC(),
-				})
-			}
-			track := func(outcome string) {
-				if tc := telemetry.Get(); tc != nil && tc.Enabled() {
-					tc.Track("clawtool.update_check", map[string]any{
-						"version":        version.Resolved(),
-						"update_outcome": outcome,
+			// Update poller — hourly GitHub-releases probe. On a
+			// transition into "update available" the poller pushes a
+			// SystemNotification onto the WatchHub; orchestrator /
+			// dashboard / `task watch` subscribers render an inline
+			// banner immediately. SessionStart still injects the
+			// same banner into the very first Claude turn, but the
+			// push channel keeps already-open sessions in the loop
+			// without re-checking on every prompt.
+			go func() {
+				pub := func(kind, severity, title, body, actionHint string) {
+					biam.Watch.BroadcastSystem(biam.SystemNotification{
+						Kind:       kind,
+						Severity:   severity,
+						Title:      title,
+						Body:       body,
+						ActionHint: actionHint,
+						TS:         time.Now().UTC(),
 					})
 				}
-			}
-			poller := version.NewPoller(pub, version.PollerConfig{}, track)
-			poller.Run(ctx)
-		}()
+				track := func(outcome string) {
+					if tc := telemetry.Get(); tc != nil && tc.Enabled() {
+						tc.Track("clawtool.update_check", map[string]any{
+							"version":        version.Resolved(),
+							"update_outcome": outcome,
+							"transport":      "http",
+						})
+					}
+				}
+				poller := version.NewPoller(pub, version.PollerConfig{}, track)
+				poller.Run(ctx)
+			}()
+		}
 	}
 
 	// Sandbox-worker wire-up (ADR-029 phase 2). When config sets
