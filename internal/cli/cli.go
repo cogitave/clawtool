@@ -179,6 +179,8 @@ func (a *App) Run(argv []string) int {
 		return a.runUpgrade(argv[1:])
 	case "onboard":
 		return a.runOnboard(argv[1:])
+	case "setup":
+		return a.runSetup(argv[1:])
 	case "hooks":
 		return a.runHooks(argv[1:])
 	case "portal":
