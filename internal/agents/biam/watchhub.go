@@ -102,14 +102,20 @@ func (h *WatchHub) Subscribe() (<-chan Task, func()) {
 // Broadcast fans the task snapshot to every subscriber. Non-blocking:
 // a subscriber whose buffer is full drops this event silently. The
 // store hook calls this after every state mutation.
+//
+// The select-send runs INSIDE the lock — sounds backwards but is
+// correct: the `default:` arm makes every send bounded-time (a
+// full buffer falls through instantly), so holding the lock for
+// the loop costs nothing, and crucially it closes the broadcast-
+// then-close race. Pre-fix, a concurrent unsubscribe call could
+// `close(sub.ch)` between our snapshot and our send → panic on
+// send-to-closed-channel. Race detector wouldn't catch it (timing-
+// bound). With the lock held, unsub blocks until the broadcast
+// loop finishes, which is at most O(N) bounded operations.
 func (h *WatchHub) Broadcast(t Task) {
 	h.mu.Lock()
-	subs := make([]*watchSub, 0, len(h.subs))
+	defer h.mu.Unlock()
 	for s := range h.subs {
-		subs = append(subs, s)
-	}
-	h.mu.Unlock()
-	for _, s := range subs {
 		select {
 		case s.ch <- t:
 		default:
@@ -168,19 +174,15 @@ func (h *WatchHub) SubscribeFrames() (<-chan StreamFrame, func()) {
 // BroadcastFrame fans one StreamFrame to every frame subscriber.
 // Non-blocking: a subscriber whose 256-cap buffer is full drops the
 // event silently. The runner calls this after every line scanned
-// from the upstream rc.
+// from the upstream rc. Lock-during-send for the same race-closure
+// reason documented on Broadcast.
 func (h *WatchHub) BroadcastFrame(f StreamFrame) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	if h.frames == nil {
-		h.mu.Unlock()
 		return
 	}
-	subs := make([]*frameSub, 0, len(h.frames))
 	for s := range h.frames {
-		subs = append(subs, s)
-	}
-	h.mu.Unlock()
-	for _, s := range subs {
 		select {
 		case s.ch <- f:
 		default:
@@ -220,19 +222,15 @@ func (h *WatchHub) SubscribeSystem() (<-chan SystemNotification, func()) {
 // BroadcastSystem fans one SystemNotification to every system
 // subscriber. Non-blocking — a slow watcher drops the event past
 // the 16-cap buffer. The poller / sandbox-worker monitor / etc.
-// call this when daemon-level state changes.
+// call this when daemon-level state changes. Lock-during-send for
+// the same race-closure reason documented on Broadcast.
 func (h *WatchHub) BroadcastSystem(s SystemNotification) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	if h.system == nil {
-		h.mu.Unlock()
 		return
 	}
-	subs := make([]*systemSub, 0, len(h.system))
 	for sub := range h.system {
-		subs = append(subs, sub)
-	}
-	h.mu.Unlock()
-	for _, sub := range subs {
 		select {
 		case sub.ch <- s:
 		default:

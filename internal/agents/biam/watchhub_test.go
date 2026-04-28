@@ -2,9 +2,95 @@ package biam
 
 import (
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
+
+// TestWatchHub_BroadcastUnsubscribeRace stresses the broadcast-vs-
+// unsubscribe ordering. Pre-fix, Broadcast snapshotted subs under
+// the lock then sent on s.ch outside the lock; a concurrent
+// unsubscribe could close(s.ch) between snapshot and send → panic
+// on send-to-closed-channel. The bug was timing-bound (race
+// detector wouldn't catch it directly), so this test churns
+// thousands of subscribe/unsubscribe cycles in parallel with
+// continuous broadcasts. Any panic surface terminates the test
+// hard. Runs against all three Broadcast variants in one shot.
+func TestWatchHub_BroadcastUnsubscribeRace(t *testing.T) {
+	hub := &WatchHub{
+		subs:   map[*watchSub]struct{}{},
+		frames: map[*frameSub]struct{}{},
+		system: map[*systemSub]struct{}{},
+	}
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Continuous broadcaster: hammers all three channels.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		t0 := time.Now()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				hub.Broadcast(Task{TaskID: "stress", Status: TaskActive})
+				hub.BroadcastFrame(StreamFrame{TaskID: "stress", Line: "x", TS: t0})
+				hub.BroadcastSystem(SystemNotification{Kind: "info", Title: "x", TS: t0})
+			}
+		}
+	}()
+
+	// Fleet of subscribe/unsubscribe churners. Each one
+	// repeatedly subscribes + drains + unsubs, deliberately
+	// racing the broadcaster.
+	const churners = 8
+	for i := 0; i < churners; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				ch1, un1 := hub.Subscribe()
+				ch2, un2 := hub.SubscribeFrames()
+				ch3, un3 := hub.SubscribeSystem()
+				// Drain any pending events without blocking so
+				// the broadcast loop doesn't see a permanently
+				// full buffer (which would mask the race window).
+				for j := 0; j < 4; j++ {
+					select {
+					case <-ch1:
+					default:
+					}
+					select {
+					case <-ch2:
+					default:
+					}
+					select {
+					case <-ch3:
+					default:
+					}
+				}
+				un1()
+				un2()
+				un3()
+			}
+		}()
+	}
+
+	// Run for ~250ms. Long enough to surface a real ordering
+	// bug; short enough not to dominate the test suite.
+	time.Sleep(250 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+	// If we reached here without panicking, the lock-during-send
+	// invariant held under contention.
+}
 
 func TestWatchHub_BroadcastFanOutsToAllSubscribers(t *testing.T) {
 	hub := &WatchHub{subs: map[*watchSub]struct{}{}}
