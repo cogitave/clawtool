@@ -529,13 +529,6 @@ Selector forms:
   github-personal.create_issue
                             A sourced tool: <instance>.<tool>. Instance is
                             kebab-case, tool is snake_case.
-
-Future:
-  tag:destructive           Tag-level selector.
-  group:review-set          Group-level selector.
-  clawtool source add <name> -- <command...>
-  clawtool profile use <name>
-  clawtool group create <name> <selectors...>
 `
 
 const toolsUsage = `Usage:

@@ -77,8 +77,7 @@ func (a *App) runSourceAdd(argv []string) int {
 		if suggestions := cat.SuggestSimilar(name, 3); len(suggestions) > 0 {
 			fmt.Fprintf(a.Stderr, "  did you mean: %s?\n", strings.Join(suggestions, ", "))
 		}
-		fmt.Fprintln(a.Stderr, "  for an unknown source, use long form: clawtool source add <instance> -- <command...>")
-		fmt.Fprintln(a.Stderr, "  (long form lands in v0.4 turn 2.)")
+		fmt.Fprintln(a.Stderr, "  run `clawtool source list` to see the built-in catalog.")
 		return 1
 	}
 
