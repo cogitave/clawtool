@@ -5,7 +5,14 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.4] - 2026-04-28
+## [0.22.5] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.4 [skip ci] (d8925c5)
+### Features
+
+- **tui:** Orchestrator Active/Done tabs + viewport-bounded sidebar; task list active-default (e54bce2)## [0.22.4] - 2026-04-28
 
 ### Features
 
