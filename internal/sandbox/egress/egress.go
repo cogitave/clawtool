@@ -41,6 +41,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -70,22 +71,38 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("parse allow: %w", err)
 	}
-	p := &proxy{allow: allow, token: opts.Token}
+	// quit signals every active CONNECT tunnel to tear down. Tunnels
+	// register on the proxy's WaitGroup so Run can join them before
+	// returning — without this, srv.Shutdown only flushes plaintext
+	// HTTP requests; hijacked CONNECT tunnels keep proxying TLS bytes
+	// after Run exits, defeating the cancel.
+	quit := make(chan struct{})
+	p := &proxy{allow: allow, token: opts.Token, quit: quit}
 
 	srv := &http.Server{
 		Addr:              opts.Listen,
 		Handler:           p,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	shutdownDone := make(chan struct{})
 	go func() {
 		<-ctx.Done()
-		_ = srv.Shutdown(context.Background())
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+		close(quit)        // signal active tunnels
+		p.tunnels.Wait()   // join their goroutines
+		close(shutdownDone)
 	}()
 	fmt.Fprintf(os.Stderr,
 		"clawtool egress: listening on %s (allow %d host(s); auth=%s)\n",
 		opts.Listen, allow.size(), authMode(opts.Token))
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("egress listen %s: %w", opts.Listen, err)
+	listenErr := srv.ListenAndServe()
+	if listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
+		return fmt.Errorf("egress listen %s: %w", opts.Listen, listenErr)
+	}
+	if errors.Is(listenErr, http.ErrServerClosed) {
+		<-shutdownDone
 	}
 	return nil
 }
@@ -105,6 +122,13 @@ type proxy struct {
 
 	allowed atomic.Uint64
 	denied  atomic.Uint64
+
+	// tunnels tracks every in-flight CONNECT tunnel goroutine so
+	// Run can join them on shutdown. quit fires when Run is
+	// tearing down; tunnel goroutines select on it alongside
+	// io.Copy completion to drop their conns force-closed.
+	tunnels sync.WaitGroup
+	quit    chan struct{}
 }
 
 func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -202,11 +226,31 @@ func (p *proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Copy in both directions until either end closes.
+	// Copy in both directions until either end closes OR the
+	// proxy's quit channel fires (shutdown). On quit we force-
+	// close both ends so the io.Copy goroutines wake up and the
+	// proxy can join them via p.tunnels.Wait. Without this the
+	// tunnels survived srv.Shutdown indefinitely.
+	p.tunnels.Add(1)
+	defer p.tunnels.Done()
+
 	done := make(chan struct{}, 2)
 	go func() { _, _ = io.Copy(dest, clientConn); done <- struct{}{} }()
 	go func() { _, _ = io.Copy(clientConn, dest); done <- struct{}{} }()
-	<-done
+	select {
+	case <-done:
+		// One direction closed; the other will see EOF
+		// shortly. We don't wait for the second to keep
+		// teardown snappy on half-closed sockets.
+	case <-p.quit:
+		// Shutdown — force both ends shut so the io.Copy
+		// goroutines wake. The deferred clientConn.Close +
+		// dest.Close above run after this select returns;
+		// closing here is what unblocks the goroutines.
+		_ = clientConn.Close()
+		_ = dest.Close()
+		<-done // wait for at least one io.Copy to observe EOF
+	}
 }
 
 // deny emits a 403 with x-deny-reason mirroring claude.ai's
