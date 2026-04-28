@@ -545,10 +545,41 @@ func (s *supervisor) Resolve(ctx context.Context, requested string) (Agent, erro
 		)
 	}
 
+	// More than one callable — report the families and a guided
+	// next step. The original message dumped raw instance names;
+	// this version walks the operator through the three resolution
+	// paths (per-call > env > sticky) so they pick the one that
+	// fits their workflow.
+	families := familyCounts(callable)
+	first := callable[0].Instance
 	return Agent{}, fmt.Errorf(
-		"agent ambiguous (%s) — pass --agent, set CLAWTOOL_AGENT, or run `clawtool agent use <instance>`",
-		listInstanceNames(callable),
+		"agent ambiguous (%d callable: %s). Pick one of:\n"+
+			"  • per-call:   --agent %s\n"+
+			"  • env-wide:   export CLAWTOOL_AGENT=%s\n"+
+			"  • sticky:     clawtool agent use %s\n"+
+			"Detected families: %s",
+		len(callable), listInstanceNames(callable),
+		first, first, first, families,
 	)
+}
+
+// familyCounts renders "claude×1, codex×1, gemini×1" so the
+// ambiguity error tells the operator at a glance which families
+// are competing — not just instance names.
+func familyCounts(agents []Agent) string {
+	counts := map[string]int{}
+	order := []string{}
+	for _, a := range agents {
+		if _, seen := counts[a.Family]; !seen {
+			order = append(order, a.Family)
+		}
+		counts[a.Family]++
+	}
+	parts := make([]string, 0, len(order))
+	for _, fam := range order {
+		parts = append(parts, fmt.Sprintf("%s×%d", fam, counts[fam]))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // readSticky reads the active-agent file. Empty string when missing /

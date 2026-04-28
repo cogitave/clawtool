@@ -12,10 +12,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/daemon"
+	"github.com/cogitave/clawtool/internal/sandbox/worker"
 	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/cogitave/clawtool/internal/setup"
 	"github.com/cogitave/clawtool/internal/version"
@@ -58,6 +60,7 @@ func (a *App) runDoctor(_ []string) int {
 	a.doctorBinary(w, rep)
 	a.doctorConfig(w, rep)
 	a.doctorDaemon(w, rep)
+	a.doctorSandboxWorker(w, rep)
 	a.doctorAgents(w, rep)
 	a.doctorSources(w, rep)
 	a.doctorRecipes(w, rep)
@@ -149,6 +152,62 @@ func (a *App) doctorDaemon(w io.Writer, rep *doctorReport) {
 			"clawtool daemon restart",
 		)
 	}
+	fmt.Fprintln(w)
+}
+
+// doctorSandboxWorker reports the sandbox-worker config + live
+// reachability (ADR-029). When mode=off (default), the section
+// surfaces a one-line "host execution" note. When mode != off, we
+// dial the configured worker URL with the bearer token; failures
+// turn into actionable warnings with the right `clawtool sandbox-
+// worker` command to recover.
+func (a *App) doctorSandboxWorker(w io.Writer, rep *doctorReport) {
+	fmt.Fprintln(w, "[sandbox-worker]")
+	cfg, err := config.LoadOrDefault(a.Path())
+	if err != nil {
+		rep.warn(w, "load config: "+err.Error(), "")
+		fmt.Fprintln(w)
+		return
+	}
+	mode := cfg.SandboxWorker.Mode
+	if mode == "" || mode == "off" {
+		rep.info(w, "mode=off — Bash/Read/Edit/Write run on the host (default)")
+		fmt.Fprintln(w, "      → see ADR-029 + Dockerfile.worker to opt into container isolation")
+		fmt.Fprintln(w)
+		return
+	}
+	url := cfg.SandboxWorker.URL
+	if url == "" {
+		rep.warn(w,
+			fmt.Sprintf("mode=%s but URL empty — falling back to host execution", mode),
+			"set [sandbox_worker].url in ~/.config/clawtool/config.toml")
+		fmt.Fprintln(w)
+		return
+	}
+	tokenPath := cfg.SandboxWorker.TokenFile
+	if tokenPath == "" {
+		tokenPath = worker.DefaultTokenPath()
+	}
+	tok, terr := worker.LoadToken(tokenPath)
+	if terr != nil {
+		rep.warn(w,
+			fmt.Sprintf("mode=%s, url=%s — token load failed (%v)", mode, url, terr),
+			"clawtool sandbox-worker --init-token")
+		fmt.Fprintln(w)
+		return
+	}
+	c := worker.NewClient(url, tok)
+	defer c.Close()
+	pingCtx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	if err := c.Ping(pingCtx); err != nil {
+		rep.warn(w,
+			fmt.Sprintf("mode=%s, url=%s — worker not reachable (%v)", mode, url, err),
+			"docker run … clawtool-worker:0.21 sandbox-worker …  (or check Dockerfile.worker)")
+		fmt.Fprintln(w)
+		return
+	}
+	rep.ok(w, fmt.Sprintf("mode=%s, url=%s — reachable", mode, url))
 	fmt.Fprintln(w)
 }
 
