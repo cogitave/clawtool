@@ -266,6 +266,10 @@ func (s *BrowserSession) run(ctx context.Context, actions ...chromedp.Action) er
 }
 
 // mergeCtx returns a context that fires when either parent fires.
+// The returned cancel func releases the watcher goroutine
+// immediately; if the caller forgets to call it, the goroutine
+// still exits when either parent context is cancelled (`merged`
+// inherits cancellation from `a`).
 func mergeCtx(a, b context.Context) (context.Context, context.CancelFunc) {
 	if b == nil {
 		return a, func() {}
@@ -276,6 +280,8 @@ func mergeCtx(a, b context.Context) (context.Context, context.CancelFunc) {
 		select {
 		case <-b.Done():
 			cancel()
+		case <-merged.Done():
+			// `a` cancelled or our cancel ran — either way we're done.
 		case <-stop:
 		}
 	}()
