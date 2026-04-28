@@ -187,6 +187,21 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 				fmt.Fprintf(os.Stderr, "clawtool: biam watchsocket: %v\n", err)
 			}
 		}()
+
+		// Dispatch socket — sister of the watch socket. Lets
+		// `clawtool send --async` (a separate CLI process) hand
+		// the dispatch off to THIS daemon's runner so the
+		// goroutine that drains codex/gemini/etc. lives in this
+		// process. Result: every StreamFrame the runner
+		// broadcasts hits this daemon's WatchHub, which is what
+		// the orchestrator's socket subscribers read. Without
+		// this, CLI-side dispatches leak frames into a separate
+		// process's hub and the orchestrator stays empty.
+		go func() {
+			if err := biam.ServeDispatchSocket(ctx, runner, ""); err != nil {
+				fmt.Fprintf(os.Stderr, "clawtool: biam dispatchsocket: %v\n", err)
+			}
+		}()
 	}
 
 	// Sandbox-worker wire-up (ADR-029 phase 2). When config sets

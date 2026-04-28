@@ -229,29 +229,48 @@ func (a *App) Send(args sendArgs) error {
 	}
 
 	if args.async {
-		// CLI is a separate process from `clawtool serve`; bootstrap
-		// the BIAM identity + SQLite store here so SubmitAsync has a
-		// runner attached. The store survives the process exit (it's
-		// just a file on disk) and the goroutine inside the runner
-		// drains the upstream stream before we return — but only
-		// after we've persisted the prompt envelope and the result
-		// envelope. We block briefly on a Goroutine wait via TaskWait
-		// elsewhere; here we just want the task_id.
-		if _, err := ensureBIAMRunner(); err != nil {
-			if cleanup != nil && !args.keepOnError {
-				cleanup()
-			}
-			return fmt.Errorf("--async: %w", err)
-		}
-		// Wire a fresh supervisor that picks up the runner we just
-		// installed (NewSupervisor reads globalBiamRunner at construction).
-		sup = agents.NewSupervisor()
-		taskID, err := sup.SubmitAsync(context.Background(), args.agent, args.prompt, opts)
-		if err != nil {
+		// Dispatch resolution order:
+		//
+		//  1. Daemon dispatch socket. If `clawtool serve` is up
+		//     it owns a Unix socket at $XDG_STATE_HOME/clawtool/
+		//     dispatch.sock. We submit through it so the runner
+		//     goroutine (and therefore the WatchHub the
+		//     orchestrator watches) lives in the daemon. Without
+		//     this, frames the upstream agent emits would land
+		//     in the CLI process's hub and the orchestrator
+		//     stream pane would stay empty.
+		//
+		//  2. In-process fallback. No daemon → bootstrap a local
+		//     runner like before. Tasks still transit SQLite, so
+		//     `task list` / dashboard see them, but live frames
+		//     don't reach the orchestrator (separate hub). We
+		//     warn on stderr so the operator knows.
+		taskID, err := dispatchAsyncViaDaemon(a, args.agent, args.prompt, opts)
+		if err != nil && err != biam.ErrNoDispatchSocket {
 			if cleanup != nil && !args.keepOnError {
 				cleanup()
 			}
 			return err
+		}
+		if err == biam.ErrNoDispatchSocket {
+			fmt.Fprintln(a.Stderr, "clawtool: no daemon dispatch socket — using in-process fallback (live frames won't reach `clawtool orchestrator`; start `clawtool serve` for full streaming)")
+			if _, ierr := ensureBIAMRunner(); ierr != nil {
+				if cleanup != nil && !args.keepOnError {
+					cleanup()
+				}
+				return fmt.Errorf("--async: %w", ierr)
+			}
+			// Wire a fresh supervisor that picks up the runner
+			// we just installed (NewSupervisor reads
+			// globalBiamRunner at construction).
+			sup = agents.NewSupervisor()
+			taskID, err = sup.SubmitAsync(context.Background(), args.agent, args.prompt, opts)
+			if err != nil {
+				if cleanup != nil && !args.keepOnError {
+					cleanup()
+				}
+				return err
+			}
 		}
 		fmt.Fprintln(a.Stdout, taskID)
 
@@ -354,6 +373,31 @@ func (a *App) Send(args sendArgs) error {
 		}
 	}
 	return finalErr
+}
+
+// dispatchAsyncViaDaemon submits an async dispatch through the
+// daemon's Unix socket so the runner goroutine lives in the daemon
+// process — frames it broadcasts reach every WatchHub subscriber on
+// the daemon (including orchestrator socket clients).
+//
+// Returns biam.ErrNoDispatchSocket when the daemon socket is
+// missing. Caller falls back to the in-process runner with a
+// stderr warning. Any other error means the daemon was reachable
+// but rejected the dispatch — surface it directly.
+func dispatchAsyncViaDaemon(a *App, agent, prompt string, opts map[string]any) (string, error) {
+	client, err := biam.DialDispatchSocket("")
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	taskID, err := client.Submit(ctx, agent, prompt, opts)
+	if err != nil {
+		return "", fmt.Errorf("daemon dispatch: %w", err)
+	}
+	_ = a // signature parity for future stderr diagnostics
+	return taskID, nil
 }
 
 // truncateForAudit caps prompt / result bodies stored in the audit
