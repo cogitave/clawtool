@@ -243,6 +243,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runUpgrade(argv[1:])
 	case "onboard":
 		return a.runOnboard(argv[1:])
+	case "telemetry":
+		return a.runTelemetry(argv[1:])
 	case "setup":
 		return a.runSetup(argv[1:])
 	case "hooks":
@@ -521,6 +523,13 @@ Usage:
                             sandbox-exec (macOS), docker (anywhere fallback).
                             v0.18 ships the surface; engine enforcement
                             lands v0.18.1+.
+  clawtool telemetry status / on / off
+                            Show or flip the anonymous-telemetry opt-in
+                            stored in config.toml. Allow-listed payload
+                            (command + version + duration + exit_code +
+                            agent family + recipe/engine/bridge names);
+                            never prompts, paths, secrets, env values.
+                            Takes effect at next CLI / daemon start.
   clawtool version          Print the build version.
   clawtool help             Show this help.
 

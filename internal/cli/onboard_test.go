@@ -12,6 +12,51 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
+// TestOnboard_YesMode_AppliesEveryDefault confirms `clawtool onboard
+// --yes` skips the form, generates the identity, installs every
+// missing bridge, claims every claimable host, starts the daemon,
+// and writes the marker — i.e. the "no human in the loop" CI / e2e
+// path. fakeDeps records each call so the test can assert what
+// fired.
+func TestOnboard_YesMode_AppliesEveryDefault(t *testing.T) {
+	app := New()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	// Mixed host detection: claude + codex on PATH (so missing
+	// bridges include gemini + opencode + hermes; claimable hosts
+	// include codex). The test asserts every missing bridge is
+	// installed AND the form-runner is never called.
+	f, deps := newFakeDeps(map[string]bool{"claude": true, "codex": true})
+	deps.forceDefaults = true
+	deps.ensureDaemon = func() (string, error) { return "http://127.0.0.1:0", nil }
+	deps.claimMCPHost = func(string) (string, error) { return "http://127.0.0.1:0", nil }
+	deps.initSecrets = func() error { return nil }
+	deps.track = func(string, map[string]any) {}
+
+	if err := app.onboard(context.Background(), deps); err != nil {
+		t.Fatalf("onboard --yes: %v", err)
+	}
+	if f.formCalled {
+		t.Error("yes mode must not invoke the form runner")
+	}
+	if !f.identityHit {
+		t.Error("yes mode must generate the BIAM identity by default")
+	}
+	wantBridges := map[string]bool{"gemini": true, "opencode": true, "hermes": true}
+	for _, fam := range f.bridgeCalled {
+		if !wantBridges[fam] {
+			t.Errorf("unexpected bridge install: %q", fam)
+		}
+		delete(wantBridges, fam)
+	}
+	if len(wantBridges) != 0 {
+		t.Errorf("expected every missing bridge installed; missing: %v", wantBridges)
+	}
+	if !IsOnboarded() {
+		t.Error("yes mode must write the .onboarded marker")
+	}
+}
+
 // TestIsOnboarded_RoundTrip confirms the marker writer + reader
 // agree on a single source of truth. Drives the SessionStart hook
 // and the no-args first-run nudge — both consumers must see the
