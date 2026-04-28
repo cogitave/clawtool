@@ -22,6 +22,14 @@ type onboardState struct {
 	Found          map[string]bool
 	MissingBridges []string
 	InstallBridges []string
+	// PrimaryCLI is the operator's main interface — answers
+	// "which CLI will you mostly drive clawtool through?". Drives
+	// smart defaults: that CLI's bridge gets pre-selected for
+	// install (if missing), its MCP-claim entry gets pre-checked
+	// (if claimable). Empty when the operator skips the question.
+	// Allowed values: "claude-code" | "codex" | "gemini" |
+	// "opencode" | "hermes".
+	PrimaryCLI string
 	// MCPClaimable is the set of detected hosts whose `mcp add`
 	// surface accepts clawtool registration today (codex, gemini,
 	// opencode). The wizard defaults this to selected so the
@@ -155,15 +163,43 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		),
 	}
 
+	// Primary CLI — the operator's main interface. Drives smart
+	// defaults for every following question. Pre-selected to the
+	// detected host that's most likely the primary (claude-code
+	// when it's on PATH, since clawtool itself is most often
+	// running inside Claude Code; falls back to the first detected
+	// CLI otherwise). Operator can override.
+	primaryOpts := primaryCLIOptions(state.Found)
+	state.PrimaryCLI = primaryDefault(state.Found)
+	groups = append(groups, huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("Which CLI will you primarily use?").
+			Description("Pick the agent you'll spend most of your time in. clawtool routes through that one as the primary; the others connect via MCP / bridge so you can dispatch across them. Choosing claude-code means clawtool is registered as a Claude Code plugin (already done if you installed via the marketplace); choosing codex / gemini / opencode auto-selects that family's bridge for install + MCP claim. Pick \"none / decide later\" to skip the smart defaults.").
+			Options(primaryOpts...).
+			Value(&state.PrimaryCLI),
+	))
+
 	if len(state.MissingBridges) > 0 {
 		opts := make([]huh.Option[string], 0, len(state.MissingBridges))
 		for _, fam := range state.MissingBridges {
 			opts = append(opts, huh.NewOption(fam, fam))
 		}
+		// Smart default: when the operator's primary CLI is one
+		// of the missing-bridge families (and isn't claude-code,
+		// which uses the plugin install path), pre-check it so
+		// they don't have to hunt for the right entry.
+		if state.PrimaryCLI != "" && state.PrimaryCLI != "claude-code" {
+			for _, fam := range state.MissingBridges {
+				if fam == state.PrimaryCLI {
+					state.InstallBridges = []string{fam}
+					break
+				}
+			}
+		}
 		groups = append(groups, huh.NewGroup(
 			huh.NewMultiSelect[string]().
 				Title("Install missing bridges").
-				Description("Selected items run `clawtool bridge add <family>` after submit. Bridge install failures stay non-fatal.").
+				Description("Selected items run `clawtool bridge add <family>` after submit. Bridge install failures stay non-fatal. Your primary CLI's bridge is pre-checked.").
 				Options(opts...).
 				Value(&state.InstallBridges),
 		))
@@ -176,11 +212,14 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		}
 		// Default to selecting all so the operator's "every host
 		// sees clawtool" intent is the path of least resistance.
+		// When PrimaryCLI is set and it's claimable, that entry
+		// is guaranteed in the default selection (idempotent
+		// since it's already in the all-claimable set).
 		state.ClaimMCP = append([]string{}, state.MCPClaimable...)
 		groups = append(groups, huh.NewGroup(
 			huh.NewMultiSelect[string]().
 				Title("Register clawtool as an MCP server in these hosts").
-				Description("Starts a single persistent local daemon (loopback HTTP + bearer auth) and points each selected host at it. Without this, hosts can't see clawtool tools or send cross-host messages.").
+				Description("Starts a single persistent local daemon (loopback HTTP + bearer auth) and points each selected host at it. Without this, hosts can't see clawtool tools or send cross-host messages. Your primary CLI is included by default.").
 				Options(opts...).
 				Value(&state.ClaimMCP),
 		))
@@ -304,6 +343,9 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 	}
 
 	d.stdoutLn("")
+	if state.PrimaryCLI != "" {
+		d.stdoutLn(fmt.Sprintf("Primary interface set to %q — clawtool routes through it as your main agent; others connect via MCP / bridge for cross-dispatch.", state.PrimaryCLI))
+	}
 	if state.RunInit {
 		d.stdoutLn("Run `clawtool init` now to drop project recipes (release-please / dependabot / etc.) into the current repo.")
 	} else {
@@ -376,6 +418,59 @@ func hostSummary(found map[string]bool) string {
 	}
 	out += "\nThis wizard offers to install missing bridges, register clawtool as an MCP server in detected hosts, generate the BIAM identity, and record your telemetry preference."
 	return out
+}
+
+// primaryCLIOptions builds the Primary CLI select-list. Detected
+// hosts are listed first (with a "✓" prefix in the label so the
+// operator's eye lands on what's already installed); undetected
+// follow with their family name unannotated. A trailing "none /
+// decide later" sentinel lets the operator skip smart defaults.
+//
+// Order matters for the wizard's "first option = default cursor"
+// behavior — claude-code goes first when present because clawtool
+// runs inside Claude Code most of the time.
+func primaryCLIOptions(found map[string]bool) []huh.Option[string] {
+	families := []string{"claude-code", "codex", "gemini", "opencode", "hermes"}
+	opts := make([]huh.Option[string], 0, len(families)+1)
+	// Detected first.
+	for _, fam := range families {
+		key := fam
+		if fam == "claude-code" {
+			// claude-code uses the plugin path; PATH check
+			// looks for "claude" binary.
+			key = "claude"
+		}
+		if found[key] {
+			opts = append(opts, huh.NewOption(fam+" (✓ detected)", fam))
+		}
+	}
+	// Undetected after.
+	for _, fam := range families {
+		key := fam
+		if fam == "claude-code" {
+			key = "claude"
+		}
+		if !found[key] {
+			opts = append(opts, huh.NewOption(fam, fam))
+		}
+	}
+	opts = append(opts, huh.NewOption("none / decide later", ""))
+	return opts
+}
+
+// primaryDefault picks the most-likely primary CLI to seed the
+// select widget. Order: claude-code (detected) → first detected
+// family → empty (operator picks).
+func primaryDefault(found map[string]bool) string {
+	if found["claude"] {
+		return "claude-code"
+	}
+	for _, fam := range []string{"codex", "gemini", "opencode", "hermes"} {
+		if found[fam] {
+			return fam
+		}
+	}
+	return ""
 }
 
 const onboardUsage = `Usage:

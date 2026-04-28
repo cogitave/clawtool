@@ -10,6 +10,55 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
+// TestPrimaryDefault_PicksClaudeCodeWhenDetected confirms claude
+// is the priority pick — clawtool runs inside Claude Code most of
+// the time, so the wizard's first guess should be claude-code when
+// the binary is on PATH.
+func TestPrimaryDefault_PicksClaudeCodeWhenDetected(t *testing.T) {
+	cases := []struct {
+		name  string
+		found map[string]bool
+		want  string
+	}{
+		{"claude-detected wins", map[string]bool{"claude": true, "codex": true}, "claude-code"},
+		{"falls through to codex", map[string]bool{"claude": false, "codex": true}, "codex"},
+		{"falls through to gemini", map[string]bool{"gemini": true}, "gemini"},
+		{"none detected", map[string]bool{}, ""},
+	}
+	for _, c := range cases {
+		if got := primaryDefault(c.found); got != c.want {
+			t.Errorf("%s: primaryDefault(%v) = %q, want %q", c.name, c.found, got, c.want)
+		}
+	}
+}
+
+// TestPrimaryCLIOptions_DetectedFirst confirms detected hosts sort
+// before undetected ones so the cursor lands on something installed
+// when the wizard renders. The "none" sentinel is always last.
+func TestPrimaryCLIOptions_DetectedFirst(t *testing.T) {
+	found := map[string]bool{"claude": true, "codex": true, "gemini": false, "opencode": false, "hermes": false}
+	opts := primaryCLIOptions(found)
+	if len(opts) != 6 {
+		t.Fatalf("expected 6 options (5 families + 1 sentinel), got %d", len(opts))
+	}
+	// First two should be the detected ones (claude-code + codex)
+	// in the canonical order, with the "✓ detected" label.
+	if !strings.Contains(opts[0].Key, "claude-code") || !strings.Contains(opts[0].Key, "detected") {
+		t.Errorf("first option label = %q, want claude-code/detected", opts[0].Key)
+	}
+	if !strings.Contains(opts[1].Key, "codex") || !strings.Contains(opts[1].Key, "detected") {
+		t.Errorf("second option label = %q, want codex/detected", opts[1].Key)
+	}
+	// Last is the sentinel.
+	last := opts[len(opts)-1]
+	if last.Value != "" {
+		t.Errorf("last option value = %q, want empty sentinel", last.Value)
+	}
+	if !strings.Contains(last.Key, "none") {
+		t.Errorf("last option label = %q, want 'none / decide later'", last.Key)
+	}
+}
+
 // fakeDeps drives the onboard wizard without a TTY. The test sets
 // `state` upfront via the form-runner stub so we can assert which
 // side effects fire.
