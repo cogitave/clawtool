@@ -3,7 +3,6 @@ package biam
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -115,8 +114,12 @@ func TestDispatchSocket_RoundTripsSubmit(t *testing.T) {
 // can detect the "no daemon running" case and fall back gracefully
 // — this is the load-bearing branch in `clawtool send --async`.
 func TestDispatchSocket_MissingSocketReturnsTypedError(t *testing.T) {
-	dir := t.TempDir()
-	sockPath := filepath.Join(dir, "missing.sock")
+	// Use the /tmp-rooted helper even though we never bind: darwin
+	// returns EINVAL (not ENOENT) when sun_path is too long, which
+	// would slip past DialDispatchSocket's ErrNoDispatchSocket
+	// mapping. Linux happens to tolerate the longer t.TempDir()
+	// path, but the helper keeps both runners aligned.
+	sockPath := shortSockPath(t, "missing.sock")
 
 	_, err := DialDispatchSocket(sockPath)
 	if err == nil {
