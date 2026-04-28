@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cogitave/clawtool/internal/telemetry"
+	"github.com/cogitave/clawtool/internal/version"
 )
 
 // runClaudeBootstrap is the entry point for the SessionStart hook
@@ -76,6 +80,16 @@ func (a *App) runClaudeBootstrap(argv []string) int {
 	return 0
 }
 
+// fetchUpdate is a package-level seam so tests can stub the version
+// check without spinning up a real GitHub round-trip. Production
+// path uses the standard CheckForUpdate with a 500ms ctx — well
+// inside the SessionStart hook's 2s budget.
+var fetchUpdate = func() version.UpdateInfo {
+	c, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	return version.CheckForUpdate(c)
+}
+
 // findClawtoolRoot walks up from `start` looking for a directory
 // containing `.clawtool/`. Returns the parent directory when
 // found, empty string when not. Stops at the filesystem root.
@@ -121,6 +135,32 @@ func buildBootstrapContext(root string) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("On your first response, briefly check whether the user wants to (a) continue from the last session — peek at `wiki/log.md` if present, (b) start a fresh task, or (c) just stay context-aware while they drive. Don't dump the wiki contents unless asked.\n")
+
+	// Auto-update probe — surface "vX → vY available" inline when
+	// the user's clawtool is behind cogitave/clawtool's latest
+	// release. Fail-open: any error (network, parse, timeout)
+	// returns HasUpdate=false and we skip the line silently. Cache
+	// in version.CheckForUpdate keeps the round-trip rare.
+	info := fetchUpdate()
+	outcome := "up_to_date"
+	switch {
+	case info.Err != nil:
+		outcome = "check_failed"
+	case info.HasUpdate:
+		outcome = "update_available"
+		b.WriteString("\n📦 **clawtool update available: v")
+		b.WriteString(info.Current)
+		b.WriteString(" → ")
+		b.WriteString(info.Latest)
+		b.WriteString("**\n")
+		b.WriteString("To upgrade, run: `clawtool upgrade`\n")
+	}
+	if tc := telemetry.Get(); tc != nil && tc.Enabled() {
+		tc.Track("clawtool.update_check", map[string]any{
+			"version":        version.Version,
+			"update_outcome": outcome,
+		})
+	}
 	return b.String()
 }
 

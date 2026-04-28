@@ -72,6 +72,7 @@ var allowedKeys = map[string]bool{
 	"event_kind":     true, // optional sub-categorisation for high-cardinality events
 	"flags":          true, // CSV of feature-toggle flags used (--async, --unattended, --json, …)
 	"install_method": true, // taxonomy: "script" | "brew" | "go-install" | "release" | "docker" | "manual" | "unknown"
+	"update_outcome": true, // taxonomy: "up_to_date" | "update_available" | "check_failed"
 }
 
 // New initialises the client when telemetry is enabled. Disabled
