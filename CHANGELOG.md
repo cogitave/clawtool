@@ -5,7 +5,21 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.2] - 2026-04-28
+## [0.22.4] - 2026-04-28
+
+### Features
+
+- **telemetry:** Emit clawtool.install event once per fresh host (96a631a)
+### Fixes
+
+- **biam:** Summary lifts NDJSON agent_message text instead of thread.started header (fccbea5)## [0.22.3] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.2 [skip ci] (2ec9f0f)
+### Features
+
+- **plugin:** SessionStart auto-bootstrap hook — clawtool engages on first prompt of a fresh Claude Code session (83afb7d)## [0.22.2] - 2026-04-28
 
 ### Documentation
 
