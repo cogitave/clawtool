@@ -248,13 +248,14 @@ After this, every Bash tool call (from any host — claude / codex / gemini) exe
 - **System-notification banner** (v0.22.12+v0.22.16) — daemon-pushed notifications (release-available, daemon-degraded) latch in both the orchestrator and dashboard TUIs, fade after 30s. Severity drives the tint, Kind drives the icon. The orchestrator gained an Active/Done tab + viewport-bounded sidebar at the same time.
 - **`SendMessage` real-time streaming** (v0.22.x) — BIAM runner broadcasts per-line `StreamFrame`s alongside Task transitions over a multiplexed unix socket (`WatchEnvelope{Kind: task | frame | system}`). The orchestrator's per-task ringbuffer renders within ~50ms instead of waiting on SQLite poll. (Replaces the older "task watch v2" item that used to live here.)
 - **Cross-process dispatch handoff** — CLI `clawtool send --async` now hands the prompt to the daemon over a dedicated dispatch socket, so frame fanout reaches every consumer (orchestrator, dashboard, `task watch`) regardless of which process originated the dispatch.
+- **`clawtool telemetry status / on / off` + `clawtool onboard --yes`** (v0.22.18) — the wizard's "flip telemetry off any time" hint now points at a real subcommand instead of dead-ending in "unknown command", and unattended onboarding (Docker, CI, automation scripts) is one flag away.
+- **Docker e2e harness** — `test/e2e/onboard/` builds an image with mock claude/codex/gemini binaries on PATH and runs `clawtool onboard --yes` against it; `CLAWTOOL_E2E_DOCKER=1 go test ./test/e2e/onboard/...` exercises the full host-detect → bridge-install → MCP-claim → daemon-start path end-to-end.
 
 ## Roadmap
 
 - **Cross-host BIAM identity routing** (#196) — per-call `from_instance` parameter on `SendMessage` so codex / gemini / claude can mutually notify each other through the shared daemon.
-- **Onboarding state machine** (#194, ADR-027) — collapse `init` + `onboard` into one engine; per-feature opt-in matrix; verify-summary at the end (`send --list`, `bridge list`, `source check`, `sandbox doctor`). The v0.22.13–v0.22.16 nudge bundle covers the *discovery* half; the engine collapse is what's left.
+- **Onboarding state machine** (#194, ADR-027) — collapse `init` + `onboard` into one engine; per-feature opt-in matrix; verify-summary at the end (`send --list`, `bridge list`, `source check`, `sandbox doctor`). The v0.22.13–v0.22.18 nudge + auto-launch + telemetry-verb bundle covers the *discovery* half; the engine collapse is what's left.
 - **Sandbox-worker phase 2 follow-up** — Read/Edit/Write routing through the worker (Phase 2 covered Bash); per-conversation ephemeral workers; gVisor `runsc` runtime selection wired into the docker engine adapter.
-- **Docker e2e harness for onboard** — containerised host-CLI fixtures (claude/codex/gemini/opencode/hermes mocks) so the wizard's primary-CLI routing + MCP claim paths can be exercised end-to-end on every CI run rather than only via unit-tested deps.
 
 ## Contributing
 
