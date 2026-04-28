@@ -9,7 +9,7 @@ import (
 
 func TestOrchGridShape(t *testing.T) {
 	cases := []struct {
-		n          int
+		n            int
 		wantC, wantR int
 	}{
 		{1, 1, 1},

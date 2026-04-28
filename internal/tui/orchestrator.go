@@ -37,8 +37,8 @@ import (
 )
 
 const (
-	orchTickInterval  = 500 * time.Millisecond
-	orchPaneFadeAfter = 5 * time.Second
+	orchTickInterval   = 500 * time.Millisecond
+	orchPaneFadeAfter  = 5 * time.Second
 	orchPaneCloseAfter = 10 * time.Second
 )
 

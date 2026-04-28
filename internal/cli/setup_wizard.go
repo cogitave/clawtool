@@ -280,11 +280,11 @@ func claimHostForSetup(ctx context.Context, host string) error {
 // implementations live in setup_wizard_helpers.go alongside the
 // onboard production callbacks.
 var (
-	resolvePATH            = func(bin string) (string, error) { return "", fmt.Errorf("resolvePATH not wired") }
-	runDaemonEnsure        = func(ctx context.Context) error { return fmt.Errorf("runDaemonEnsure not wired") }
-	runIdentityEnsure      = func() error { return fmt.Errorf("runIdentityEnsure not wired") }
-	runSecretsStoreEnsure  = func(a *App) error { return fmt.Errorf("runSecretsStoreEnsure not wired") }
-	runMCPClaim            = func(ctx context.Context, host string) error { return fmt.Errorf("runMCPClaim not wired") }
+	resolvePATH           = func(bin string) (string, error) { return "", fmt.Errorf("resolvePATH not wired") }
+	runDaemonEnsure       = func(ctx context.Context) error { return fmt.Errorf("runDaemonEnsure not wired") }
+	runIdentityEnsure     = func() error { return fmt.Errorf("runIdentityEnsure not wired") }
+	runSecretsStoreEnsure = func(a *App) error { return fmt.Errorf("runSecretsStoreEnsure not wired") }
+	runMCPClaim           = func(ctx context.Context, host string) error { return fmt.Errorf("runMCPClaim not wired") }
 )
 
 // _ keeps strings imported even when the matrix builds without
