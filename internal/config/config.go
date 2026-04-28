@@ -34,10 +34,17 @@ type Config struct {
 	Observability ObservabilityConfig        `toml:"observability,omitempty"`
 	AutoLint      AutoLintConfig             `toml:"auto_lint,omitempty"`
 	Hooks         HooksConfig                `toml:"hooks,omitempty"`
-	Telemetry     TelemetryConfig            `toml:"telemetry,omitempty"`
-	Portals       map[string]PortalConfig    `toml:"portals,omitempty"`
-	Sandboxes     map[string]SandboxConfig   `toml:"sandboxes,omitempty"`
-	SandboxWorker SandboxWorkerConfig        `toml:"sandbox_worker,omitempty"`
+	// Telemetry deliberately drops `omitempty` for the same reason
+	// TelemetryConfig.Enabled does — a struct that nests a
+	// load-bearing `false` must round-trip to disk explicitly.
+	// Without this, a fresh `Default()` (Enabled=false, APIKey="",
+	// Host="") would write zero-value fields and the encoder would
+	// see the whole TelemetryConfig as empty and skip the section
+	// entirely, defeating the v0.22.19+ explicit-opt-out path.
+	Telemetry     TelemetryConfig          `toml:"telemetry"`
+	Portals       map[string]PortalConfig  `toml:"portals,omitempty"`
+	Sandboxes     map[string]SandboxConfig `toml:"sandboxes,omitempty"`
+	SandboxWorker SandboxWorkerConfig      `toml:"sandbox_worker,omitempty"`
 }
 
 // SandboxWorkerConfig wires the daemon to a sandbox-worker
@@ -168,7 +175,16 @@ type PortalBrowserSettings struct {
 // exit_code, error_class. NO prompts, NO paths, NO secrets, NO env
 // values — the CLI dispatcher strips arg slices before forwarding.
 type TelemetryConfig struct {
-	Enabled bool   `toml:"enabled,omitempty"`
+	// Enabled deliberately drops `omitempty` — `false` is a load-
+	// bearing value (explicit opt-out) that must round-trip to
+	// disk so the v0.22.19+ upgrade-merge logic in Load() can
+	// distinguish "user wrote enabled = false" from "user wrote
+	// nothing, defaults apply." With omitempty, `false` was
+	// silently stripped on Save and the next Load saw an absent
+	// key, which mergeDefaults then patched back to true — the
+	// `clawtool telemetry off` verb appeared to no-op across
+	// restarts.
+	Enabled bool   `toml:"enabled"`
 	APIKey  string `toml:"api_key,omitempty"` // PostHog project key (optional; defaults baked into the binary at release time)
 	Host    string `toml:"host,omitempty"`    // override the default https://app.posthog.com endpoint
 }
@@ -378,6 +394,16 @@ var KnownCoreTools = []string{
 
 // Load reads and parses a config file. Returns os.ErrNotExist (wrapped) when
 // the file is absent so callers can distinguish "no config" from a parse error.
+//
+// The on-disk schema uses `omitempty` everywhere — a user who upgraded from
+// pre-v0.22.19 has a config.toml that omits `[telemetry] enabled` entirely,
+// which TOML unmarshal turns into the zero-value (false). That silently
+// flipped existing users to telemetry-off even though Default() / the wizard
+// claim "pre-1.0 default = on". To honour the contract on upgrade, fields
+// that have a non-zero baseline in Default() must be merged in when the
+// on-disk value is absent. We do this for `[telemetry]` here; other sections
+// (CoreTools, Profile) stay untouched because their existing on-disk
+// representation already encodes the intended state explicitly.
 func Load(path string) (Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -387,7 +413,58 @@ func Load(path string) (Config, error) {
 	if err := toml.Unmarshal(b, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse %s: %w", path, err)
 	}
+	mergeDefaults(&cfg, b)
 	return cfg, nil
+}
+
+// mergeDefaults patches fields whose Default() baseline is non-zero but
+// whose on-disk representation is missing the relevant TOML key. raw is
+// the file bytes so we can string-match the actual presence of a key
+// (toml.Unmarshal can't distinguish "absent" from "explicitly false").
+//
+// Currently scoped to [telemetry] enabled. When a future field needs the
+// same upgrade-merge treatment, add another case here rather than
+// duplicating the string-match.
+func mergeDefaults(cfg *Config, raw []byte) {
+	defaults := Default()
+	if !hasTelemetryEnabledKey(raw) {
+		cfg.Telemetry.Enabled = defaults.Telemetry.Enabled
+	}
+}
+
+// hasTelemetryEnabledKey reports whether the raw TOML explicitly sets
+// `enabled` under `[telemetry]`. Not a TOML parser — we already have the
+// parsed struct; we just need to know "did the user write this key at all
+// or is the false we got from unmarshal really zero-value drift". A
+// regex-free string scan is enough because TOML's grammar makes the
+// section header + key shape unambiguous.
+func hasTelemetryEnabledKey(raw []byte) bool {
+	s := string(raw)
+	idx := strings.Index(s, "[telemetry]")
+	if idx < 0 {
+		return false
+	}
+	// Walk forward until the next section header or EOF, looking for a
+	// line whose first non-whitespace token is `enabled`.
+	rest := s[idx+len("[telemetry]"):]
+	if next := strings.Index(rest, "\n["); next >= 0 {
+		rest = rest[:next]
+	}
+	for _, line := range strings.Split(rest, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		if strings.HasPrefix(t, "enabled") {
+			// Allow `enabled =` or `enabled=`, both are TOML.
+			after := strings.TrimPrefix(t, "enabled")
+			after = strings.TrimSpace(after)
+			if strings.HasPrefix(after, "=") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // LoadOrDefault returns Load if the file exists, or Default() with no error
