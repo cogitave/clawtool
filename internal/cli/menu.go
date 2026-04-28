@@ -16,6 +16,7 @@ import (
 type menuChoice string
 
 const (
+	menuOnboard menuChoice = "onboard"
 	menuInit    menuChoice = "init"
 	menuRecipe  menuChoice = "recipe"
 	menuDoctor  menuChoice = "doctor"
@@ -41,12 +42,26 @@ func (a *App) runMenu() int {
 	fmt.Fprintln(a.Stdout, "clawtool — pick what you want to do")
 	fmt.Fprintln(a.Stdout)
 
-	var pick menuChoice
+	// First-run nudge — telemetry shows install→onboard
+	// drop-off. When the operator hasn't completed the wizard yet,
+	// pre-select onboard so the menu acts as a guided first step
+	// instead of a flat catalogue. The hint above the form makes
+	// the recommendation explicit.
+	defaultPick := menuInit
+	if !IsOnboarded() {
+		fmt.Fprintln(a.Stdout, "👋  Looks like clawtool hasn't been onboarded yet on this machine.")
+		fmt.Fprintln(a.Stdout, "    The wizard wires bridges, claims MCP hosts, and starts the daemon — pick \"Onboard\" below to run it now.")
+		fmt.Fprintln(a.Stdout)
+		defaultPick = menuOnboard
+	}
+
+	pick := defaultPick
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[menuChoice]().
 			Title("Main menu").
 			Description("Use ↑/↓ to navigate, <enter> to confirm. Pick \"exit\" to drop back to the shell.").
 			Options(
+				huh.NewOption("🚀  Onboard (first-run wizard — bridges, MCP claim, daemon)", menuOnboard),
 				huh.NewOption("📦  Set up this repo (clawtool init wizard)", menuInit),
 				huh.NewOption("🍽️   Browse / apply recipes (recipe list / status / apply)", menuRecipe),
 				huh.NewOption("🩺  Diagnose my install (clawtool doctor)", menuDoctor),
@@ -64,6 +79,8 @@ func (a *App) runMenu() int {
 	}
 
 	switch pick {
+	case menuOnboard:
+		return a.runOnboard(nil)
 	case menuInit:
 		return a.runInit(nil)
 	case menuRecipe:

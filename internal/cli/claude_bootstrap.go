@@ -136,6 +136,14 @@ func buildBootstrapContext(root string) string {
 	}
 	b.WriteString("On your first response, briefly check whether the user wants to (a) continue from the last session — peek at `wiki/log.md` if present, (b) start a fresh task, or (c) just stay context-aware while they drive. Don't dump the wiki contents unless asked.\n")
 
+	// Onboarded-marker nudge — telemetry shows install→onboard
+	// drop-off, so when the project marker is present but the
+	// global onboard hasn't been run, surface a one-liner so the
+	// operator knows the wizard is one command away.
+	if !IsOnboarded() {
+		b.WriteString("\n⚠ **clawtool installed but not onboarded.** Run `clawtool onboard` to wire bridges, claim MCP hosts, and start the daemon.\n")
+	}
+
 	// Auto-update probe — surface "vX → vY available" inline when
 	// the user's clawtool is behind cogitave/clawtool's latest
 	// release. Fail-open: any error (network, parse, timeout)

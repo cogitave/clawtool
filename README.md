@@ -11,6 +11,20 @@
 >
 > One canonical tool layer for every AI coding agent. Install once, use everywhere — across Claude Code, Codex, Gemini, OpenCode, and Hermes.
 
+## TL;DR — why would I install this?
+
+You probably already have one or more AI coding agents on your machine: Claude Code, Codex, Gemini CLI, OpenCode, Hermes. Each one ships its own slightly-different Bash tool, slightly-different Read/Edit/Write, its own MCP server list, its own sandbox story, its own way of "calling another agent". They don't share state, they don't share secrets, and adding a new tool means re-registering it everywhere.
+
+clawtool collapses that. **One binary** runs as a long-lived daemon. **Every host CLI** is wired to it as an MCP server (Claude Code via plugin, codex/gemini/opencode via `mcp add`). After that:
+
+- `Bash`, `Read`, `Edit`, `Write`, `Grep`, `Glob`, `WebFetch`, `WebSearch` are the same tool with the same behavior in every host (timeout-safe, structured JSON, format-aware reads — PDF / Word / Excel / Jupyter / HTML).
+- `SendMessage` lets any agent dispatch work to any other agent (`claude → codex`, `codex → gemini`, etc.) — async via the BIAM protocol with Ed25519-signed envelopes, edge-triggered fan-in, and a SQLite task store you can `clawtool task list` from a normal terminal.
+- A single sandbox profile (bwrap / sandbox-exec / docker / gVisor) governs every tool call, regardless of which agent triggered it.
+- Secrets live in one mode-0600 file, not scattered through five different `~/.config/<host>/` directories.
+- A 50+ tool catalog stays usable because models bind to schemas through `ToolSearch` (BM25) on demand.
+
+**One install, one daemon, one identity, one tool surface — across every agent.** That's the whole pitch.
+
 ## What clawtool is
 
 - **Canonical core tools.** Higher-quality replacements for native Bash, Read, Edit, Write, Grep, Glob, WebFetch — timeout-safe with process-group SIGKILL, structured JSON output (stdout/stderr/exit_code/duration_ms/timed_out/cwd), format-aware reads (PDF, Word, Excel, HTML, Jupyter), atomic writes, deterministic line cursors. Cross-platform parity (Linux, macOS, WSL2).
@@ -22,34 +36,64 @@
 
 ## Quick install
 
+Pick the path that matches your primary agent:
+
 ```bash
-# Claude Code marketplace path (recommended)
+# 1) Claude Code primary user — use the marketplace plugin.
+#    Registers the MCP server, drops slash commands, loads the routing skill.
 claude plugin marketplace add cogitave/clawtool
 claude plugin install clawtool@clawtool-marketplace
 
-# Or direct binary install
+# 2) Codex / Gemini / OpenCode primary user (or all of the above)
+#    — install the standalone binary; the onboard wizard claims each host.
 curl -sSL https://raw.githubusercontent.com/cogitave/clawtool/main/install.sh | sh
 
-# Or from source
+# 3) Building from source
 go install github.com/cogitave/clawtool/cmd/clawtool@latest
 ```
 
-## Onboarding
+The `install.sh` script:
+
+- detects your OS / arch (linux+darwin × amd64+arm64), downloads the matching tarball, **verifies SHA-256** against the published `checksums.txt`, and atomically installs to `~/.local/bin/clawtool` (override with `CLAWTOOL_INSTALL_DIR`);
+- when run interactively, **offers to launch `clawtool onboard` for you immediately** — say `Y` and the wizard runs without you re-typing anything. Pass `CLAWTOOL_NO_ONBOARD=1` to skip the prompt;
+- is safe to re-run; it doubles as an upgrade path. (You can also self-update with `clawtool upgrade` — atomic binary replacement, signed release.)
+
+## First run — what to expect
 
 ```bash
-clawtool onboard            # interactive wizard — host detection, MCP claims, identity, telemetry consent
+clawtool                    # no-args lands you in a friendly TUI menu;
+                            # if you haven't onboarded yet, it pre-selects
+                            # the wizard and tells you so.
+clawtool onboard            # interactive wizard — runs in ~30 seconds
 clawtool overview           # one-screen status of daemon + sandbox-worker + agents + bridges
-clawtool doctor             # full diagnostic with fix hints per finding
+clawtool doctor             # deep diagnostic with fix hints per finding
+clawtool send --list        # lists every callable agent the daemon can dispatch to
+clawtool task list --active # see in-flight BIAM dispatches across all hosts
+clawtool dashboard          # live Bubble Tea TUI — tasks, frames, system events
+clawtool orchestrator       # split-pane TUI for watching multiple async dispatches
 ```
 
-The wizard:
+What the **onboard wizard** does (one-time, takes about 30 seconds):
 
-1. Detects host CLIs (claude / codex / gemini / opencode / hermes).
-2. Offers to install missing bridges (Claude Code marketplace plugins for codex / gemini, binary checks for opencode / hermes).
-3. **Registers clawtool as an MCP server in every detected host** (codex / gemini / opencode) — points each at the persistent shared daemon. This is the fan-in step: every host dials one daemon, not a per-host stdio child.
-4. Generates a BIAM identity (Ed25519 keypair, mode 0600) for `clawtool send --async`.
-5. Records telemetry consent.
-6. Optional: drops repo-level recipes via `clawtool init`.
+1. Detects host CLIs on `$PATH` (claude / codex / gemini / opencode / hermes).
+2. Asks **which CLI you'll mostly drive clawtool through** — that answer pre-selects defaults for the next two steps.
+3. Offers to install missing **bridges** (Claude Code marketplace plugins for codex / gemini, binary check for opencode / hermes). Bridges are how clawtool fans `SendMessage` calls out to the right CLI.
+4. **Registers clawtool as an MCP server in every detected host** (`mcp add` for codex / gemini / opencode) — every host dials one shared daemon instead of spawning per-host stdio children. This is the fan-in.
+5. Starts the long-running daemon (`clawtool daemon start`) so cross-session memory + dispatch survive shell restarts.
+6. Generates a BIAM identity (Ed25519 keypair, mode 0600) for signed multi-agent messaging.
+7. Drops a 0600 `secrets.toml` stub so per-source API keys have a place to land.
+8. Records telemetry consent (opt-in only — disabled by default).
+9. Writes an `~/.config/clawtool/.onboarded` marker so future sessions know setup is done.
+
+Once onboarded, both Claude Code's SessionStart hook and the no-args TUI stay quiet about setup; if the marker is missing, **both surfaces nudge you back to `clawtool onboard`** — you'll never wonder why the agents can't see clawtool's tools yet.
+
+### Common questions
+
+- **"Do I have to install the binary if I only use Claude Code?"** No — the marketplace plugin is enough for Claude Code. You'd only want the binary too if you also use codex / gemini / opencode and want the shared daemon, or if you want the `clawtool` CLI on your terminal.
+- **"What writes my MCP config?"** `clawtool onboard` shells out to each host's own `mcp add` command — it doesn't poke at config files behind your back. You can audit / remove with the host's own tools (`claude mcp list`, `codex mcp list`, …).
+- **"Where does state live?"** Everything is under `~/.config/clawtool/` (config, secrets, identity, daemon state) and `~/.local/share/clawtool/` (BIAM SQLite store) by default. Honors `XDG_CONFIG_HOME` / `XDG_DATA_HOME`. See the [Configuration](#configuration) table below.
+- **"Is the daemon always running?"** Only after onboard. It's a normal user-process (not a system service); `clawtool daemon stop` kills it cleanly. It auto-restarts when a host MCP call comes in (`daemon.Ensure`).
+- **"How do I update?"** `clawtool upgrade` does a signed self-replacement. New releases also push a system notification through the daemon, so any host with clawtool wired in will surface a "vX → vY available" banner without you having to check.
 
 ## Architecture
 

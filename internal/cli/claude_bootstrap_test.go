@@ -232,6 +232,55 @@ func TestClaudeBootstrap_UpgradeCheckFailureSilent(t *testing.T) {
 	}
 }
 
+// TestClaudeBootstrap_NotOnboarded_SurfacesNudge confirms the hook
+// emits a "not onboarded" banner when .clawtool/ is present but the
+// global onboarded marker is absent. Lets users discover the wizard
+// from inside Claude Code instead of staring at a partially-wired
+// install.
+func TestClaudeBootstrap_NotOnboarded_SurfacesNudge(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	prev := fetchUpdate
+	t.Cleanup(func() { fetchUpdate = prev })
+	fetchUpdate = func() version.UpdateInfo { return version.UpdateInfo{HasUpdate: false} }
+
+	out := runBootstrap(t, dir)
+	ctx := out.HookSpecificOutput.AdditionalContext
+	if !strings.Contains(ctx, "installed but not onboarded") {
+		t.Errorf("missing not-onboarded nudge\nfull: %s", ctx)
+	}
+	if !strings.Contains(ctx, "clawtool onboard") {
+		t.Errorf("nudge should reference `clawtool onboard`\nfull: %s", ctx)
+	}
+}
+
+// TestClaudeBootstrap_Onboarded_SuppressesNudge confirms the hook
+// stays quiet when the marker exists — once you've onboarded, the
+// banner becomes noise.
+func TestClaudeBootstrap_Onboarded_SuppressesNudge(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := writeOnboardedMarker(); err != nil {
+		t.Fatalf("writeOnboardedMarker: %v", err)
+	}
+
+	prev := fetchUpdate
+	t.Cleanup(func() { fetchUpdate = prev })
+	fetchUpdate = func() version.UpdateInfo { return version.UpdateInfo{HasUpdate: false} }
+
+	out := runBootstrap(t, dir)
+	if strings.Contains(out.HookSpecificOutput.AdditionalContext, "not onboarded") {
+		t.Errorf("onboarded marker should suppress the nudge: %s", out.HookSpecificOutput.AdditionalContext)
+	}
+}
+
 // TestClaudeBootstrap_UnknownEventEmitsEmpty asserts forward-compat
 // for events we don't yet implement (UserPromptSubmit, SessionEnd,
 // etc.) — emit empty additionalContext rather than refusing so

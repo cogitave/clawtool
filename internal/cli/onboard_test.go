@@ -4,11 +4,35 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/huh"
 )
+
+// TestIsOnboarded_RoundTrip confirms the marker writer + reader
+// agree on a single source of truth. Drives the SessionStart hook
+// and the no-args first-run nudge — both consumers must see the
+// same boolean.
+func TestIsOnboarded_RoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if IsOnboarded() {
+		t.Fatal("fresh XDG dir should report not-onboarded")
+	}
+	if err := writeOnboardedMarker(); err != nil {
+		t.Fatalf("writeOnboardedMarker: %v", err)
+	}
+	if !IsOnboarded() {
+		t.Fatal("after marker write, IsOnboarded() must be true")
+	}
+	// Marker must live where the SessionStart hook expects.
+	want := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "clawtool", ".onboarded")
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("marker not written at %q: %v", want, err)
+	}
+}
 
 // TestPrimaryDefault_PicksClaudeCodeWhenDetected confirms claude
 // is the priority pick — clawtool runs inside Claude Code most of
