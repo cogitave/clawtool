@@ -251,6 +251,31 @@ func BuildManifest() *registry.Manifest {
 			RegisterSkillNew(s)
 		},
 	})
+	// ─── Skill discovery: SkillList → SkillLoad ────────────────
+	// On-demand mount pattern (ADR-029 phase 3). Model lists
+	// installed skills, picks one, loads its full content into
+	// the current turn — same shape claude.ai's /mnt/skills
+	// filesystem mount provides via view/read.
+	m.Append(registry.ToolSpec{
+		Name:        "SkillList",
+		Description: "Enumerate Agent Skills installed on this host. Returns name, scope (project|user|catalog), description, and absolute path. Pair with SkillLoad to pull a skill's full content.",
+		Keywords:    []string{"skill", "list", "enumerate", "discover", "agentskills", "claude-skill", "available", "installed"},
+		Category:    registry.CategoryDiscovery,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterSkillList(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "SkillLoad",
+		Description: "Load one Agent Skill's content (frontmatter + body) by name. Use after SkillList narrows the candidate. Lookup precedence: project ./.claude/skills > user ~/.claude/skills > $CLAWTOOL_SKILLS_DIR.",
+		Keywords:    []string{"skill", "load", "read", "fetch", "view", "agentskills", "claude-skill", "on-demand", "mount"},
+		Category:    registry.CategoryDiscovery,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterSkillLoad(s)
+		},
+	})
 
 	// ─── Step 4: Runtime-dependent + multi-tool wrappers ───────
 	//
