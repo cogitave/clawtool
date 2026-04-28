@@ -149,6 +149,21 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Task snapshot — upsert.
 		t, ok := m.tasks[msg.task.TaskID]
 		if !ok {
+			// The watch socket emits every task in the
+			// store on connect (snapshot pass). For a
+			// live-activity view we only care about tasks
+			// that are still alive — historical terminal
+			// rows would flood the sidebar with up to
+			// 1000 stale entries that all cascade-close
+			// on the first orchTickMsg, exactly the
+			// "shows 50 then drops to actives" glitch the
+			// operator hit. Drop already-terminal tasks
+			// at insert time. They'll never matter to a
+			// live view, and `task list` is the right
+			// surface for history.
+			if msg.task.Status.IsTerminal() {
+				return m, watchReadCmd(msg.dec, msg.conn)
+			}
 			t = &orchTask{
 				task:    msg.task,
 				startAt: time.Now(),
@@ -164,7 +179,9 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Stamp terminal time on the first transition to a
 		// terminal status (covers both fresh-insert and
-		// existing-update paths).
+		// existing-update paths). Only meaningful for tasks
+		// that were live when first seen — pre-terminal
+		// snapshots short-circuit above.
 		if t.terminal.IsZero() && msg.task.Status.IsTerminal() {
 			t.terminal = time.Now()
 		}

@@ -178,6 +178,67 @@ CREATE TABLE IF NOT EXISTS peers (
 	return err
 }
 
+// ReapStaleTasks marks pending tasks older than `pendingThreshold`
+// AND active tasks older than `activeThreshold` as `expired`. Returns
+// the number of rows affected.
+//
+// Why: a daemon crash leaves rows stuck in pending/active forever.
+// Without recovery, `clawtool task list` accumulates ghost rows from
+// every prior daemon process, and TaskNotify subscribers wait for a
+// terminal state that will never come. Running this at daemon
+// startup catches the orphans from the previous boot.
+//
+// Threshold rationale:
+//   - pending → active is supposed to flip in milliseconds. A
+//     pending row older than ~1 minute is presumed orphan.
+//   - active rows stay active legitimately for as long as the
+//     upstream agent runs (codex deep-research can hit 10+ minutes).
+//     Pass 0 (or a very large duration) to skip the active sweep
+//     when you can't bound legitimate runtime.
+//
+// Both thresholds zero = sweep every non-terminal row regardless of
+// age. Not the default — only safe when the caller knows no other
+// daemon shares this DB.
+func (s *Store) ReapStaleTasks(ctx context.Context, pendingThreshold, activeThreshold time.Duration) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	totalAffected := 0
+	reapMsg := "expired: daemon restarted before this task completed"
+
+	if pendingThreshold >= 0 {
+		cutoff := now.Add(-pendingThreshold).Format(time.RFC3339Nano)
+		res, err := s.db.ExecContext(ctx, `
+			UPDATE tasks
+			   SET status = ?, closed_at = ?, last_message = ?
+			 WHERE status = ? AND created_at < ?
+		`, TaskExpired, now.Format(time.RFC3339Nano), reapMsg, TaskPending, cutoff)
+		if err != nil {
+			return totalAffected, err
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			totalAffected += int(n)
+		}
+	}
+
+	if activeThreshold > 0 {
+		cutoff := now.Add(-activeThreshold).Format(time.RFC3339Nano)
+		res, err := s.db.ExecContext(ctx, `
+			UPDATE tasks
+			   SET status = ?, closed_at = ?, last_message = ?
+			 WHERE status = ? AND created_at < ?
+		`, TaskExpired, now.Format(time.RFC3339Nano), reapMsg, TaskActive, cutoff)
+		if err != nil {
+			return totalAffected, err
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			totalAffected += int(n)
+		}
+	}
+
+	return totalAffected, nil
+}
+
 // CreateTask inserts a new task row and returns the row's task_id.
 // Idempotent: an existing task_id returns nil error.
 func (s *Store) CreateTask(ctx context.Context, taskID, initiatedBy, agent string) error {
