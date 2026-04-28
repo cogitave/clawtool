@@ -371,11 +371,52 @@ func (a *App) runTools(argv []string) int {
 			fmt.Fprintf(a.Stderr, "clawtool tools status: %v\n", err)
 			return 1
 		}
+	case "export-typescript":
+		out := "./clawtool-stubs"
+		// Tiny argparser — only one optional flag for now.
+		for i := 1; i < len(argv); i++ {
+			switch argv[i] {
+			case "--output", "-o":
+				if i+1 >= len(argv) {
+					fmt.Fprint(a.Stderr, "clawtool tools export-typescript: --output requires a value\n")
+					return 2
+				}
+				out = argv[i+1]
+				i++
+			default:
+				fmt.Fprintf(a.Stderr, "clawtool tools export-typescript: unknown flag %q\n", argv[i])
+				return 2
+			}
+		}
+		if err := a.ToolsExportTypeScript(out); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool tools export-typescript: %v\n", err)
+			return 1
+		}
 	default:
 		fmt.Fprintf(a.Stderr, "clawtool tools: unknown subcommand %q\n\n%s", argv[0], toolsUsage)
 		return 2
 	}
 	return 0
+}
+
+// ToolsExportTypeScript emits the manifest as a TypeScript module
+// tree under outDir. One .ts per tool plus an index.ts barrel. The
+// underlying generator (registry.Manifest.ExportTypeScript) is the
+// single source of truth — this method just wires the manifest +
+// stdout chatter.
+func (a *App) ToolsExportTypeScript(outDir string) error {
+	manifest := core.BuildManifest()
+	written, err := manifest.ExportTypeScript(outDir)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "✓ wrote %d files to %s/\n", len(written), outDir)
+	for _, f := range written {
+		fmt.Fprintf(a.Stdout, "  %s\n", f)
+	}
+	fmt.Fprintf(a.Stdout, "\nA code-mode host can `import { Bash, Read, Edit } from %q` instead of\n", outDir)
+	fmt.Fprintf(a.Stdout, "round-tripping every tools/call. Re-run after a manifest change to refresh.\n")
+	return nil
 }
 
 // validateSelector enforces the ADR-006 charset rules at the user's first
@@ -468,6 +509,12 @@ Usage:
                             inject them into the current repo. --yes / non-TTY:
                             apply Stable defaults non-interactively.
   clawtool tools list       List known tools and their resolved enabled state.
+  clawtool tools export-typescript [--output <dir>]
+                            Emit one .ts file per registered tool plus an
+                            index.ts barrel. A code-mode host can then
+                            'import { Bash, Read, ... }' and write code
+                            instead of round-tripping each tools/call --
+                            see Anthropic's "Code execution with MCP".
   clawtool tools enable <selector>
   clawtool tools disable <selector>
   clawtool tools status <selector>
