@@ -5,7 +5,29 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.17] - 2026-04-28
+## [0.22.19] - 2026-04-28
+
+### Documentation
+
+- **readme:** Note v0.22.18 telemetry verb + e2e harness, drop done roadmap items (9e0d992)
+### Features
+
+- **config:** Default telemetry on so the wizard's "pre-1.0 default = on" claim is honest (2493fcc)
+- **doctor:** Add [telemetry] section with config-vs-process drift detection (54a092e)
+### Tests
+
+- **e2e:** Finish docker harness for `clawtool onboard --yes` (bd4e278)## [0.22.18] - 2026-04-28
+
+### CI
+
+- **release:** Handle goreleaser drift + concurrent-tag race in changelog regen (7278a5b)
+### Documentation
+
+- **readme:** Refresh roadmap — split shipped from pending, drop done items (51dedfb)
+- **changelog:** Regenerate for v0.22.17 [skip ci] (612c8bd)
+### Features
+
+- **cli:** Wire `clawtool telemetry` subcommand + onboard `--yes` for unattended runs (0be7694)## [0.22.17] - 2026-04-28
 
 ### Documentation
 
