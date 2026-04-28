@@ -119,6 +119,12 @@ func TestAllowedKeys_FilterStrips(t *testing.T) {
 }
 
 func TestDetectInstallMethod_KnownTaxonomy(t *testing.T) {
+	// Isolate from the host's install-method file (install.sh
+	// writes one under ~/.config/clawtool/install-method when
+	// the user installed via the script). The file-fallback in
+	// detectInstallMethod would otherwise leak the host's value
+	// into the test and break the empty-input → "unknown" case.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	cases := map[string]string{
 		"script":     "script",
 		"brew":       "brew",

@@ -157,7 +157,7 @@ func buildBootstrapContext(root string) string {
 	}
 	if tc := telemetry.Get(); tc != nil && tc.Enabled() {
 		tc.Track("clawtool.update_check", map[string]any{
-			"version":        version.Version,
+			"version":        version.Resolved(),
 			"update_outcome": outcome,
 		})
 	}

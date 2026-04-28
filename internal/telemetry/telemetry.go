@@ -268,10 +268,15 @@ func readInstallMethod() string {
 	if v := strings.ToLower(strings.TrimSpace(os.Getenv("CLAWTOOL_INSTALL_METHOD"))); v != "" {
 		return v
 	}
+	// Honour XDG_CONFIG_HOME exclusively when set — a test that
+	// redirects it to a temp dir doesn't want fall-through to the
+	// host's ~/.config/clawtool/install-method file. Production
+	// callers that don't set XDG fall through to the home path.
 	if v := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); v != "" {
 		if b, err := os.ReadFile(filepath.Join(v, "clawtool", "install-method")); err == nil {
 			return strings.ToLower(strings.TrimSpace(string(b)))
 		}
+		return ""
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		if b, err := os.ReadFile(filepath.Join(home, ".config", "clawtool", "install-method")); err == nil {
