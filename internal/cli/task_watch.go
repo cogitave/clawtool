@@ -125,12 +125,12 @@ func (a *App) runTaskWatch(argv []string) int {
 	return runWatchOne(ctx, a, store, taskID, pollInterval, emit)
 }
 
-// runWatchSocket consumes JSONL Task events from the daemon's
-// push socket. Filters by taskID when --all isn't set; exits when
-// the matched task hits a terminal state, the socket disconnects,
-// or ctx cancels. Per-task mode also tracks "no events for this
-// id yet" — the snapshot pass at connect time guarantees one line
-// per known task, so a missing id means the task doesn't exist.
+// runWatchSocket consumes WatchEnvelope JSONL events from the
+// daemon's push socket. Filters by taskID when --all isn't set;
+// exits when the matched task hits a terminal state, the socket
+// disconnects, or ctx cancels. Stream frames (`kind=="frame"`) are
+// rendered as inline tail lines under the task they belong to so
+// the operator sees live agent output without leaving the watch.
 func runWatchSocket(ctx context.Context, conn io.ReadCloser, taskID string, all bool, emit emitter) int {
 	dec := json.NewDecoder(bufio.NewReader(conn))
 	prev := map[string]biam.Task{}
@@ -147,33 +147,53 @@ func runWatchSocket(ctx context.Context, conn io.ReadCloser, taskID string, all 
 	}()
 
 	for {
-		var t biam.Task
-		err := dec.Decode(&t)
+		var env biam.WatchEnvelope
+		err := dec.Decode(&env)
 		if err != nil {
 			if errors.Is(err, io.EOF) || ctx.Err() != nil {
 				return 0
 			}
-			// Mid-stream JSON error → fall through to caller's
-			// poll fallback path. The CLI signals this by
-			// returning a non-zero code so the operator can
-			// retry; printing nothing here keeps the chat
-			// uncluttered.
 			return 0
 		}
-		if !all && t.TaskID != taskID {
-			continue
-		}
-		old, ok := prev[t.TaskID]
-		if ok && !changed(&old, &t) {
-			continue
-		}
-		ev := snapshotToEvent(&t)
-		if !emit(ev) {
-			return 0
-		}
-		prev[t.TaskID] = t
-		if !all && t.Status.IsTerminal() {
-			return 0
+		switch env.Kind {
+		case "task":
+			if env.Task == nil {
+				continue
+			}
+			t := *env.Task
+			if !all && t.TaskID != taskID {
+				continue
+			}
+			old, ok := prev[t.TaskID]
+			if ok && !changed(&old, &t) {
+				continue
+			}
+			ev := snapshotToEvent(&t)
+			if !emit(ev) {
+				return 0
+			}
+			prev[t.TaskID] = t
+			if !all && t.Status.IsTerminal() {
+				return 0
+			}
+		case "frame":
+			if env.Frame == nil {
+				continue
+			}
+			f := *env.Frame
+			if !all && f.TaskID != taskID {
+				continue
+			}
+			ev := watchEvent{
+				TS:          f.TS,
+				TaskID:      f.TaskID,
+				Status:      "stream",
+				Agent:       f.Agent,
+				LastMessage: truncate(f.Line, 120),
+			}
+			if !emit(ev) {
+				return 0
+			}
 		}
 	}
 }

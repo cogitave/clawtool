@@ -123,9 +123,23 @@ func ServeWatchSocket(ctx context.Context, store *Store, hub *WatchHub, path str
 	}
 }
 
+// WatchEnvelope is the JSONL wire-format wrapping every event the
+// watch socket emits. `Kind` distinguishes "task" snapshots from
+// "frame" stream lines so a single connection can multiplex both.
+// CLI / TUI consumers branch on Kind. Older clients that pre-date
+// the wrapping detect the new shape (top-level `kind` key) and
+// upgrade their parser; nothing breaks if a Task lands in `Task`
+// and `Frame` stays nil.
+type WatchEnvelope struct {
+	Kind  string       `json:"kind"`            // "task" | "frame"
+	Task  *Task        `json:"task,omitempty"`  // populated when Kind=="task"
+	Frame *StreamFrame `json:"frame,omitempty"` // populated when Kind=="frame"
+}
+
 // handleWatchClient streams snapshot + live events to one connected
 // reader. Returns when the client disconnects, the connection errors
-// out, or ctx cancels.
+// out, or ctx cancels. Wraps every payload in a WatchEnvelope so
+// task transitions and stream frames share one socket.
 func handleWatchClient(ctx context.Context, c net.Conn, store *Store, hub *WatchHub) {
 	w := bufio.NewWriter(c)
 	enc := json.NewEncoder(w)
@@ -135,19 +149,31 @@ func handleWatchClient(ctx context.Context, c net.Conn, store *Store, hub *Watch
 	// don't slip through the gap. Buffered cap-32 channel +
 	// drop-on-full means slow clients lose events but never block
 	// the publisher.
-	ch, unsub := hub.Subscribe()
-	defer unsub()
+	taskCh, unsubTask := hub.Subscribe()
+	defer unsubTask()
+	frameCh, unsubFrame := hub.SubscribeFrames()
+	defer unsubFrame()
+
+	emit := func(env WatchEnvelope) bool {
+		_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := enc.Encode(env); err != nil {
+			return false
+		}
+		if err := w.Flush(); err != nil {
+			return false
+		}
+		_ = c.SetWriteDeadline(time.Time{})
+		return true
+	}
 
 	// Snapshot pass — give the watcher every task we know about
 	// before tailing the live feed.
 	if tasks, err := store.ListTasks(ctx, 1000); err == nil {
 		for i := range tasks {
-			if err := enc.Encode(tasks[i]); err != nil {
+			t := tasks[i]
+			if !emit(WatchEnvelope{Kind: "task", Task: &t}) {
 				return
 			}
-		}
-		if err := w.Flush(); err != nil {
-			return
 		}
 	}
 
@@ -166,21 +192,20 @@ func handleWatchClient(ctx context.Context, c net.Conn, store *Store, hub *Watch
 			return
 		case <-disc:
 			return
-		case t, ok := <-ch:
+		case t, ok := <-taskCh:
 			if !ok {
 				return
 			}
-			// Set a write deadline so a wedged client doesn't
-			// hold the goroutine forever after the kernel
-			// buffers fill.
-			_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if err := enc.Encode(t); err != nil {
+			if !emit(WatchEnvelope{Kind: "task", Task: &t}) {
 				return
 			}
-			if err := w.Flush(); err != nil {
+		case f, ok := <-frameCh:
+			if !ok {
 				return
 			}
-			_ = c.SetWriteDeadline(time.Time{})
+			if !emit(WatchEnvelope{Kind: "frame", Frame: &f}) {
+				return
+			}
 		}
 	}
 }
