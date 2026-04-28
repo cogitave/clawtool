@@ -1,6 +1,7 @@
 package biam
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -147,9 +148,12 @@ func (r *Runner) run(ctx context.Context, prompt *Envelope, instance, promptText
 		return
 	}
 
-	// Buffer up to 4 MiB; anything beyond gets truncated with a marker.
-	buf, truncated := readCapped(rc, 4*1024*1024)
-	body := buf.String()
+	// Buffer up to 4 MiB AND broadcast every line to the WatchHub
+	// as it arrives so the orchestrator / dashboard panes can show
+	// live stdout. Body is rebuilt from the same scanned stream so
+	// the persisted result envelope is byte-identical to the old
+	// readCapped path.
+	body, truncated := readCappedBroadcast(rc, 4*1024*1024, prompt.TaskID, instance)
 	if truncated {
 		body += "\n\n…[truncated by clawtool BIAM at 4 MiB]"
 	}
@@ -375,6 +379,59 @@ func readCapped(r io.Reader, cap int) (*bytes.Buffer, bool) {
 		}
 		if err != nil {
 			return buf, false
+		}
+	}
+}
+
+// readCappedBroadcast reads r line-by-line, buffers up to `cap` bytes
+// for the persisted result body, AND fans every line as a StreamFrame
+// to the WatchHub so live consumers (orchestrator, dashboard,
+// `task watch`) can render the upstream agent's output as it arrives.
+//
+// Returns the assembled body string + a truncation flag. Lines past
+// the cap stop being appended to the body but continue to broadcast
+// — the live view stays accurate even when the persisted result hits
+// the SQLite size limit.
+func readCappedBroadcast(r io.Reader, capBytes int, taskID, instance string) (string, bool) {
+	agent := familyFromInstance(instance)
+	br := bufio.NewReaderSize(r, 64*1024)
+	var body bytes.Buffer
+	truncated := false
+	first := true
+
+	for {
+		line, err := br.ReadString('\n')
+		if line != "" {
+			// Append to body up to the cap.
+			if !truncated {
+				if body.Len()+len(line) > capBytes {
+					take := capBytes - body.Len()
+					if take > 0 {
+						body.WriteString(line[:take])
+					}
+					truncated = true
+				} else {
+					body.WriteString(line)
+				}
+			}
+			// Trim the trailing newline for the broadcast — the
+			// renderer adds its own line separator. Empty lines
+			// pass through (operators see the agent's blank
+			// lines too).
+			emit := strings.TrimRight(line, "\n")
+			if !first || emit != "" {
+				Watch.BroadcastFrame(StreamFrame{
+					TaskID: taskID,
+					Agent:  agent,
+					Line:   emit,
+					Kind:   "stdout",
+					TS:     time.Now().UTC(),
+				})
+			}
+			first = false
+		}
+		if err != nil {
+			return body.String(), truncated
 		}
 	}
 }

@@ -490,23 +490,42 @@ func watchSubscribeCmd() tea.Cmd {
 			return watchClosedMsg{}
 		}
 		dec := json.NewDecoder(bufio.NewReader(conn))
-		var t biam.Task
-		if err := dec.Decode(&t); err != nil {
-			_ = conn.Close()
-			return watchClosedMsg{}
-		}
-		return watchEventMsg{task: t, dec: dec, conn: conn}
+		return readNextEnvelope(dec, conn)
 	}
 }
 
 func watchReadCmd(dec *json.Decoder, conn net.Conn) tea.Cmd {
 	return func() tea.Msg {
-		var t biam.Task
-		if err := dec.Decode(&t); err != nil {
+		return readNextEnvelope(dec, conn)
+	}
+}
+
+// readNextEnvelope blocks until the next WatchEnvelope arrives,
+// loops past stream frames (the dashboard's tasks pane only cares
+// about Task transitions for now), and returns either a
+// watchEventMsg with the materialised Task or watchClosedMsg on
+// disconnect.
+func readNextEnvelope(dec *json.Decoder, conn net.Conn) tea.Msg {
+	for {
+		var env biam.WatchEnvelope
+		if err := dec.Decode(&env); err != nil {
 			_ = conn.Close()
 			return watchClosedMsg{}
 		}
-		return watchEventMsg{task: t, dec: dec, conn: conn}
+		switch env.Kind {
+		case "task":
+			if env.Task == nil {
+				continue
+			}
+			return watchEventMsg{task: *env.Task, dec: dec, conn: conn}
+		case "frame":
+			// Dashboard tasks pane doesn't render frames —
+			// only the orchestrator does. Skip and read again.
+			continue
+		default:
+			// Unknown kind — defensively skip.
+			continue
+		}
 	}
 }
 
