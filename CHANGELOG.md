@@ -4,7 +4,22 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.24] - 2026-04-28
+## [0.22.26] - 2026-04-28
+
+### Documentation
+
+- Strip ADR refs from runtime user-facing strings (2f41735)
+### Fixes
+
+- **concurrency:** Join in-flight handlers + bound mergeCtx watcher (7feaf24)## [0.22.25] - 2026-04-28
+
+### Documentation
+
+- Strip internal doc IDs from user-facing surface (bbbdeda)
+- **changelog:** Regenerate for v0.22.24 [skip ci] (521a7f0)
+### Fixes
+
+- **bash:** Join drain goroutines before flipping bg task to terminal (91eb514)## [0.22.24] - 2026-04-28
 
 ### Documentation
 
