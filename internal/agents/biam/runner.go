@@ -136,6 +136,17 @@ func (r *Runner) run(ctx context.Context, prompt *Envelope, instance, promptText
 	bg := context.Background()
 	_ = r.store.SetTaskStatus(bg, prompt.TaskID, TaskActive, "")
 
+	// Fan-in: inject CLAWTOOL_TASK_ID + CLAWTOOL_FROM_INSTANCE so
+	// the dispatched peer can call mcp__clawtool__TaskReply
+	// against the parent task without the operator threading the
+	// id through prompt prose. CLAWTOOL_FROM_INSTANCE carries the
+	// peer's own family name so its replies signal the right
+	// `from` field on the appended envelope. We never override
+	// keys the caller already set — withSecretsResolved resolves
+	// per-instance secrets first, and an explicit caller-supplied
+	// CLAWTOOL_TASK_ID stays authoritative.
+	opts = injectFanInEnv(opts, prompt.TaskID, instance)
+
 	rc, err := r.send(ctx, instance, promptText, opts)
 	if err != nil {
 		// Distinguish operator cancel from a genuine send failure
@@ -189,6 +200,36 @@ func (r *Runner) run(ctx context.Context, prompt *Envelope, instance, promptText
 		body += "upstream stream reported failure: " + streamFail
 	}
 	r.recordResult(prompt, kind, body, terminal)
+}
+
+// injectFanInEnv ensures opts["env"] carries CLAWTOOL_TASK_ID +
+// CLAWTOOL_FROM_INSTANCE so a dispatched peer can find its parent
+// task without the operator threading the id through prompt prose.
+//
+// Caller-supplied keys win — withSecretsResolved fills per-instance
+// secrets via this same opts["env"] map, and an explicit caller
+// override (e.g. a custom task_id surface in tests) stays
+// authoritative. Returns the same opts (mutated in place when a
+// non-nil env map exists; new map otherwise) so the caller can
+// reassign without ceremony.
+func injectFanInEnv(opts map[string]any, taskID, instance string) map[string]any {
+	if opts == nil {
+		opts = map[string]any{}
+	}
+	var env map[string]string
+	if v, ok := opts["env"].(map[string]string); ok && v != nil {
+		env = v
+	} else {
+		env = map[string]string{}
+	}
+	if _, has := env["CLAWTOOL_TASK_ID"]; !has && taskID != "" {
+		env["CLAWTOOL_TASK_ID"] = taskID
+	}
+	if _, has := env["CLAWTOOL_FROM_INSTANCE"]; !has && instance != "" {
+		env["CLAWTOOL_FROM_INSTANCE"] = instance
+	}
+	opts["env"] = env
+	return opts
 }
 
 // detectStreamFailure scans the tail of an NDJSON stream-json body for
