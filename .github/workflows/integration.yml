@@ -49,9 +49,19 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          # `npx` doesn't reliably cache packages across runs on its own,
-          # so we cache npm's directory ourselves to keep wall time down.
-          cache: npm
+          # `cache: npm` requires a package-lock.json at repo root — clawtool
+          # is a Go project so there isn't one. npx packages download per run;
+          # this job is scheduled daily so the cache miss is tolerable.
+
+      # Manually cache ~/.npm so npx download-on-demand isn't wholly cold
+      # across runs. Hashing on go.sum is a stable-enough key — it changes
+      # roughly when the integration set turns over too.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
 
       - name: Build clawtool
         run: make build
