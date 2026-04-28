@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestRunner_Submit_HonoursFromInstance confirms the cross-host
@@ -57,10 +58,34 @@ func TestRunner_Submit_HonoursFromInstance(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := t.Context()
-			taskID, err := r.Submit(ctx, "claude", "ping", tc.opts)
+			// Subscribe BEFORE Submit so we don't race the
+			// dispatch goroutine to terminal.
+			taskID := ""
+			done := make(chan struct{})
+			go func() {
+				deadline := time.Now().Add(2 * time.Second)
+				for time.Now().Before(deadline) {
+					if taskID == "" {
+						time.Sleep(10 * time.Millisecond)
+						continue
+					}
+					t, err := store.GetTask(ctx, taskID)
+					if err == nil && t != nil && t.Status.IsTerminal() {
+						close(done)
+						return
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+				close(done)
+			}()
+
+			id, err := r.Submit(ctx, "claude", "ping", tc.opts)
 			if err != nil {
 				t.Fatalf("submit: %v", err)
 			}
+			taskID = id
+			<-done
+
 			msgs, err := store.MessagesFor(ctx, taskID)
 			if err != nil {
 				t.Fatalf("messages: %v", err)
