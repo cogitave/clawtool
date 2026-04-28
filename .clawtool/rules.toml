@@ -9,3 +9,11 @@ when      = "post_edit"
 condition = "changed(\"internal/cli/**/*.go\") OR changed(\"commands/*.md\") OR changed(\"internal/tools/core/*.go\") OR changed(\"README.md\") OR changed(\"skills/clawtool/SKILL.md\")"
 severity  = "warn"
 hint      = "Grep the touched files for ADR-, audit-#, and bare #\\d+ references. Move internal references to source comments or wiki cross-links; describe behavior plainly in CLI help, slash commands, MCP tool descriptions, onboard prompts, README operator sections, and config templates. Operator caught ADR-029 leaking into onboard / overview / doctor / commands/clawtool-overview.md and called it bad UX."
+
+[[rule]]
+name      = "gofmt-clean"
+description = "Go sources must be gofmt-clean before commit. CI Lint job will fail otherwise."
+when      = "pre_commit"
+condition = "changed(\"**/*.go\")"
+severity  = "warn"
+hint      = "Run: gofmt -l . to find diverged files; gofmt -w <file> to fix in-place. Apply across the whole repo: find . -name \"*.go\" -not -path \"./vendor/*\" -exec gofmt -w {} +"
