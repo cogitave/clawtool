@@ -55,7 +55,7 @@ go install github.com/cogitave/clawtool/cmd/clawtool@latest
 The `install.sh` script:
 
 - detects your OS / arch (linux+darwin × amd64+arm64), downloads the matching tarball, **verifies SHA-256** against the published `checksums.txt`, and atomically installs to `~/.local/bin/clawtool` (override with `CLAWTOOL_INSTALL_DIR`);
-- when run interactively, **offers to launch `clawtool onboard` for you immediately** — say `Y` and the wizard runs without you re-typing anything. Pass `CLAWTOOL_NO_ONBOARD=1` to skip the prompt;
+- when run interactively (TTY), **auto-launches `clawtool onboard` immediately after install** — no extra prompt to dismiss; the wizard runs the moment the binary lands. `curl|sh` / CI / Docker layers skip auto-launch automatically (no TTY); set `CLAWTOOL_NO_ONBOARD=1` to opt out elsewhere;
 - is safe to re-run; it doubles as an upgrade path. (You can also self-update with `clawtool upgrade` — atomic binary replacement, signed release.)
 
 ## First run — what to expect

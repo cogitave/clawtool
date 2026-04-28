@@ -232,25 +232,20 @@ ${BOLD}Claude Code-only quick path${RESET}
 
 EOF
 
-# ── post-install onboard nudge ──────────────────────────────────────
+# ── post-install onboard auto-launch ────────────────────────────────
 #
-# Telemetry shows a steep install→onboard drop-off. Most installs
-# happen in interactive shells, so when stdin is a TTY we offer to
-# kick the wizard off right now. Pure-shell prompt — no stty fiddling
-# so the curl|sh path still works (curl|sh has stdin redirected to
-# the pipe, isn't a TTY, and skips automatically).
+# Telemetry showed a steep install→onboard drop-off when we asked
+# "Run the onboarding wizard now? [Y/n]" — operators would skip the
+# prompt or miss it scrolling past, leaving the daemon down and the
+# host CLIs un-claimed. Auto-launch instead, gated on a real TTY so
+# curl|sh / CI / Docker layers skip cleanly. Bypass via
+# CLAWTOOL_NO_ONBOARD=1 for the rare case the operator wants the
+# binary without the wizard right now.
 if [ -t 0 ] && [ -t 1 ] && [ "${CLAWTOOL_NO_ONBOARD:-0}" != "1" ]; then
-  printf '%sRun the onboarding wizard now?%s [Y/n] ' "$BOLD" "$RESET"
-  IFS= read -r reply || reply=""
-  case "${reply}" in
-    ""|y|Y|yes|YES|Yes)
-      echo
-      "${TARGET}" onboard || true
-      ;;
-    *)
-      info "skipped — run \`${TARGET} onboard\` whenever you're ready."
-      ;;
-  esac
+  echo
+  info "launching onboarding wizard (set CLAWTOOL_NO_ONBOARD=1 to skip)"
+  echo
+  "${TARGET}" onboard || true
 else
   info "tip: run \`${TARGET} onboard\` to wire bridges + claim MCP hosts."
 fi
