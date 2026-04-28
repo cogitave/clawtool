@@ -139,9 +139,15 @@ func runEntry(ctx context.Context, e config.HookEntry, body []byte) error {
 		return fmt.Errorf("hook entry has neither cmd nor argv")
 	}
 	cmd.Stdin = bytes.NewReader(body)
-	var combined bytes.Buffer
-	cmd.Stdout = &combined
-	cmd.Stderr = &combined
+	// Both stdout and stderr drain through the SAME writer so
+	// the truncated error message keeps interleaved output
+	// readable. os/exec spawns one drain goroutine per non-
+	// *os.File writer, so the two would call Write concurrently
+	// on a bare bytes.Buffer (race per the Buffer doc). Lock the
+	// shared buffer with a tiny mutex-wrapped writer.
+	combined := &lockedBuffer{}
+	cmd.Stdout = combined
+	cmd.Stderr = combined
 
 	// Process group setup so timeout / parent-cancel kills the whole
 	// child tree, not just the shell. Without this a `sleep` child
@@ -168,13 +174,39 @@ func runEntry(ctx context.Context, e config.HookEntry, body []byte) error {
 	close(stop)
 	timer.Stop()
 	if timedOut.Load() {
-		return fmt.Errorf("hook timeout after %s: %s", timeout, truncate(combined.String(), 256))
+		return fmt.Errorf("hook timeout after %s: %s", timeout, truncate(combined.string(), 256))
 	}
 	if err != nil {
-		return fmt.Errorf("%w: %s", err, truncate(combined.String(), 256))
+		return fmt.Errorf("%w: %s", err, truncate(combined.string(), 256))
 	}
 	return nil
 }
+
+// lockedBuffer is a bytes.Buffer wrapper that serialises writes with
+// a mutex. os/exec spawns one drain goroutine per non-*os.File writer
+// passed to cmd.Stdout / cmd.Stderr, so a bare bytes.Buffer would see
+// concurrent Writes (the Buffer doc explicitly notes it is not safe
+// for concurrent use). The lock is per-hook so the cost is invisible.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) string() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// Suppress unused-import warning when io isn't directly referenced
+// by other code in this file at the time the wrapper compiles.
+var _ io.Writer = (*lockedBuffer)(nil)
 
 func encodePayload(event Event, payload map[string]any) ([]byte, error) {
 	envelope := map[string]any{

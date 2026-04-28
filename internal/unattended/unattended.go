@@ -87,8 +87,13 @@ func (s *SessionState) Emit(e AuditEntry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.auditWtr == nil {
-		// First write — open for append, create-if-missing.
-		f, err := os.OpenFile(s.AuditPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		// First write — open for append, create-if-missing. Mode
+		// 0o600 because the JSONL log persists dispatched prompts
+		// (truncated to ~256 chars) and result tails — both
+		// routinely include API responses, secrets, and
+		// session-derived tokens. World-readable would be a
+		// textbook secret-in-readable-file leak.
+		f, err := os.OpenFile(s.AuditPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "unattended: open audit log %s: %v\n", s.AuditPath, err)
 			return
@@ -285,7 +290,12 @@ func parseTrust(body string) trustFile {
 
 func saveTrust(tf trustFile) error {
 	path := TrustFilePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	// Mode 0o700 on the parent dir + 0o600 on the file — the
+	// trust list is the gate for `--unattended` mode (skips
+	// every permission prompt for the listed repos), so leaking
+	// which repos are auto-trusted is a privilege-escalation
+	// signal a local attacker would absolutely target.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("unattended: mkdir %s: %w", filepath.Dir(path), err)
 	}
 	var b strings.Builder
@@ -300,7 +310,14 @@ func saveTrust(tf trustFile) error {
 		}
 		b.WriteByte('\n')
 	}
-	return os.WriteFile(path, []byte(b.String()), 0o644)
+	// Atomic publish via temp+rename so a partial write can't be
+	// observed by a concurrent IsTrusted reader. Mode 0o600 —
+	// see saveTrust dir-mode comment.
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // ───── session lifecycle ─────────────────────────────────────────
