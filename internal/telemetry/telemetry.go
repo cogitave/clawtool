@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cogitave/clawtool/internal/config"
 	posthog "github.com/posthog/posthog-go"
@@ -55,21 +56,22 @@ type Client struct {
 // values, secret material, or instance-specific identifiers
 // (`claude-personal`, repo slugs, host names).
 var allowedKeys = map[string]bool{
-	"command":     true,
-	"subcommand":  true, // first sub-arg of a verb (e.g. "source add" → "add")
-	"version":     true,
-	"os":          true,
-	"arch":        true,
-	"duration_ms": true,
-	"exit_code":   true,
-	"error_class": true,
-	"outcome":     true, // taxonomy: "success" | "error" | "skipped" | "timeout" | "cancelled"
-	"agent":       true, // family name only, never instance ID
-	"bridge":      true, // bridge family being installed/upgraded/removed
-	"recipe":      true, // public recipe name from internal/setup catalog
-	"engine":      true, // sandbox engine: bwrap | sandbox-exec | docker | noop
-	"event_kind":  true, // optional sub-categorisation for high-cardinality events
-	"flags":       true, // CSV of feature-toggle flags used (--async, --unattended, --json, …)
+	"command":        true,
+	"subcommand":     true, // first sub-arg of a verb (e.g. "source add" → "add")
+	"version":        true,
+	"os":             true,
+	"arch":           true,
+	"duration_ms":    true,
+	"exit_code":      true,
+	"error_class":    true,
+	"outcome":        true, // taxonomy: "success" | "error" | "skipped" | "timeout" | "cancelled"
+	"agent":          true, // family name only, never instance ID
+	"bridge":         true, // bridge family being installed/upgraded/removed
+	"recipe":         true, // public recipe name from internal/setup catalog
+	"engine":         true, // sandbox engine: bwrap | sandbox-exec | docker | noop
+	"event_kind":     true, // optional sub-categorisation for high-cardinality events
+	"flags":          true, // CSV of feature-toggle flags used (--async, --unattended, --json, …)
+	"install_method": true, // taxonomy: "script" | "brew" | "go-install" | "release" | "docker" | "manual" | "unknown"
 }
 
 // New initialises the client when telemetry is enabled. Disabled
@@ -201,6 +203,91 @@ func Get() *Client { return global }
 func SilentDisabled() bool {
 	v := strings.TrimSpace(os.Getenv("CLAWTOOL_TELEMETRY"))
 	return v == "0" || v == "false" || v == "off"
+}
+
+// EmitInstallOnce fires a `clawtool.install` event the first time
+// it's called on a host AND the telemetry client is enabled. A
+// marker file under $XDG_DATA_HOME/clawtool/install-emitted ensures
+// every subsequent call is a no-op. Daemon boot is the natural
+// place to call this — by the time `clawtool serve` runs on a fresh
+// install we've already initialised the telemetry client and the
+// marker can be created safely.
+//
+// install_method comes from $CLAWTOOL_INSTALL_METHOD which the
+// install.sh / brew formula / go install wrapper sets at install
+// time. Empty / unrecognised falls through to "unknown" so we
+// still get the event, just without source attribution.
+//
+// The marker write happens BEFORE the Track call so a posthog
+// outage can't cause repeated events on each retry. Worst case:
+// we lose one install event entirely. Better than counting a
+// single install ten times because the network was flaky.
+func EmitInstallOnce(c *Client, version string) {
+	if c == nil || !c.Enabled() {
+		return
+	}
+	path := installMarkerPath()
+	if _, err := os.Stat(path); err == nil {
+		return // already emitted on this host
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	if err := os.WriteFile(path, []byte(time.Now().UTC().Format(time.RFC3339Nano)+"\n"), 0o600); err != nil {
+		return
+	}
+	c.Track("clawtool.install", map[string]any{
+		"version":        version,
+		"install_method": detectInstallMethod(),
+	})
+}
+
+// detectInstallMethod reads attribution from two sources, in order:
+//
+//  1. $CLAWTOOL_INSTALL_METHOD env var — set by the active shell or
+//     the installer script in-process.
+//  2. ~/.config/clawtool/install-method file — install.sh writes
+//     this so the value survives across shells without requiring a
+//     rc edit. Brew formula / Go install wrapper / docker entrypoint
+//     can write the same file with their respective tag.
+//
+// Strict taxonomy enforced via the allow-list. Anything outside maps
+// to "unknown" so PostHog dashboards have a stable enum to filter on.
+func detectInstallMethod() string {
+	if v := readInstallMethod(); v != "" {
+		switch v {
+		case "script", "brew", "go-install", "release", "docker", "manual":
+			return v
+		}
+	}
+	return "unknown"
+}
+
+func readInstallMethod() string {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("CLAWTOOL_INSTALL_METHOD"))); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); v != "" {
+		if b, err := os.ReadFile(filepath.Join(v, "clawtool", "install-method")); err == nil {
+			return strings.ToLower(strings.TrimSpace(string(b)))
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if b, err := os.ReadFile(filepath.Join(home, ".config", "clawtool", "install-method")); err == nil {
+			return strings.ToLower(strings.TrimSpace(string(b)))
+		}
+	}
+	return ""
+}
+
+func installMarkerPath() string {
+	if v := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); v != "" {
+		return filepath.Join(v, "clawtool", "install-emitted")
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".local", "share", "clawtool", "install-emitted")
+	}
+	return "install-emitted"
 }
 
 // Compile-time guard so errors stays imported when we add stricter
