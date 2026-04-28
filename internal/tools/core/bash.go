@@ -15,10 +15,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/sandbox/worker"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -129,8 +131,51 @@ func runBash(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 		return resultOf(out), nil
 	}
 
+	// ADR-029 phase 2: when sandbox-worker is wired, route the
+	// foreground Bash call through it. Background mode keeps using
+	// the host path (BashOutput/BashKill state lives in this
+	// process); future phase 3 wires bg through the worker too.
+	if wc := worker.Global(); wc != nil {
+		if res, ok := tryWorkerExec(ctx, wc, command, cwd, timeoutMs); ok {
+			return resultOf(res), nil
+		}
+		// Worker call failed — log to stderr (caller still gets a
+		// result via host fallback). The fallback preserves
+		// availability even when the worker container is down.
+	}
+
 	res := executeBash(ctx, command, cwd, time.Duration(timeoutMs)*time.Millisecond)
 	return resultOf(res), nil
+}
+
+// tryWorkerExec attempts to dispatch a Bash command through the
+// sandbox-worker. Returns the result + ok=true on success. On
+// transport / auth failure it returns ok=false so the caller falls
+// back to host execution; this is deliberate — a misconfigured
+// worker should not break the operator's tool surface, just log
+// and degrade.
+func tryWorkerExec(ctx context.Context, wc *worker.Client, command, cwd string, timeoutMs int) (bashResult, bool) {
+	resp, err := wc.Exec(ctx, worker.ExecRequest{
+		Command:   command,
+		Cwd:       cwd,
+		TimeoutMs: timeoutMs,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "clawtool: sandbox-worker exec failed (%v); falling back to host execution\n", err)
+		return bashResult{}, false
+	}
+	return bashResult{
+		BaseResult: BaseResult{
+			Operation:  "Bash",
+			DurationMs: resp.DurationMs,
+		},
+		Command:  command,
+		Stdout:   resp.Stdout,
+		Stderr:   resp.Stderr,
+		ExitCode: resp.ExitCode,
+		TimedOut: resp.TimedOut,
+		Cwd:      resp.Cwd,
+	}, true
 }
 
 // Render satisfies the Renderer contract. Reads like a terminal
