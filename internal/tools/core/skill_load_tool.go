@@ -12,9 +12,9 @@
 // Skill discovery roots (resolved on each call so re-installs
 // without restart pick up new skills):
 //
-//   1. `./.claude/skills/<name>/SKILL.md`        (project)
-//   2. `~/.claude/skills/<name>/SKILL.md`        (user)
-//   3. `$CLAWTOOL_SKILLS_DIR/<name>/SKILL.md`    (override; tests)
+//  1. `./.claude/skills/<name>/SKILL.md`        (project)
+//  2. `~/.claude/skills/<name>/SKILL.md`        (user)
+//  3. `$CLAWTOOL_SKILLS_DIR/<name>/SKILL.md`    (override; tests)
 //
 // Lookup precedence: project beats user beats override.
 package core

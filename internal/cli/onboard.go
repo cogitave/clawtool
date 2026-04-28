@@ -40,9 +40,9 @@ type onboardState struct {
 	// `clawtool source set-secret <inst> <KEY>` later writes
 	// without surprising the operator with a new file appearing.
 	// Default true.
-	InitSecrets    bool
-	Telemetry      bool
-	RunInit        bool
+	InitSecrets bool
+	Telemetry   bool
+	RunInit     bool
 }
 
 // onboardDeps lets tests substitute the side-effecting calls
