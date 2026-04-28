@@ -177,6 +177,7 @@ func TestSurfaceDrift_SlashCommandsHaveBackingTool(t *testing.T) {
 		"clawtool-task-watch.md":  true, // CLI verb — `clawtool task watch` is consumed by Monitor, not addressable as an MCP tool
 		"clawtool-dashboard.md":   true, // CLI verb — `clawtool dashboard` is a TUI; no MCP-tool counterpart by design
 		"clawtool-rules.md":       true, // CLI verb — `clawtool rules <list|show|new|remove|path>`. RulesAdd MCP tool covers the add half; the others are CLI-only.
+		"clawtool-overview.md":    true, // CLI verb — `clawtool overview` is a one-screen status dump (lighter than doctor, not live like dashboard). No MCP-tool counterpart by design.
 	}
 
 	known := map[string]bool{}
