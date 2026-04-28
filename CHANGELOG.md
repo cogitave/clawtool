@@ -5,7 +5,14 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.23] - 2026-04-28
+## [0.22.24] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.23 [skip ci] (0fac54d)
+### Fixes
+
+- **server:** Use version.Resolved() for /v1/health + MCP serverInfo.version (f4d92c9)## [0.22.23] - 2026-04-28
 
 ### Documentation
 
