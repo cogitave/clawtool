@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime/debug"
 
+	"github.com/cogitave/clawtool/internal/version"
 	"github.com/creativeprojects/go-selfupdate"
 )
 
@@ -34,7 +35,11 @@ func (a *App) runUpgrade(argv []string) int {
 		}
 	}
 
-	currentVersion := readBinaryVersion()
+	// Use the unified version resolver — same source overview /
+	// claude-bootstrap / telemetry consume, so users never see
+	// mismatched numbers across `clawtool upgrade` vs `clawtool
+	// overview`.
+	currentVersion := version.Resolved()
 	source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool upgrade: build source: %v\n", err)

@@ -34,7 +34,7 @@ func (a *App) runOverview(argv []string) int {
 		return 0
 	}
 	w := a.Stdout
-	fmt.Fprintf(w, "clawtool %s\n\n", version.Version)
+	fmt.Fprintf(w, "clawtool %s\n\n", version.Resolved())
 
 	// Daemon
 	st, _ := daemon.ReadState()
