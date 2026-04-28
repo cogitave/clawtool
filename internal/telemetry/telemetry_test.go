@@ -17,11 +17,24 @@ func TestNew_DisabledIsNoop(t *testing.T) {
 	_ = c.Close()
 }
 
-func TestNew_NoAPIKeyIsNoop(t *testing.T) {
+func TestNew_NoAPIKeyFallsBackToBakedDefault(t *testing.T) {
+	// New behaviour: empty APIKey + Enabled=true falls back to the
+	// baked-in cogitave PostHog project key. Same convention as
+	// posthog-js shipping a public client-side key. Operators
+	// override by setting their own [telemetry] api_key.
 	c := New(config.TelemetryConfig{Enabled: true})
-	if c.Enabled() {
-		t.Error("enabled without APIKey should still be no-op")
+	if !c.Enabled() {
+		t.Error("Enabled=true with no APIKey should fall back to the embedded default and produce an enabled client")
 	}
+	_ = c.Close()
+}
+
+func TestNew_OperatorAPIKeyOverridesBakedDefault(t *testing.T) {
+	c := New(config.TelemetryConfig{Enabled: true, APIKey: "phc_operator_override"})
+	if !c.Enabled() {
+		t.Error("explicit operator APIKey should produce an enabled client")
+	}
+	_ = c.Close()
 }
 
 func TestNilClient_TrackSafe(t *testing.T) {
