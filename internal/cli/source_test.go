@@ -206,6 +206,134 @@ func TestSourceSetSecret_StdinFallback(t *testing.T) {
 	}
 }
 
+func TestSourceRename_HappyPath(t *testing.T) {
+	app, out, errb, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatalf("add failed: %s", errb.String())
+	}
+	out.Reset()
+	errb.Reset()
+	if rc := app.Run([]string{"source", "rename", "github", "github-personal"}); rc != 0 {
+		t.Fatalf("rename exit = %d, stderr=%q", rc, errb.String())
+	}
+	if !strings.Contains(out.String(), `renamed source "github" → "github-personal"`) {
+		t.Errorf("missing rename confirmation: %q", out.String())
+	}
+	// Listing should show the new name and not the old.
+	out.Reset()
+	if rc := app.Run([]string{"source", "list"}); rc != 0 {
+		t.Fatalf("list exit = %d", rc)
+	}
+	got := out.String()
+	if !strings.Contains(got, "github-personal") {
+		t.Errorf("list missing new name: %q", got)
+	}
+	if strings.Contains(got, "\ngithub ") || strings.Contains(got, "\ngithub\n") {
+		t.Errorf("list should not show old name: %q", got)
+	}
+}
+
+func TestSourceRename_MissingSourceErrors(t *testing.T) {
+	app, _, errb, _, _ := newSrcApp(t)
+	rc := app.Run([]string{"source", "rename", "ghost", "ghost-renamed"})
+	if rc != 1 {
+		t.Errorf("rename of absent instance exit = %d, want 1", rc)
+	}
+	if !strings.Contains(errb.String(), "no instance \"ghost\"") {
+		t.Errorf("expected 'no instance' error, got: %q", errb.String())
+	}
+}
+
+func TestSourceRename_CollisionErrors(t *testing.T) {
+	app, _, errb, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatal("add github failed")
+	}
+	if rc := app.Run([]string{"source", "add", "github", "--as", "github-work"}); rc != 0 {
+		t.Fatal("add github-work failed")
+	}
+	rc := app.Run([]string{"source", "rename", "github", "github-work"})
+	if rc != 1 {
+		t.Errorf("collision rename exit = %d, want 1", rc)
+	}
+	if !strings.Contains(errb.String(), "already exists") {
+		t.Errorf("expected 'already exists' error, got: %q", errb.String())
+	}
+}
+
+func TestSourceRename_InvalidKebabRejected(t *testing.T) {
+	app, _, errb, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatal("add failed")
+	}
+	rc := app.Run([]string{"source", "rename", "github", "Github_Bad"})
+	if rc != 2 {
+		t.Errorf("invalid kebab exit = %d, want 2", rc)
+	}
+	if !strings.Contains(errb.String(), "kebab-case") {
+		t.Errorf("expected kebab-case error, got: %q", errb.String())
+	}
+}
+
+func TestSourceRename_SameNameRejected(t *testing.T) {
+	app, _, errb, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatal("add failed")
+	}
+	rc := app.Run([]string{"source", "rename", "github", "github"})
+	if rc != 2 {
+		t.Errorf("same-name rename exit = %d, want 2", rc)
+	}
+	if !strings.Contains(errb.String(), "same") {
+		t.Errorf("expected 'same' error, got: %q", errb.String())
+	}
+}
+
+func TestSourceRename_MigratesSecrets(t *testing.T) {
+	app, out, errb, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatal("add failed")
+	}
+	if rc := app.Run([]string{"source", "set-secret", "github", "GITHUB_TOKEN", "--value", "ghp_secret"}); rc != 0 {
+		t.Fatal("set-secret failed")
+	}
+	out.Reset()
+	errb.Reset()
+	if rc := app.Run([]string{"source", "rename", "github", "github-personal"}); rc != 0 {
+		t.Fatalf("rename exit = %d, stderr=%q", rc, errb.String())
+	}
+	if !strings.Contains(out.String(), "secrets scope migrated") {
+		t.Errorf("expected 'secrets scope migrated' line, got: %q", out.String())
+	}
+	// Auth check: github-personal should report ready (because the token
+	// followed the rename); the 'check' command refuses if any required
+	// env is missing.
+	out.Reset()
+	if rc := app.Run([]string{"source", "check"}); rc != 0 {
+		t.Fatalf("check after rename exit = %d, want 0; secrets did not migrate. stderr=%q", rc, errb.String())
+	}
+	if !strings.Contains(out.String(), "github-personal") {
+		t.Errorf("check should mention new name: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "ready") {
+		t.Errorf("check should report ready: %q", out.String())
+	}
+}
+
+func TestSourceRename_AliasMv(t *testing.T) {
+	app, out, errb, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatal("add failed")
+	}
+	out.Reset()
+	if rc := app.Run([]string{"source", "mv", "github", "github-renamed"}); rc != 0 {
+		t.Fatalf("mv alias exit = %d, stderr=%q", rc, errb.String())
+	}
+	if !strings.Contains(out.String(), "renamed source") {
+		t.Errorf("mv alias should produce same confirmation: %q", out.String())
+	}
+}
+
 func TestSourceCheck_AllReady(t *testing.T) {
 	app, out, _, _, _ := newSrcApp(t)
 	// Add and satisfy a source, then check.

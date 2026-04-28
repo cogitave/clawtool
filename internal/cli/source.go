@@ -38,6 +38,8 @@ func (a *App) runSource(argv []string) int {
 		return a.runSourceCatalog(argv[1:])
 	case "remove", "rm":
 		return a.runSourceRemove(argv[1:])
+	case "rename", "mv":
+		return a.runSourceRename(argv[1:])
 	case "set-secret":
 		return a.runSourceSetSecret(argv[1:])
 	case "check":
@@ -109,7 +111,7 @@ func (a *App) runSourceAdd(argv []string) int {
 		fmt.Fprintf(a.Stderr, "  use --as <other-name> to add a second instance, e.g.\n")
 		fmt.Fprintf(a.Stderr, "    clawtool source add %s --as %s-work\n", name, name)
 		fmt.Fprintf(a.Stderr, "  consider renaming the existing instance:\n")
-		fmt.Fprintf(a.Stderr, "    clawtool source rename %s %s-personal   (lands in v0.4 turn 2)\n", instance, instance)
+		fmt.Fprintf(a.Stderr, "    clawtool source rename %s %s-personal\n", instance, instance)
 		return 1
 	}
 	cfg.Sources[instance] = config.Source{
@@ -228,6 +230,75 @@ func (a *App) runSourceRemove(argv []string) int {
 	return 0
 }
 
+func (a *App) runSourceRename(argv []string) int {
+	if len(argv) != 2 {
+		fmt.Fprint(a.Stderr, "usage: clawtool source rename <old-instance> <new-instance>\n")
+		return 2
+	}
+	oldName, newName := argv[0], argv[1]
+	if oldName == newName {
+		fmt.Fprintln(a.Stderr, "clawtool source rename: old and new instance are the same")
+		return 2
+	}
+	if !isKebab(newName) {
+		fmt.Fprintf(a.Stderr, "clawtool source rename: instance %q must be kebab-case [a-z0-9-]+\n", newName)
+		return 2
+	}
+
+	cfgPath := a.Path()
+	cfg, err := config.LoadOrDefault(cfgPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool source rename: %v\n", err)
+		return 1
+	}
+	src, ok := cfg.Sources[oldName]
+	if !ok {
+		fmt.Fprintf(a.Stderr, "clawtool source rename: no instance %q\n", oldName)
+		return 1
+	}
+	if _, exists := cfg.Sources[newName]; exists {
+		fmt.Fprintf(a.Stderr, "clawtool source rename: instance %q already exists; remove it first or pick another name\n", newName)
+		return 1
+	}
+
+	cfg.Sources[newName] = src
+	delete(cfg.Sources, oldName)
+	if err := cfg.Save(cfgPath); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool source rename: %v\n", err)
+		return 1
+	}
+
+	// Migrate secrets scope if any. Collisions can't happen here:
+	// the new scope must be empty since the config-side check above
+	// rejected the rename when newName already existed (and a stray
+	// orphaned secrets scope without a matching source means the
+	// user manually edited secrets.toml — overwriting is the
+	// pragmatic call, but we keep that codepath unreachable from
+	// the CLI by failing earlier).
+	store, sErr := secrets.LoadOrEmpty(a.SecretsPath())
+	movedSecrets := false
+	if sErr == nil && store != nil {
+		movedSecrets = store.Rename(oldName, newName)
+		if movedSecrets {
+			if err := store.Save(a.SecretsPath()); err != nil {
+				fmt.Fprintf(a.Stderr, "clawtool source rename: secrets save: %v\n", err)
+				// Config already saved — partial success. Surface
+				// the failure but don't roll back: the rename of
+				// the source itself succeeded, the secrets are
+				// still readable under the OLD scope, and the
+				// next `set-secret` invocation can re-stage them.
+				return 1
+			}
+		}
+	}
+
+	fmt.Fprintf(a.Stdout, "✓ renamed source %q → %q\n", oldName, newName)
+	if movedSecrets {
+		fmt.Fprintln(a.Stdout, "    secrets scope migrated")
+	}
+	return 0
+}
+
 func (a *App) runSourceSetSecret(argv []string) int {
 	fs := flag.NewFlagSet("source set-secret", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
@@ -329,6 +400,12 @@ const sourceUsage = `Usage:
                               output and run 'clawtool source add <name>'.
   clawtool source remove <instance>
                               Delete an instance from config (secrets retained).
+  clawtool source rename <old-instance> <new-instance>
+                              Rename an instance — moves the [sources.<old>]
+                              block in config.toml AND the matching
+                              [scopes."<old>"] block in secrets.toml to the
+                              new name. Refuses when <new-instance> already
+                              exists. Alias: 'mv'.
   clawtool source set-secret <instance> <KEY> [--value <value>]
                               Store a credential. If --value is omitted, the
                               value is read from stdin.
