@@ -5,7 +5,17 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.1] - 2026-04-28
+## [0.22.2] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.1 [skip ci] (b752be6)
+### Features
+
+- **source:** Add `clawtool source rename` verb (alias `mv`) (2431c15)
+### Fixes
+
+- **tui:** Reap orphan tasks at daemon boot + drop stale snapshots from live UIs (f0105f6)## [0.22.1] - 2026-04-28
 
 ### Documentation
 
