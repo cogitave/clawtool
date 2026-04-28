@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -93,8 +94,13 @@ func Run(ctx context.Context, opts ServerOptions) error {
 // serveConn reads request frames in a loop until the WebSocket
 // closes. Each request gets its own goroutine so a slow exec
 // doesn't block reads (responses use the conn's send mutex via
-// websocket.Conn's internal serialisation).
+// websocket.Conn's internal serialisation). serveConn joins all
+// in-flight dispatch goroutines before returning so the caller's
+// `defer conn.CloseNow()` doesn't fire while a handler is still
+// holding the websocket.
 func serveConn(ctx context.Context, conn *websocket.Conn, opts ServerOptions) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	for {
 		_, raw, err := conn.Read(ctx)
 		if err != nil {
@@ -105,7 +111,9 @@ func serveConn(ctx context.Context, conn *websocket.Conn, opts ServerOptions) {
 			_ = writeErr(ctx, conn, "", 1, derr.Error())
 			continue
 		}
+		wg.Add(1)
 		go func(r *Request) {
+			defer wg.Done()
 			body, status, herr := dispatch(ctx, r, opts)
 			if herr != nil {
 				_ = writeErr(ctx, conn, r.ID, status, herr.Error())
