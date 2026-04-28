@@ -46,6 +46,7 @@ const (
 	orchTickInterval   = 500 * time.Millisecond
 	orchPaneCloseAfter = 30 * time.Minute // keep terminal panes browsable in the Done tab
 	orchFrameRingMax   = 500              // ringbuffer cap per task
+	orchOrderCap       = 200              // hard cap on tracked tasks — protects against snapshot floods on reconnect
 	sidebarWidth       = 28
 )
 
@@ -186,6 +187,18 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.tasks[msg.task.TaskID] = t
 			m.order = append([]string{msg.task.TaskID}, m.order...)
+			// Cap order/tasks to protect against snapshot floods
+			// on reconnect — without this a daemon with 1000 rows
+			// in biam.db would replay all of them on every `r`,
+			// blowing the orchestrator's memory + render budget.
+			// Drop oldest tail entries past the cap.
+			if len(m.order) > orchOrderCap {
+				dropped := m.order[orchOrderCap:]
+				for _, id := range dropped {
+					delete(m.tasks, id)
+				}
+				m.order = m.order[:orchOrderCap]
+			}
 		} else {
 			t.task = msg.task
 		}
@@ -371,7 +384,12 @@ func (m *OrchModel) resizeStream() {
 	if streamW < 30 {
 		streamW = 30
 	}
-	streamH := m.height - 7
+	// Detail pane has Height(m.height-7); content = title line (1)
+	// + viewport. Without subtracting the title, viewport.View()
+	// rendered m.height-7 lines + 1 title = m.height-6 total — one
+	// line past the pane border, so the bottom row never lined up
+	// with the sidebar's bottom. -8 keeps both panes flush.
+	streamH := m.height - 8
 	if streamH < 6 {
 		streamH = 6
 	}

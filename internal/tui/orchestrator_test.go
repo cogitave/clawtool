@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -139,6 +140,35 @@ func TestOrchModel_VisibleIDsRespectsTab(t *testing.T) {
 	m.tab = orchTabDone
 	if ids := m.visibleIDs(); len(ids) != 1 || ids[0] != "b" {
 		t.Errorf("Done tab visibleIDs = %v, want [b]", ids)
+	}
+}
+
+// TestOrchModel_OrderCappedOnSnapshotFlood confirms the orchestrator
+// drops oldest tail entries past `orchOrderCap` so a reconnect to a
+// daemon with thousands of historical rows in biam.db doesn't blow
+// the model's memory or render budget. Newest-first insert pattern
+// means dropped entries are the longest-untouched terminal tasks.
+func TestOrchModel_OrderCappedOnSnapshotFlood(t *testing.T) {
+	m := NewOrchestrator()
+	for i := 0; i < orchOrderCap+50; i++ {
+		m, _ = applyOrch(m, watchEventMsg{task: biam.Task{
+			TaskID: fmt.Sprintf("t-%04d", i),
+			Status: biam.TaskActive,
+		}})
+	}
+	if got := len(m.order); got != orchOrderCap {
+		t.Errorf("expected order length %d after flood, got %d", orchOrderCap, got)
+	}
+	if got := len(m.tasks); got != orchOrderCap {
+		t.Errorf("expected tasks map size %d after flood, got %d", orchOrderCap, got)
+	}
+	// The MOST RECENT insert (t-0249) should still be present;
+	// the OLDEST (t-0000) should have been evicted.
+	if _, ok := m.tasks["t-0249"]; !ok {
+		t.Errorf("most-recent task evicted")
+	}
+	if _, ok := m.tasks["t-0000"]; ok {
+		t.Errorf("oldest task should have been evicted past cap")
 	}
 }
 
