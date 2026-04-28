@@ -4,7 +4,22 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.26] - 2026-04-28
+## [0.22.29] - 2026-04-28
+
+### Fixes
+
+- **security:** Unattended trust+audit files 0o600; hooks shared-buffer race; SKILL routing for TaskReply (d96d23b)## [0.22.28] - 2026-04-28
+
+### Features
+
+- **biam:** TaskReply MCP tool + CLAWTOOL_TASK_ID env injection (fan-in) (5e7b44e)## [0.22.27] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.26 [skip ci] (e2bb088)
+### Fixes
+
+- **tui:** Orchestrator right pane streams frames + uses real CreatedAt (c3b6389)## [0.22.26] - 2026-04-28
 
 ### Documentation
 
