@@ -39,12 +39,52 @@ type Runner struct {
 	// context-aware Send chain (which SIGINTs the child via
 	// streamingProcess.Close on ctx.Done).
 	inflight map[string]context.CancelFunc
+
+	// wg tracks every dispatch goroutine spawned by Submit. Stop
+	// cancels everything via inflight then Wait()s on this so the
+	// caller (daemon shutdown) can block on a quiescent runner
+	// before closing the store. Without it, in-flight tasks keep
+	// writing store/watch state during teardown or get killed by
+	// process exit, leaving rows stuck `active` until the reaper.
+	wg sync.WaitGroup
+
+	// stopped flips true on Stop so a late Submit can refuse
+	// rather than orphan a fresh task whose goroutine will never
+	// run cleanly.
+	stopped bool
 }
 
 // NewRunner wires the runner. Identity + store are mandatory; send is
 // the supervisor's dispatch func.
 func NewRunner(store *Store, id *Identity, send SendStream) *Runner {
 	return &Runner{store: store, identity: id, send: send, inflight: map[string]context.CancelFunc{}}
+}
+
+// Stop cancels every in-flight dispatch and waits for the spawned
+// goroutines to drain. Idempotent. Caller (daemon shutdown sequence)
+// invokes this BEFORE closing the underlying *Store, so the store's
+// last-second writes from terminating dispatches don't race the
+// store's Close. The goroutines drop terminal envelopes via
+// recordResult on cancel, so the durable state stays consistent.
+func (r *Runner) Stop() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	if r.stopped {
+		r.mu.Unlock()
+		return
+	}
+	r.stopped = true
+	cancels := make([]context.CancelFunc, 0, len(r.inflight))
+	for _, c := range r.inflight {
+		cancels = append(cancels, c)
+	}
+	r.mu.Unlock()
+	for _, c := range cancels {
+		c()
+	}
+	r.wg.Wait()
 }
 
 // Submit enqueues an async dispatch. Returns the new task_id
@@ -61,6 +101,12 @@ func NewRunner(store *Store, id *Identity, send SendStream) *Runner {
 func (r *Runner) Submit(ctx context.Context, instance, prompt string, opts map[string]any) (string, error) {
 	if r == nil || r.store == nil || r.identity == nil || r.send == nil {
 		return "", errors.New("biam: runner not initialised")
+	}
+	r.mu.Lock()
+	stopped := r.stopped
+	r.mu.Unlock()
+	if stopped {
+		return "", errors.New("biam: runner is stopping; refusing late submit")
 	}
 	to := Address{HostID: r.identity.HostID, InstanceID: instance}
 	from := Address{HostID: r.identity.HostID, InstanceID: r.identity.InstanceID}
@@ -89,8 +135,12 @@ func (r *Runner) Submit(ctx context.Context, instance, prompt string, opts map[s
 	runCtx, cancel := context.WithCancel(context.Background())
 	r.mu.Lock()
 	r.inflight[env.TaskID] = cancel
+	r.wg.Add(1)
 	r.mu.Unlock()
-	go r.run(runCtx, env, instance, prompt, opts)
+	go func() {
+		defer r.wg.Done()
+		r.run(runCtx, env, instance, prompt, opts)
+	}()
 
 	return env.TaskID, nil
 }
