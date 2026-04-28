@@ -144,6 +144,12 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 	))
 
 	groups = append(groups, huh.NewGroup(
+		huh.NewNote().
+			Title("Sandbox worker (optional, advanced)").
+			Description("ADR-029: route Bash/Read/Edit/Write tool calls through an isolated container instead of the daemon's host process. After onboard, see `clawtool sandbox-worker --help` and ~/.config/clawtool/config.toml's [sandbox_worker] block. Default = off (host execution); flip to mode=\"container\" after building Dockerfile.worker."),
+	))
+
+	groups = append(groups, huh.NewGroup(
 		huh.NewConfirm().
 			Title("Anonymous telemetry").
 			Description("Emits command name, version, OS/arch, duration, exit code, and error class. No prompts, paths, file contents, secrets, or env values.").
