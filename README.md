@@ -202,7 +202,7 @@ After this, every Bash tool call (from any host — claude / codex / gemini) exe
 - **Cross-host BIAM identity routing** (#196) — per-call `from_instance` parameter on `SendMessage` so codex / gemini / claude can mutually notify each other through the shared daemon. Tasarım turu pending.
 - **Onboarding state machine** (#194, ADR-027) — collapse `init` + `onboard` into one engine; per-feature opt-in matrix; verify-summary at the end (`send --list`, `bridge list`, `source check`, `sandbox doctor`).
 - **Task watch v2** (#185) — Unix socket push from BIAM runner to consumers; eliminates the 250ms poll.
-- **Orchestrator multi-pane TUI** — Phase 1 ships: `clawtool dashboard` consumes the daemon's task-watch Unix socket so state transitions reach the tasks pane in real time (sub-50ms). Phase 2 adds split-pane streaming per dispatched agent. Design: [ADR-028](wiki/decisions/028-orchestrator-tui.md).
+- **Orchestrator multi-pane TUI** ships: `clawtool orchestrator` (alias `orch`) is a split-pane Bubble Tea TUI that auto-spawns one stdout-tail pane per active BIAM dispatch and fades panes 5 s after they hit terminal. Backed by the daemon's task-watch Unix socket — sub-50ms reaction time, no SQLite poll. `clawtool dashboard` also subscribes for its tasks pane. Design: [ADR-028](wiki/decisions/028-orchestrator-tui.md).
 - **Sandbox-worker phase 2 follow-up** — Read/Edit/Write routing through the worker (Phase 2 covered Bash); per-conversation ephemeral workers; gVisor `runsc` runtime selection wired into the docker engine adapter.
 
 ## Contributing

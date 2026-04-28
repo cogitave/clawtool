@@ -205,6 +205,8 @@ func (a *App) Run(argv []string) int {
 		return a.runA2A(argv[1:])
 	case "dashboard", "tui":
 		return a.runDashboard(argv[1:])
+	case "orchestrator", "orch":
+		return a.runOrchestrator(argv[1:])
 	case "rules":
 		return a.runRules(argv[1:])
 	case "daemon":
