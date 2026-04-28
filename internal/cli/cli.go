@@ -21,9 +21,54 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/telemetry"
 )
+
+// emitCommandEvent fires the per-dispatch telemetry event. Strict
+// allow-list: command name + first sub-arg + duration + exit code.
+// Errors derive from rc (1=runtime, 2=usage); 0=success. The
+// telemetry package no-ops when disabled, so the call site stays
+// unconditional.
+func emitCommandEvent(argv []string, rc int, dur time.Duration) {
+	tc := telemetry.Get()
+	if tc == nil || !tc.Enabled() {
+		return
+	}
+	cmd := ""
+	if len(argv) > 0 {
+		cmd = argv[0]
+	}
+	sub := ""
+	if len(argv) > 1 && !strings.HasPrefix(argv[1], "-") {
+		sub = argv[1]
+	}
+	outcome := "success"
+	errorClass := ""
+	switch rc {
+	case 0:
+		outcome = "success"
+	case 2:
+		outcome = "usage_error"
+		errorClass = "usage"
+	default:
+		outcome = "error"
+		errorClass = "runtime"
+	}
+	props := map[string]any{
+		"command":     cmd,
+		"subcommand":  sub,
+		"duration_ms": dur.Milliseconds(),
+		"exit_code":   rc,
+		"outcome":     outcome,
+	}
+	if errorClass != "" {
+		props["error_class"] = errorClass
+	}
+	tc.Track("cli.command", props)
+}
 
 // App holds CLI dependencies. Stdout/stderr are injected so tests can capture.
 type App struct {
@@ -149,7 +194,26 @@ func (a *App) ToolsStatus(selector string) error {
 
 // Run dispatches argv (excluding program name) to the right subcommand.
 // Returns the exit code; 0 = success, 2 = usage error, 1 = runtime failure.
+//
+// Every dispatch is timed and emitted as a `cli.command` telemetry
+// event (when telemetry is opted in) — command, subcommand, exit_code,
+// duration_ms, error_class. Long-running verbs (`serve`, `dashboard`,
+// `daemon` foreground) emit on dispatcher exit so a 2-hour `serve`
+// session lands as one event with the full uptime.
 func (a *App) Run(argv []string) int {
+	rc := a.dispatch(argv)
+	emitCommandEvent(argv, rc, time.Since(cliStart))
+	return rc
+}
+
+// cliStart is captured at package-init time so the timer covers the
+// dispatcher entry, not just the inner switch. Run() may be called
+// repeatedly inside a single process (tests, daemon foreground), but
+// the wall-clock since boot is the most useful "this verb took how
+// long" anchor regardless.
+var cliStart = time.Now()
+
+func (a *App) dispatch(argv []string) int {
 	if len(argv) == 0 {
 		// No-args invocation: drop into the friendly TUI menu so
 		// users who'd rather not memorise subcommands have a

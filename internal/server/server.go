@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/agents/biam"
@@ -48,6 +49,7 @@ import (
 // until stdin closes (the conventional MCP shutdown signal) or an
 // unrecoverable error occurs.
 func ServeStdio(ctx context.Context) error {
+	bootedAt := time.Now()
 	s, mgr, _, _, err := buildMCPServer(ctx)
 	if err != nil {
 		return err
@@ -61,6 +63,20 @@ func ServeStdio(ctx context.Context) error {
 			"version": version.Version,
 			"pid":     os.Getpid(),
 		})
+	}
+	// Telemetry: server.stop with uptime + outcome. Pairs with
+	// the server.start event the boot path emits.
+	if tc := telemetry.Get(); tc != nil && tc.Enabled() {
+		outcome := "success"
+		if err != nil {
+			outcome = "error"
+		}
+		tc.Track("server.stop", map[string]any{
+			"version":     version.Version,
+			"duration_ms": time.Since(bootedAt).Milliseconds(),
+			"outcome":     outcome,
+		})
+		_ = tc.Close()
 	}
 	if err != nil {
 		return fmt.Errorf("stdio serve: %w", err)
