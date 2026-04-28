@@ -184,6 +184,16 @@ func (a *App) doctorDaemon(w io.Writer, rep *doctorReport) {
 	if st == nil {
 		rep.info(w, "not running (no state file)")
 		fmt.Fprintln(w, "      → clawtool daemon start")
+		// Audit-finding from the v0.22.22 PostHog snapshot:
+		// when no daemon is up, every host that's claimed
+		// clawtool over MCP-stdio respawns the binary per
+		// tool call (~2.2 events/sec to PostHog, plus the
+		// per-spawn cost of buildMCPServer). Surface the
+		// remediation explicitly so operators don't have to
+		// chase it through telemetry first.
+		rep.warn(w,
+			"hosts claimed in stdio MCP mode will respawn clawtool per tool call",
+			"clawtool daemon start && for h in claude-code codex gemini opencode; do clawtool agents claim $h; done")
 		fmt.Fprintln(w)
 		return
 	}
