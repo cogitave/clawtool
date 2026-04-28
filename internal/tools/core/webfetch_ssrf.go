@@ -23,7 +23,7 @@ import (
 
 // ErrBlockedAddress is the sentinel returned when the resolved IP
 // falls into a deny range. Caller surfaces it verbatim.
-var ErrBlockedAddress = errors.New("WebFetch refused: target resolves to a private / loopback / link-local / cloud-metadata address (SSRF guard, ADR-021)")
+var ErrBlockedAddress = errors.New("WebFetch refused: target resolves to a private / loopback / link-local / cloud-metadata address (SSRF guard)")
 
 // privateNets is the set of CIDRs WebFetch refuses by default. The
 // list is conservative: every RFC1918 + loopback + link-local +

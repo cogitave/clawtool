@@ -289,7 +289,7 @@ func saveTrust(tf trustFile) error {
 		return fmt.Errorf("unattended: mkdir %s: %w", filepath.Dir(path), err)
 	}
 	var b strings.Builder
-	b.WriteString("# clawtool unattended-mode trust file (ADR-023).\n")
+	b.WriteString("# clawtool unattended-mode trust file.\n")
 	b.WriteString("# Each [[trust]] row records a per-repo grant.\n\n")
 	for _, e := range tf.Trust {
 		b.WriteString("[[trust]]\n")

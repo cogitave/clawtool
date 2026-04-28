@@ -539,9 +539,8 @@ Usage:
                             mcp__clawtool__SkillNew.
   clawtool mcp new <project> [--output <dir>] [--yes]
                             Scaffold a new MCP server (Go / Python /
-                            TypeScript). ADR-019. mcp = MCP server source
-                            code; skill = Agent Skill folder. Generator
-                            lands in v0.17.
+                            TypeScript). mcp = MCP server source code;
+                            skill = Agent Skill folder.
   clawtool mcp list / run / build / install
                             Walk / run / compile / register MCP server
                             projects. See 'clawtool mcp --help'.
@@ -554,12 +553,10 @@ Usage:
                             (config, secrets, caches, data, BIAM, sticky
                             pointers). Useful when test installs pile up.
   clawtool sandbox list/show/doctor/run
-                            Sandbox profiles for dispatch isolation
-                            (ADR-020). Per-profile [sandboxes.X] in
-                            config.toml. Engines: bwrap (Linux),
-                            sandbox-exec (macOS), docker (anywhere fallback).
-                            v0.18 ships the surface; engine enforcement
-                            lands v0.18.1+.
+                            Sandbox profiles for dispatch isolation.
+                            Per-profile [sandboxes.X] in config.toml.
+                            Engines: bwrap (Linux), sandbox-exec (macOS),
+                            docker (anywhere fallback).
   clawtool telemetry status / on / off
                             Show or flip the anonymous-telemetry opt-in
                             stored in config.toml. Allow-listed payload

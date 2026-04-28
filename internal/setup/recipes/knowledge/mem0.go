@@ -101,7 +101,7 @@ func (mem0Recipe) Apply(_ context.Context, repo string, opts setup.Options) erro
 		return fmt.Errorf("%s exists but is not clawtool-managed; refusing to overwrite", mem0ConfigPath)
 	}
 
-	body := []byte(fmt.Sprintf(`# managed-by: clawtool — ADR-014 T3 (mem0 recipe)
+	body := []byte(fmt.Sprintf(`# managed-by: clawtool — mem0 recipe
 # Cross-agent persistent memory via mem0.ai. Edit freely; the recipe
 # re-applies only when explicitly forced.
 
