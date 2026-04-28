@@ -282,9 +282,16 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		return nil, nil, cfg, sec, fmt.Errorf("build search index: %w", err)
 	}
 
+	// version.Resolved() picks the goreleaser-baked ldflags string when
+	// present, then debug.ReadBuildInfo, then the const. Pre-fix
+	// the const escaped through to MCP `serverInfo.version` and
+	// `/v1/health` JSON, so a binary built from main showed an
+	// older const value to every host. Caught at v0.22.23 during a
+	// Docker e2e probe (host saw "0.21.7" in /v1/health while CLI
+	// said 0.22.23).
 	s := server.NewMCPServer(
 		version.Name,
-		version.Version,
+		version.Resolved(),
 		server.WithToolCapabilities(true),
 		server.WithLogging(),
 	)
