@@ -39,7 +39,7 @@ func TestWatchSocket_EnvelopeMultiplex(t *testing.T) {
 		frames: map[*frameSub]struct{}{},
 	}
 
-	sockPath := filepath.Join(dir, "watch.sock")
+	sockPath := shortSockPath(t, "watch.sock")
 	srvCtx, cancelSrv := context.WithCancel(ctx)
 	defer cancelSrv()
 

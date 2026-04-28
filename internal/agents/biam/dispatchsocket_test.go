@@ -56,8 +56,7 @@ func itoa(n int) string {
 // the runner's task ID to the client. This is the load-bearing
 // contract — every other test depends on it working.
 func TestDispatchSocket_RoundTripsSubmit(t *testing.T) {
-	dir := t.TempDir()
-	sockPath := filepath.Join(dir, "dispatch.sock")
+	sockPath := shortSockPath(t, "dispatch.sock")
 
 	submitter := &stubSubmitter{}
 	srvCtx, cancel := context.WithCancel(t.Context())
@@ -131,8 +130,7 @@ func TestDispatchSocket_MissingSocketReturnsTypedError(t *testing.T) {
 // TestDispatchSocket_RunnerErrorPropagates confirms a runner-side
 // error reaches the client as the response.Error string.
 func TestDispatchSocket_RunnerErrorPropagates(t *testing.T) {
-	dir := t.TempDir()
-	sockPath := filepath.Join(dir, "dispatch.sock")
+	sockPath := shortSockPath(t, "dispatch.sock")
 
 	submitter := &stubSubmitter{failNext: errors.New("simulated runner failure")}
 	srvCtx, cancel := context.WithCancel(t.Context())
@@ -164,8 +162,7 @@ func TestDispatchSocket_RunnerErrorPropagates(t *testing.T) {
 // Without this guard a malformed CLI invocation would create a
 // no-op task in the BIAM store.
 func TestDispatchSocket_EmptyPromptRejected(t *testing.T) {
-	dir := t.TempDir()
-	sockPath := filepath.Join(dir, "dispatch.sock")
+	sockPath := shortSockPath(t, "dispatch.sock")
 
 	submitter := &stubSubmitter{}
 	srvCtx, cancel := context.WithCancel(t.Context())
