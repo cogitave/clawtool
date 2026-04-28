@@ -58,19 +58,21 @@ func TestRunner_Submit_HonoursFromInstance(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := t.Context()
-			// Subscribe BEFORE Submit so we don't race the
-			// dispatch goroutine to terminal.
-			taskID := ""
+			// Submit synchronously; THEN spawn the polling
+			// goroutine with the captured ID. Avoids the
+			// race-detector hit on a shared taskID variable
+			// (CI's `go test -race` caught it).
+			taskID, err := r.Submit(ctx, "claude", "ping", tc.opts)
+			if err != nil {
+				t.Fatalf("submit: %v", err)
+			}
+
 			done := make(chan struct{})
 			go func() {
 				deadline := time.Now().Add(2 * time.Second)
 				for time.Now().Before(deadline) {
-					if taskID == "" {
-						time.Sleep(10 * time.Millisecond)
-						continue
-					}
-					t, err := store.GetTask(ctx, taskID)
-					if err == nil && t != nil && t.Status.IsTerminal() {
+					tk, err := store.GetTask(ctx, taskID)
+					if err == nil && tk != nil && tk.Status.IsTerminal() {
 						close(done)
 						return
 					}
@@ -78,12 +80,6 @@ func TestRunner_Submit_HonoursFromInstance(t *testing.T) {
 				}
 				close(done)
 			}()
-
-			id, err := r.Submit(ctx, "claude", "ping", tc.opts)
-			if err != nil {
-				t.Fatalf("submit: %v", err)
-			}
-			taskID = id
 			<-done
 
 			msgs, err := store.MessagesFor(ctx, taskID)
