@@ -434,6 +434,16 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
 	})
+	m.Append(registry.ToolSpec{
+		Name:        "TaskReply",
+		Description: "Append a structured reply envelope to an existing BIAM task. Used by dispatched peer agents (codex / gemini / opencode / claude) to push chunked findings back to their caller without dumping a giant blob through stdout. Read CLAWTOOL_TASK_ID + CLAWTOOL_FROM_INSTANCE from the process env when running as a dispatched peer.",
+		Keywords:    []string{"task", "biam", "reply", "respond", "append", "callback", "fan-in", "peer"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterTaskReply(s)
+		},
+	})
 
 	// ─── Portal* bundle (RegisterPortalTools registers 6) ──────
 	m.Append(registry.ToolSpec{
