@@ -17,3 +17,11 @@ when      = "pre_commit"
 condition = "changed(\"**/*.go\")"
 severity  = "warn"
 hint      = "Run: gofmt -l . to find diverged files; gofmt -w <file> to fix in-place. Apply across the whole repo: find . -name \"*.go\" -not -path \"./vendor/*\" -exec gofmt -w {} +"
+
+[[rule]]
+name      = "race-clean"
+description = "Go tests must pass under -race before commit. CI Test job runs go test -race and will fail otherwise."
+when      = "pre_commit"
+condition = "changed(\"**/*.go\")"
+severity  = "warn"
+hint      = "Run: go test -race -count=1 -timeout=120s ./... — fix any DATA RACE warnings (usually shared variables across test goroutines; reorder so the writer settles before the reader spawns, or use a channel)."
