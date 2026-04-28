@@ -220,9 +220,15 @@ func authMiddleware(expected string) func(http.Handler) http.Handler {
 // ── handlers ───────────────────────────────────────────────────────
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
+	// Resolved() picks the goreleaser-baked ldflags string when
+	// present, falls back to debug.ReadBuildInfo, then to the
+	// const. Pre-fix this read version.Version directly, so a
+	// container running v0.22.x advertised "0.21.7" on /v1/health
+	// (the const value at the time the var was introduced) — caught
+	// during Docker e2e probe at v0.22.23.
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "ok",
-		"version": version.Version,
+		"version": version.Resolved(),
 	})
 }
 
