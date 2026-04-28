@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
@@ -316,8 +317,53 @@ func paneDispatches(tasks []biam.Task, focused bool, cursor, width, maxRows int)
 			dimStyle.Render("(no dispatches yet — run `clawtool send --async <prompt>`)")
 		return style.Width(maxWidth(width)).Render(body)
 	}
-	rows := make([]string, 0, len(tasks))
-	for _, t := range tasks {
+
+	// Sort: non-terminal first (newest by created_at desc),
+	// then terminal (newest by closed_at desc, falling back to
+	// created_at). Without this, the order thrashes between
+	// the polling refresh (newest-first) and the watch-socket
+	// push (insert-at-top): a task that flips active→done
+	// stayed at the top one tick and slid down the next,
+	// matching the operator's "garip şeyler oluyor" report.
+	sorted := make([]biam.Task, len(tasks))
+	copy(sorted, tasks)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		ai, aj := sorted[i], sorted[j]
+		ti, tj := ai.Status.IsTerminal(), aj.Status.IsTerminal()
+		if ti != tj {
+			return !ti // non-terminal first
+		}
+		if ti {
+			// both terminal — newest closed first
+			ci := ai.CreatedAt
+			if ai.ClosedAt != nil {
+				ci = *ai.ClosedAt
+			}
+			cj := aj.CreatedAt
+			if aj.ClosedAt != nil {
+				cj = *aj.ClosedAt
+			}
+			return ci.After(cj)
+		}
+		// both live — newest first
+		return ai.CreatedAt.After(aj.CreatedAt)
+	})
+
+	liveCount := 0
+	for _, t := range sorted {
+		if !t.Status.IsTerminal() {
+			liveCount++
+		}
+	}
+
+	rows := make([]string, 0, len(sorted))
+	for i, t := range sorted {
+		// Insert a separator row when we cross from live
+		// section to history. Operator can scan the section
+		// boundary without counting status pills.
+		if i == liveCount && liveCount > 0 && liveCount < len(sorted) {
+			rows = append(rows, dimStyle.Render(strings.Repeat("─", 50)+" history ─"))
+		}
 		short := t.TaskID
 		if len(short) > 12 {
 			short = short[:12]
@@ -327,8 +373,8 @@ func paneDispatches(tasks []biam.Task, focused bool, cursor, width, maxRows int)
 		rows = append(rows, fmt.Sprintf("%-10s %-12s %-15s %-5d %s",
 			status, t.Agent, short, t.MessageCount, last))
 	}
-	header := fmt.Sprintf("Dispatches (%d)\n  %-10s %-12s %-15s %-5s %s",
-		len(tasks), "STATUS", "AGENT", "TASK_ID", "MSGS", "LAST")
+	header := fmt.Sprintf("Dispatches (%d live · %d total)\n  %-10s %-12s %-15s %-5s %s",
+		liveCount, len(sorted), "STATUS", "AGENT", "TASK_ID", "MSGS", "LAST")
 	body := renderPaneRows(header, rows, maxRows, focused, cursor)
 	return style.Width(maxWidth(width)).Render(body)
 }

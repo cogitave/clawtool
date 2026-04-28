@@ -22,14 +22,44 @@ func TestOrchModel_WatchEventInsertsTask(t *testing.T) {
 	}
 }
 
-// TestOrchModel_WatchEventStampsTerminal confirms the terminal
-// timestamp lands on the first transition to a terminal status.
-func TestOrchModel_WatchEventStampsTerminal(t *testing.T) {
+// TestOrchModel_WatchEventStampsTerminalOnTransition confirms the
+// terminal timestamp lands when a LIVE task transitions to a
+// terminal state during this orchestrator session. Tasks that
+// arrive already-terminal (snapshot from the watch socket on
+// connect) are dropped, so the stamp test inserts the task as
+// active first, then sends the terminal transition.
+func TestOrchModel_WatchEventStampsTerminalOnTransition(t *testing.T) {
 	m := NewOrchestrator()
-	out, _ := m.Update(watchEventMsg{task: biam.Task{TaskID: "y", Status: biam.TaskDone}})
-	got := out.(OrchModel)
-	if got.tasks["y"].terminal.IsZero() {
-		t.Error("terminal task didn't stamp the terminal timestamp")
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "y", Status: biam.TaskActive}})
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "y", Status: biam.TaskDone}})
+	if m.tasks["y"].terminal.IsZero() {
+		t.Error("terminal transition didn't stamp the terminal timestamp")
+	}
+}
+
+// TestOrchModel_DropsAlreadyTerminalSnapshot asserts the watch-
+// socket snapshot pump doesn't flood the orchestrator with stale
+// terminal tasks. Without this filter the sidebar would briefly
+// show every historical row from biam.db before the post-grace
+// reaper sweep cleared them — exactly the "shows 50 then drops to
+// actives" glitch the operator reported.
+func TestOrchModel_DropsAlreadyTerminalSnapshot(t *testing.T) {
+	m := NewOrchestrator()
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "old-1", Status: biam.TaskDone}})
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "old-2", Status: biam.TaskFailed}})
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "old-3", Status: biam.TaskCancelled}})
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "old-4", Status: biam.TaskExpired}})
+	if len(m.tasks) != 0 {
+		t.Errorf("expected zero tasks (all snapshot rows already terminal), got %d", len(m.tasks))
+	}
+	if len(m.order) != 0 {
+		t.Errorf("expected empty order, got %v", m.order)
+	}
+
+	// Live task lands as expected.
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "live", Status: biam.TaskActive}})
+	if len(m.tasks) != 1 || m.order[0] != "live" {
+		t.Errorf("live task should land; tasks=%d order=%v", len(m.tasks), m.order)
 	}
 }
 

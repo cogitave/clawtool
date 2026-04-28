@@ -151,6 +151,19 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 	} else if store, err := biam.OpenStore(""); err != nil {
 		fmt.Fprintf(os.Stderr, "clawtool: biam store init failed: %v\n", err)
 	} else {
+		// Sweep orphan tasks left behind by a previous daemon
+		// crash. Pending older than 1 minute is presumed dead
+		// (state machine flips pending → active in
+		// milliseconds when the runner picks it up). Active
+		// older than 1 hour is the hard ceiling that matches
+		// TaskNotify's max wait — beyond that, the upstream
+		// agent is almost certainly hung and the row is just
+		// noise in `task list`.
+		if n, rerr := store.ReapStaleTasks(ctx, time.Minute, time.Hour); rerr != nil {
+			fmt.Fprintf(os.Stderr, "clawtool: biam reap stale tasks: %v\n", rerr)
+		} else if n > 0 {
+			fmt.Fprintf(os.Stderr, "clawtool: biam reaped %d orphan task(s) from a prior daemon\n", n)
+		}
 		runner := biam.NewRunner(store, id, func(ctx context.Context, instance, prompt string, opts map[string]any) (io.ReadCloser, error) {
 			// Cast through the package var to avoid an import cycle.
 			return agents.NewSupervisor().Send(ctx, instance, prompt, opts)
