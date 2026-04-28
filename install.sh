@@ -8,6 +8,7 @@
 # Env overrides (mirror the flag args):
 #   CLAWTOOL_VERSION       — pin a specific tag (default: latest GitHub release)
 #   CLAWTOOL_INSTALL_DIR   — install destination (default: $HOME/.local/bin)
+#   CLAWTOOL_NO_ONBOARD=1  — skip the post-install onboard prompt
 #
 # Behaviour:
 #   • Detects OS (linux | darwin) and arch (amd64 | arm64).
@@ -206,19 +207,50 @@ esac
 
 cat <<EOF
 
-${BOLD}Next steps${RESET}
+${BOLD}Next step → run the onboarding wizard${RESET}
 
-  ${TARGET} version
-  ${TARGET} init                                     # create ~/.config/clawtool/config.toml
+  ${TARGET} onboard
 
-  # Register clawtool with Claude Code (zero-friction via the plugin):
+The wizard takes ~30 seconds and:
+  • detects which CLIs you use (Claude Code, codex, gemini, opencode, …)
+  • offers to install the matching agent bridges
+  • claims clawtool as an MCP server in each host (codex / gemini / opencode)
+  • starts the long-running daemon so cross-session memory + dispatch work
+  • bootstraps your BIAM identity and (optionally) a 0600 secrets stub
+
+${BOLD}Other handy commands${RESET}
+
+  ${TARGET} version           # what's installed
+  ${TARGET} doctor            # health check (PATH, daemon, bridges, sandbox)
+  ${TARGET} upgrade           # self-update to the latest release
+  ${TARGET} help              # full subcommand catalogue
+
+${BOLD}Claude Code-only quick path${RESET}
+
   claude plugin marketplace add cogitave/clawtool
   claude plugin install clawtool@clawtool-marketplace
 
-  # Or manually:
-  claude mcp add-json clawtool '{"type":"stdio","command":"${TARGET}","args":["serve"]}' --scope user
-
-  # Hard replacement (Claude only sees mcp__clawtool__* equivalents):
-  ${TARGET} agents claim claude-code
-
 EOF
+
+# ── post-install onboard nudge ──────────────────────────────────────
+#
+# Telemetry shows a steep install→onboard drop-off. Most installs
+# happen in interactive shells, so when stdin is a TTY we offer to
+# kick the wizard off right now. Pure-shell prompt — no stty fiddling
+# so the curl|sh path still works (curl|sh has stdin redirected to
+# the pipe, isn't a TTY, and skips automatically).
+if [ -t 0 ] && [ -t 1 ] && [ "${CLAWTOOL_NO_ONBOARD:-0}" != "1" ]; then
+  printf '%sRun the onboarding wizard now?%s [Y/n] ' "$BOLD" "$RESET"
+  IFS= read -r reply || reply=""
+  case "${reply}" in
+    ""|y|Y|yes|YES|Yes)
+      echo
+      "${TARGET}" onboard || true
+      ;;
+    *)
+      info "skipped — run \`${TARGET} onboard\` whenever you're ready."
+      ;;
+  esac
+else
+  info "tip: run \`${TARGET} onboard\` to wire bridges + claim MCP hosts."
+fi

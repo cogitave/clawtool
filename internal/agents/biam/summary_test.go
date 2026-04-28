@@ -10,10 +10,10 @@ import (
 // the path claude -p uses (raw text bodies, not stream-json).
 func TestSummary_PlainTextFirstLine(t *testing.T) {
 	cases := map[string]string{
-		"hello world":                       "hello world",
-		"hello world\nmore lines after":     "hello world",
-		"":                                  "",
-		"single line, no newline at all":    "single line, no newline at all",
+		"hello world":                    "hello world",
+		"hello world\nmore lines after":  "hello world",
+		"":                               "",
+		"single line, no newline at all": "single line, no newline at all",
 	}
 	for in, want := range cases {
 		if got := summary(in); got != want {

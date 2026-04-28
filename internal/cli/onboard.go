@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/cogitave/clawtool/internal/agents"
@@ -342,6 +344,14 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		d.stdoutLn("  · telemetry: opted out")
 	}
 
+	// Mark the host as onboarded so the install.sh / SessionStart
+	// / first-run nudges stop firing. Best-effort — a write failure
+	// is logged but doesn't fail onboarding (operator can still
+	// dispatch + the next nudge harmlessly re-suggests the wizard).
+	if err := writeOnboardedMarker(); err != nil {
+		d.stdoutLn(fmt.Sprintf("  ! could not write onboarded marker: %v", err))
+	}
+
 	d.stdoutLn("")
 	if state.PrimaryCLI != "" {
 		d.stdoutLn(fmt.Sprintf("Primary interface set to %q — clawtool routes through it as your main agent; others connect via MCP / bridge for cross-dispatch.", state.PrimaryCLI))
@@ -471,6 +481,46 @@ func primaryDefault(found map[string]bool) string {
 		}
 	}
 	return ""
+}
+
+// onboardedMarkerPath returns the file `clawtool onboard` writes
+// when the wizard completes successfully. SessionStart hook + the
+// CLI's no-args first-run check both consume this signal to decide
+// whether to nudge the operator.
+//
+// Lives in $XDG_CONFIG_HOME/clawtool/.onboarded (fallback
+// ~/.config/clawtool/.onboarded), zero-byte timestamped via mtime.
+// Single source of truth — never branch on "config.toml exists" or
+// "daemon is up", those are partial signals.
+func onboardedMarkerPath() string {
+	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
+		return filepath.Join(x, "clawtool", ".onboarded")
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".config", "clawtool", ".onboarded")
+	}
+	return ".onboarded"
+}
+
+// writeOnboardedMarker creates the marker file. Idempotent. mode
+// 0644 since the contents are non-secret (timestamp only) and a
+// missing parent dir is created at 0700 to match the rest of the
+// config tree.
+func writeOnboardedMarker() error {
+	path := onboardedMarkerPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+}
+
+// IsOnboarded reports whether the operator has completed the
+// onboard wizard at least once. Exported so the SessionStart hook
+// (claude_bootstrap.go) and the no-args first-run check can both
+// consume the same signal.
+func IsOnboarded() bool {
+	_, err := os.Stat(onboardedMarkerPath())
+	return err == nil
 }
 
 const onboardUsage = `Usage:
