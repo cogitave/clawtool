@@ -1,0 +1,18 @@
+{
+  "description": "clawtool fresh-session bootstrap — engages on first prompt of a Claude Code session so users don't have to type 'use clawtool' every time. Walks up from cwd looking for .clawtool/ markers, surfaces continue/fresh/aware paths via additionalContext.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "clawtool claude-bootstrap --event session-start",
+            "timeout": 2,
+            "statusMessage": "Loading clawtool context"
+          }
+        ]
+      }
+    ]
+  }
+}
