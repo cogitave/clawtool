@@ -69,6 +69,7 @@ the routing-target provides.
 | Web search | (no native) | `WebSearch` (Brave/Tavily/SearXNG, secrets-managed) |
 | Run repo's tests / lints | `Bash make test` | `Verify` (auto-detects pnpm/go/cargo/pytest/just/Make) |
 | Dispatch to another agent | (no native) | `SendMessage` (claude/codex/opencode/gemini); poll via `TaskGet` / `TaskWait` |
+| Reply or fan-out from a non-claude host | hand-route via stdio bridge | `SendMessage` with `from_instance: "<your-family>"` — codex / gemini / opencode pass their family name so the BIAM envelope's `from` reflects the actual sender. Without this, every cross-host dispatch looks like it originated from the daemon. |
 | Discover a tool by intent | scan tools/list | `ToolSearch` (BM25; cheap before loading every schema) |
 | Set up a repo / "init me" | `Bash clawtool init` | `RecipeList` → `RecipeStatus` → `RecipeApply` (conversational) |
 | Scaffold a new Claude subagent | hand-edit `~/.claude/agents/*.md` | `AgentNew` (kebab-case name + description + allowed-tools + optional default instance) |
