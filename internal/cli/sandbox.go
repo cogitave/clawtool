@@ -22,19 +22,17 @@ const sandboxUsage = `Usage:
   clawtool sandbox doctor           Check which sandbox engines are available.
   clawtool sandbox run <name> -- <cmd ...>
                                     One-off sandboxed command (escape hatch).
-                                    Engine enforcement lands v0.18.1+; today
-                                    surfaces a deferred-feature error.
 
 Profiles live under [sandboxes.<name>] in ~/.config/clawtool/config.toml.
 Per-agent default lands in [agents.X].sandbox = "<profile>".
 
-Engines (ADR-020):
-  Linux  — bubblewrap (bwrap)
-  macOS  — sandbox-exec (Seatbelt)
+Engines:
+  Linux    — bubblewrap (bwrap)
+  macOS    — sandbox-exec (Seatbelt)
   Anywhere — docker (fallback)
-  noop   — when nothing is available; surface works, enforcement absent
+  noop     — when nothing is available; surface works, enforcement absent
 
-See wiki/decisions/020-sandbox-feature.md for the full design.
+See docs/sandbox.md for the full design.
 `
 
 func (a *App) runSandbox(argv []string) int {
@@ -54,8 +52,8 @@ func (a *App) runSandbox(argv []string) int {
 	case "doctor":
 		return dispatchPlainErr(a.Stderr, "sandbox doctor", a.SandboxDoctor())
 	case "run":
-		fmt.Fprintln(a.Stderr, "clawtool sandbox run: engine implementation lands v0.18.1+ (ADR-020).")
-		fmt.Fprintln(a.Stderr, "  Today the surface validates the profile but doesn't enforce it.")
+		fmt.Fprintln(a.Stderr, "clawtool sandbox run: surface only — engine enforcement is wired through `clawtool send --sandbox <profile>`.")
+		fmt.Fprintln(a.Stderr, "  This verb validates the profile but doesn't run the command.")
 		return 1
 	case "help", "--help", "-h":
 		fmt.Fprint(a.Stdout, sandboxUsage)
@@ -74,7 +72,7 @@ func (a *App) SandboxList() error {
 		return err
 	}
 	if len(cfg.Sandboxes) == 0 {
-		fmt.Fprintln(a.Stdout, "(no sandbox profiles configured — see docs/sandbox.md / ADR-020)")
+		fmt.Fprintln(a.Stdout, "(no sandbox profiles configured — see docs/sandbox.md)")
 		return nil
 	}
 	names := make([]string, 0, len(cfg.Sandboxes))

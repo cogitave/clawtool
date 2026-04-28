@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/charmbracelet/huh"
 	"github.com/cogitave/clawtool/internal/agents"
@@ -26,7 +28,19 @@ type onboardState struct {
 	// operator's "every host sees clawtool" expectation holds.
 	MCPClaimable []string
 	ClaimMCP     []string // selected from MCPClaimable
+	// StartDaemon controls the explicit daemon-up step. Defaults
+	// to true so the operator gets a healthy persistent daemon
+	// out of the box. The MCP-claim step calls daemon.Ensure
+	// implicitly, but a dedicated yes/no question makes the
+	// daemon visible in the wizard flow + lets the operator skip
+	// it on hosts where a long-running listener is unwanted.
+	StartDaemon    bool
 	CreateIdentity bool
+	// InitSecrets drops a 0600 secrets.toml stub if absent, so
+	// `clawtool source set-secret <inst> <KEY>` later writes
+	// without surprising the operator with a new file appearing.
+	// Default true.
+	InitSecrets    bool
 	Telemetry      bool
 	RunInit        bool
 }
@@ -47,6 +61,18 @@ type onboardDeps struct {
 	// selected host without leaking those details into the wizard
 	// flow itself. Returns the host's URL on success.
 	claimMCPHost func(string) (string, error)
+	// ensureDaemon explicitly brings up the persistent daemon (or
+	// returns its existing state). Returns the dialable URL.
+	ensureDaemon func() (string, error)
+	// initSecrets drops an empty 0600 secrets.toml if absent.
+	// Idempotent; succeeds silently when the file is already
+	// present (mode-0600 audit lives in `clawtool doctor`).
+	initSecrets func() error
+	// verifySummary runs the end-of-onboard sanity panel:
+	// daemon health, agent list, doctor's [config] + [sandbox-
+	// worker] sections (no full doctor — too noisy for the wizard
+	// tail). Output goes to stdoutLn; never errors.
+	verifySummary func()
 }
 
 // runOnboard is the dispatcher hooked into Run().
@@ -81,6 +107,32 @@ func (a *App) runOnboard(argv []string) int {
 				return "", err
 			}
 			return st.URL(), nil
+		},
+		ensureDaemon: func() (string, error) {
+			st, err := daemon.Ensure(context.Background())
+			if err != nil {
+				return "", err
+			}
+			return st.URL(), nil
+		},
+		initSecrets: func() error {
+			path := a.SecretsPath()
+			if _, err := os.Stat(path); err == nil {
+				return nil // already present; respect operator
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				return err
+			}
+			return os.WriteFile(path,
+				[]byte("# clawtool secrets store — mode 0600 by convention.\n# Add per-instance API keys via:\n#   clawtool source set-secret <instance> <KEY> --value <v>\n"),
+				0o600)
+		},
+		verifySummary: func() {
+			fmt.Fprintln(a.Stdout, "")
+			fmt.Fprintln(a.Stdout, "── verify ───────────────────────────────────")
+			a.runOverview(nil)
 		},
 	}
 	if err := a.onboard(context.Background(), d); err != nil {
@@ -134,19 +186,39 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		))
 	}
 
+	state.StartDaemon = true
+	groups = append(groups, huh.NewGroup(
+		huh.NewConfirm().
+			Title("Start the persistent daemon now?").
+			Description("`clawtool serve --listen --mcp-http` is the single backend every host (codex / gemini / claude / opencode) fans into. Default = on. Skip only if you'll start it later via `clawtool daemon start`.").
+			Affirmative("Start daemon").
+			Negative("Skip").
+			Value(&state.StartDaemon),
+	))
+
 	groups = append(groups, huh.NewGroup(
 		huh.NewConfirm().
 			Title("Create BIAM identity?").
-			Description("Generates an Ed25519 keypair at ~/.config/clawtool/identity.ed25519 (mode 0600). Required for `clawtool send --async`.").
+			Description("Generates an Ed25519 keypair at ~/.config/clawtool/identity.ed25519 (mode 0600). Required for `clawtool send --async` and cross-host BIAM messaging.").
 			Affirmative("Generate").
 			Negative("Skip").
 			Value(&state.CreateIdentity),
 	))
 
+	state.InitSecrets = true
+	groups = append(groups, huh.NewGroup(
+		huh.NewConfirm().
+			Title("Initialise the secrets store?").
+			Description("Drops an empty 0600 secrets.toml at ~/.config/clawtool/secrets.toml so `clawtool source set-secret <inst> <KEY> --value <v>` writes without surprising you with a new file. Idempotent — skips when already present. Default = on.").
+			Affirmative("Initialise").
+			Negative("Skip").
+			Value(&state.InitSecrets),
+	))
+
 	groups = append(groups, huh.NewGroup(
 		huh.NewNote().
 			Title("Sandbox worker (optional, advanced)").
-			Description("ADR-029: route Bash/Read/Edit/Write tool calls through an isolated container instead of the daemon's host process. After onboard, see `clawtool sandbox-worker --help` and ~/.config/clawtool/config.toml's [sandbox_worker] block. Default = off (host execution); flip to mode=\"container\" after building Dockerfile.worker."),
+			Description("Routes Bash/Read/Edit/Write tool calls through an isolated container instead of the daemon's host process. Default = off (host execution). To enable later: build the worker image and flip [sandbox_worker] mode to \"container\" in ~/.config/clawtool/config.toml. Run `clawtool sandbox-worker --help` for the full surface."),
 	))
 
 	groups = append(groups, huh.NewGroup(
@@ -197,11 +269,27 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		}
 	}
 
+	if state.StartDaemon && d.ensureDaemon != nil {
+		if url, err := d.ensureDaemon(); err != nil {
+			d.stdoutLn(fmt.Sprintf("  ! daemon: %v", err))
+		} else {
+			d.stdoutLn(fmt.Sprintf("  ✓ daemon up → %s", url))
+		}
+	}
+
 	if state.CreateIdentity {
 		if err := d.createIdentity(); err != nil {
 			return fmt.Errorf("create identity: %w", err)
 		}
 		d.stdoutLn("  ✓ BIAM identity ready")
+	}
+
+	if state.InitSecrets && d.initSecrets != nil {
+		if err := d.initSecrets(); err != nil {
+			d.stdoutLn(fmt.Sprintf("  ! secrets store: %v", err))
+		} else {
+			d.stdoutLn("  ✓ secrets store ready (~/.config/clawtool/secrets.toml, mode 0600)")
+		}
 	}
 
 	if state.Telemetry {
@@ -215,6 +303,10 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		d.stdoutLn("Run `clawtool init` now to drop project recipes (release-please / dependabot / etc.) into the current repo.")
 	} else {
 		d.stdoutLn("Done. Run `clawtool send --list` to see your callable agents.")
+	}
+
+	if d.verifySummary != nil {
+		d.verifySummary()
 	}
 	return nil
 }

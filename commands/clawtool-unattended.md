@@ -3,7 +3,7 @@ description: Manage clawtool's unattended-mode trust grants and inspect the audi
 allowed-tools: mcp__clawtool__Bash
 ---
 
-Manage `clawtool send --unattended` (ADR-023). Two situations:
+Manage `clawtool send --unattended`. Two situations:
 
 **Status check** — show whether the current repo is trusted:
 ```bash

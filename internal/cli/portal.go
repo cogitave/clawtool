@@ -38,12 +38,11 @@ const portalUsage = `Usage:
   clawtool portal ask [<name>] "<prompt>"
                                         Drive the saved web-UI flow with the
                                         prompt and stream the response.
-                                        (CDP driver lands in v0.16.2.)
 
-Portals are a Tool surface (ADR-017). They live next to [agents.X] /
-[sources.X] in config.toml; cookie material lives in secrets.toml under
-[scopes."portal.<name>"]. See docs/portals.md for the chat.deepseek.com
-worked example.
+Portals are a Tool surface — they live next to [agents.X] /
+[sources.X] in config.toml; cookie material lives in secrets.toml
+under [scopes."portal.<name>"]. See docs/portals.md for the
+chat.deepseek.com worked example.
 `
 
 func (a *App) runPortal(argv []string) int {
@@ -375,7 +374,8 @@ func assertPortalName(n string) error {
 }
 
 func portalTemplate(name string) string {
-	return fmt.Sprintf(`# clawtool portal stanza — see ADR-018 + docs/portals.md.
+	return fmt.Sprintf(`# clawtool portal stanza — see docs/portals.md for the full
+# field reference and a chat.deepseek.com worked example.
 #
 # Save this file in the editor when you're done; clawtool validates
 # the result and appends it to ~/.config/clawtool/config.toml.

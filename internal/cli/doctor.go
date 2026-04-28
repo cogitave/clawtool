@@ -156,11 +156,11 @@ func (a *App) doctorDaemon(w io.Writer, rep *doctorReport) {
 }
 
 // doctorSandboxWorker reports the sandbox-worker config + live
-// reachability (ADR-029). When mode=off (default), the section
-// surfaces a one-line "host execution" note. When mode != off, we
-// dial the configured worker URL with the bearer token; failures
-// turn into actionable warnings with the right `clawtool sandbox-
-// worker` command to recover.
+// reachability. When mode=off (default), the section surfaces a
+// one-line "host execution" note. When mode != off, we dial the
+// configured worker URL with the bearer token; failures turn into
+// actionable warnings with the right `clawtool sandbox-worker`
+// command to recover.
 func (a *App) doctorSandboxWorker(w io.Writer, rep *doctorReport) {
 	fmt.Fprintln(w, "[sandbox-worker]")
 	cfg, err := config.LoadOrDefault(a.Path())
@@ -172,7 +172,7 @@ func (a *App) doctorSandboxWorker(w io.Writer, rep *doctorReport) {
 	mode := cfg.SandboxWorker.Mode
 	if mode == "" || mode == "off" {
 		rep.info(w, "mode=off — Bash/Read/Edit/Write run on the host (default)")
-		fmt.Fprintln(w, "      → see ADR-029 + Dockerfile.worker to opt into container isolation")
+		fmt.Fprintln(w, "      → build Dockerfile.worker and set [sandbox_worker] mode = \"container\" to opt into container isolation")
 		fmt.Fprintln(w)
 		return
 	}

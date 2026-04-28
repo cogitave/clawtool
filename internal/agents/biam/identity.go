@@ -187,7 +187,7 @@ func parseIdentity(body []byte) (*Identity, error) {
 }
 
 func writeIdentity(path string, id *Identity) error {
-	body := fmt.Sprintf("# clawtool BIAM identity (ADR-015) — keep mode 0600\nhost_id=%s\ninstance_id=%s\nprivate=%s\n",
+	body := fmt.Sprintf("# clawtool BIAM identity — keep mode 0600\nhost_id=%s\ninstance_id=%s\nprivate=%s\n",
 		id.HostID, id.InstanceID, hex.EncodeToString(id.private),
 	)
 	tmp := path + ".tmp"

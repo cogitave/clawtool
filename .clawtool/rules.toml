@@ -1,0 +1,11 @@
+# clawtool rules — predicate-based invariants enforced at
+# lifecycle events (pre_commit, post_edit, session_end,
+# pre_send, pre_unattended). See docs/rules.md for the schema.
+
+[[rule]]
+name      = "no-internal-doc-ids"
+description = "User-facing surfaces must not leak internal doc IDs (ADR-XXX, audit-#NNN, ticket slugs)."
+when      = "post_edit"
+condition = "changed(\"internal/cli/**/*.go\") OR changed(\"commands/*.md\") OR changed(\"internal/tools/core/*.go\") OR changed(\"README.md\") OR changed(\"skills/clawtool/SKILL.md\")"
+severity  = "warn"
+hint      = "Grep the touched files for ADR-, audit-#, and bare #\\d+ references. Move internal references to source comments or wiki cross-links; describe behavior plainly in CLI help, slash commands, MCP tool descriptions, onboard prompts, README operator sections, and config templates. Operator caught ADR-029 leaking into onboard / overview / doctor / commands/clawtool-overview.md and called it bad UX."

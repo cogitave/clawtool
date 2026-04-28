@@ -82,7 +82,7 @@ func runMcpNewWizardWithDeps(_ context.Context, name, outputDir string, yes bool
 		intro := huh.NewForm(huh.NewGroup(
 			huh.NewNote().
 				Title("clawtool mcp new — MCP server scaffolder").
-				Description("Generates a fresh MCP server project (ADR-019). Per ADR-007\nthe scaffold wraps the canonical SDK in your chosen language —\nmcp-go for Go, fastmcp for Python, @modelcontextprotocol/sdk\nfor TypeScript. We never re-implement the wire protocol.\n\nThe wizard asks for description, language, transport,\npackaging, and your first tool. You can register the\nresult with `clawtool mcp install . --as <name>` once it builds."),
+				Description("Generates a fresh MCP server project. The scaffold wraps\nthe canonical SDK in your chosen language — mcp-go for Go,\nfastmcp for Python, @modelcontextprotocol/sdk for TypeScript.\nWe never re-implement the wire protocol.\n\nThe wizard asks for description, language, transport,\npackaging, and your first tool. You can register the\nresult with `clawtool mcp install . --as <name>` once it builds."),
 			huh.NewInput().
 				Title("Description").
 				Description("One sentence — becomes the server's self-description.").

@@ -6,8 +6,8 @@ argument-hint: <source-name> [--as <instance>]
 
 Wraps `clawtool source add`. The user passes a bare name (e.g.
 `github`, `slack`, `postgres`); clawtool resolves it against its
-embedded catalog and writes the source config. Per ADR-008 the catalog
-covers github, slack, postgres, sqlite, filesystem, fetch, brave-search,
+embedded catalog and writes the source config. The catalog covers
+github, slack, postgres, sqlite, filesystem, fetch, brave-search,
 google-maps, memory, sequentialthinking, time, and git out of the box.
 
 ```bash
@@ -24,5 +24,5 @@ After running, summarize:
 
 If the user already has an instance with the bare name and adds the
 same source again, clawtool errors with an `--as <other-name>`
-suggestion. Per ADR-006 multi-instance is intentional (two GitHub
-accounts, two Slack workspaces, etc.); just use `--as <name>`.
+suggestion. Multi-instance is intentional (two GitHub accounts,
+two Slack workspaces, etc.); just use `--as <name>`.

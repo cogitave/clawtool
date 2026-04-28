@@ -21,25 +21,21 @@ const mcpUsage = `Usage:
                                    Generate a new MCP server (Go / Python /
                                    TypeScript) in <project-name>/. Wizard
                                    asks for description, language, transport,
-                                   packaging, first tool. ADR-019 — generator
-                                   ships v0.17.
+                                   packaging, first tool.
   clawtool mcp list [--root <dir>] List MCP server projects under <dir>
                                    (default cwd). Detects via the
                                    .clawtool/mcp.toml marker.
   clawtool mcp run <path>          Start the project's MCP server in dev
-                                   mode (stdio). Defers to v0.17.
-  clawtool mcp build <path>        Compile / package the project. Defers
-                                   to v0.17.
+                                   mode (stdio).
+  clawtool mcp build <path>        Compile / package the project.
   clawtool mcp install <path> [--as <instance>]
                                    Build + register the project as
                                    [sources.<instance>] in config.toml.
-                                   Defers to v0.17.
 
 Sister surface: clawtool skill (Agent Skills, agentskills.io).
 mcp = MCP server source code; skill = agent-side skill folder.
 
-Full design: docs/mcp-authoring.md (lands with the v0.17 generator)
-and wiki/decisions/019-mcp-authoring-scaffolder.md (accepted).
+Full guide: docs/mcp-authoring.md.
 `
 
 // runMcp is wired from cli.go's main switch. v0.16.4 implements

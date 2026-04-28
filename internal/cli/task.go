@@ -17,14 +17,13 @@ const taskUsage = `Usage:
   clawtool task watch [<task_id> | --all] [--json] [--poll-interval 250ms]
                                                 Stream state transitions as one stdout line per
                                                 event. Pair with Claude Code's Monitor tool to
-                                                surface dispatch progress as inline chat events
-                                                (ADR-026). Without --all, watches a single task.
-                                                With --all, watches every active dispatch in the
-                                                BIAM store.
+                                                surface dispatch progress as inline chat events.
+                                                Without --all, watches a single task. With --all,
+                                                watches every active dispatch in the BIAM store.
   clawtool task cancel <task_id>                Flip a pending/active task to "cancelled" and
                                                 propagate the signal to the in-flight dispatch
-                                                goroutine (audit fix #204). Idempotent — a
-                                                terminal task is a no-op.
+                                                goroutine. Idempotent — a terminal task is a
+                                                no-op.
 
 Tasks are created when you dispatch with 'clawtool send --async' or
 'mcp__clawtool__SendMessage --bidi=true'. The store lives at
