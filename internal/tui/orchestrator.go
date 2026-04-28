@@ -44,9 +44,20 @@ import (
 
 const (
 	orchTickInterval   = 500 * time.Millisecond
-	orchPaneCloseAfter = 8 * time.Second
-	orchFrameRingMax   = 500 // ringbuffer cap per task
+	orchPaneCloseAfter = 30 * time.Minute // keep terminal panes browsable in the Done tab
+	orchFrameRingMax   = 500              // ringbuffer cap per task
 	sidebarWidth       = 28
+)
+
+// orchTab enumerates the two sidebar sections. Active tasks (pending
+// + active) render in the Active tab; terminal tasks (done / failed /
+// cancelled / expired) accumulate in the Done tab. Tab is keyboard-
+// switched (`tab` / `1` / `2`).
+type orchTab int
+
+const (
+	orchTabActive orchTab = iota
+	orchTabDone
 )
 
 // orchTask is the per-task state the orchestrator maintains.
@@ -64,7 +75,8 @@ type OrchModel struct {
 
 	tasks   map[string]*orchTask
 	order   []string // task ID order — newest first
-	cursor  int      // index into order for the selected task
+	cursor  int      // index into the active visible list for the selected task
+	tab     orchTab  // which sidebar tab is in focus
 	stream  viewport.Model
 	follow  bool // auto-scroll to bottom on new frames
 	err     error
@@ -116,6 +128,21 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f":
 			m.follow = !m.follow
 			return m, nil
+		case "tab":
+			m.tab = (m.tab + 1) % 2
+			m.cursor = 0
+			m.refreshStreamForSelection()
+			return m, nil
+		case "1":
+			m.tab = orchTabActive
+			m.cursor = 0
+			m.refreshStreamForSelection()
+			return m, nil
+		case "2":
+			m.tab = orchTabDone
+			m.cursor = 0
+			m.refreshStreamForSelection()
+			return m, nil
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -123,7 +150,7 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "down", "j":
-			if m.cursor < len(m.order)-1 {
+			if m.cursor < len(m.visibleIDs())-1 {
 				m.cursor++
 				m.refreshStreamForSelection()
 			}
@@ -146,46 +173,35 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case watchEventMsg:
-		// Task snapshot — upsert.
+		// Task snapshot — upsert. Both Active and Done tabs
+		// accept inserts; the snapshot pump replays history,
+		// terminal rows simply land in the Done tab instead of
+		// flooding Active. Per-tab visibility filtering happens
+		// at render time via visibleIDs().
 		t, ok := m.tasks[msg.task.TaskID]
 		if !ok {
-			// The watch socket emits every task in the
-			// store on connect (snapshot pass). For a
-			// live-activity view we only care about tasks
-			// that are still alive — historical terminal
-			// rows would flood the sidebar with up to
-			// 1000 stale entries that all cascade-close
-			// on the first orchTickMsg, exactly the
-			// "shows 50 then drops to actives" glitch the
-			// operator hit. Drop already-terminal tasks
-			// at insert time. They'll never matter to a
-			// live view, and `task list` is the right
-			// surface for history.
-			if msg.task.Status.IsTerminal() {
-				return m, watchReadCmd(msg.dec, msg.conn)
-			}
 			t = &orchTask{
 				task:    msg.task,
 				startAt: time.Now(),
 			}
 			m.tasks[msg.task.TaskID] = t
 			m.order = append([]string{msg.task.TaskID}, m.order...)
-			if len(m.order) == 1 {
-				m.cursor = 0
-				m.refreshStreamForSelection()
-			}
 		} else {
 			t.task = msg.task
 		}
-		// Stamp terminal time on the first transition to a
-		// terminal status (covers both fresh-insert and
-		// existing-update paths). Only meaningful for tasks
-		// that were live when first seen — pre-terminal
-		// snapshots short-circuit above.
+		// Stamp terminal time on the first transition / first
+		// sight as terminal — needed so the orchTickMsg sweep
+		// has a "this row went terminal at T" reference even
+		// for snapshots that arrived already-done.
 		if t.terminal.IsZero() && msg.task.Status.IsTerminal() {
 			t.terminal = time.Now()
 		}
-		// Re-render selected pane to reflect updated header.
+		// Initialise cursor when the visible list goes from 0
+		// to 1, regardless of which tab is in focus — first
+		// row is always selected by default.
+		if len(m.visibleIDs()) == 1 {
+			m.cursor = 0
+		}
 		m.refreshStreamForSelection()
 		return m, watchReadCmd(msg.dec, msg.conn)
 
@@ -225,8 +241,10 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case orchTickMsg:
-		// Sweep terminal panes past grace window. Re-pick cursor
-		// when the selected task disappears.
+		// Sweep terminal panes past grace window so the Done
+		// tab doesn't grow unboundedly. Active tab is unaffected
+		// (only terminal rows have a non-zero terminal stamp).
+		// Re-pick cursor when the selected task disappears.
 		now := time.Now()
 		removed := false
 		newOrder := make([]string, 0, len(m.order))
@@ -245,20 +263,19 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.order = newOrder
 		if removed {
-			// Restore cursor to the previously selected task
-			// when possible; otherwise clamp.
+			vis := m.visibleIDs()
 			m.cursor = 0
-			for i, id := range m.order {
+			for i, id := range vis {
 				if id == selID {
 					m.cursor = i
 					break
 				}
 			}
-			if m.cursor >= len(m.order) {
-				if len(m.order) == 0 {
+			if m.cursor >= len(vis) {
+				if len(vis) == 0 {
 					m.cursor = 0
 				} else {
-					m.cursor = len(m.order) - 1
+					m.cursor = len(vis) - 1
 				}
 			}
 			m.refreshStreamForSelection()
@@ -271,13 +288,76 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// selectedTaskID returns the task currently in focus, or "" when
-// the orchestrator has no tasks yet.
+// selectedTaskID returns the task currently in focus within the
+// active tab, or "" when the visible list is empty.
 func (m *OrchModel) selectedTaskID() string {
-	if m.cursor < 0 || m.cursor >= len(m.order) {
+	vis := m.visibleIDs()
+	if m.cursor < 0 || m.cursor >= len(vis) {
 		return ""
 	}
-	return m.order[m.cursor]
+	return vis[m.cursor]
+}
+
+// visibleIDs returns the task IDs that belong on the current tab,
+// sorted newest-first. Active tab = pending + active rows; Done
+// tab = every terminal row. Sort key is startAt for the Active tab
+// (most-recently-dispatched on top) and the terminal stamp for the
+// Done tab (most-recently-finished on top) so the eye lands on
+// the freshest row in either case.
+func (m *OrchModel) visibleIDs() []string {
+	if len(m.order) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m.order))
+	for _, id := range m.order {
+		t := m.tasks[id]
+		if t == nil {
+			continue
+		}
+		isTerminal := t.task.Status.IsTerminal()
+		switch m.tab {
+		case orchTabActive:
+			if !isTerminal {
+				out = append(out, id)
+			}
+		case orchTabDone:
+			if isTerminal {
+				out = append(out, id)
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ti := m.tasks[out[i]]
+		tj := m.tasks[out[j]]
+		switch m.tab {
+		case orchTabDone:
+			return ti.terminal.After(tj.terminal)
+		default:
+			return ti.startAt.After(tj.startAt)
+		}
+	})
+	return out
+}
+
+// activeCount / doneCount are tiny helpers for header / tab labels.
+func (m *OrchModel) activeCount() int {
+	n := 0
+	for _, t := range m.tasks {
+		if !t.task.Status.IsTerminal() {
+			n++
+		}
+	}
+	return n
+}
+
+func (m *OrchModel) doneCount() int {
+	n := 0
+	for _, t := range m.tasks {
+		if t.task.Status.IsTerminal() {
+			n++
+		}
+	}
+	return n
 }
 
 // resizeStream recalculates the viewport dimensions from the
@@ -367,7 +447,7 @@ func (m *OrchModel) renderHeader() string {
 	if m.err != nil {
 		dot = t.Error.Render("●")
 	}
-	live := dot + " " + t.Dim.Render(fmt.Sprintf("%d frames · %d active", m.frameCt, len(m.order)))
+	live := dot + " " + t.Dim.Render(fmt.Sprintf("%d frames · %d active · %d done", m.frameCt, m.activeCount(), m.doneCount()))
 	leftBlock := title + "  " + subtitle
 	right := live
 	gap := m.width - lipgloss.Width(leftBlock) - lipgloss.Width(right)
@@ -381,6 +461,7 @@ func (m *OrchModel) renderHeader() string {
 func (m *OrchModel) renderFooter() string {
 	t := m.theme
 	keys := []struct{ k, d string }{
+		{"tab/1/2", "switch tab"},
 		{"↑↓", "select"},
 		{"pgup/pgdn", "scroll"},
 		{"f", "follow"},
@@ -410,31 +491,96 @@ func (m *OrchModel) renderFooter() string {
 
 func (m *OrchModel) renderSidebar() string {
 	t := m.theme
-	var b strings.Builder
-	b.WriteString(t.PaneTitle.Render("Dispatches"))
-	b.WriteByte('\n')
-	if len(m.order) == 0 {
-		b.WriteString(t.Dim.Render("(no active dispatches)"))
-		b.WriteByte('\n')
-		b.WriteString(t.Dim.Render("run: clawtool send --async"))
-		b.WriteByte('\n')
+
+	// Inner height budget: total height minus header(3) +
+	// footer(1) + pane border(2) chrome. Same arithmetic the
+	// detail pane uses, so both panes line up.
+	height := m.height - 7
+	if height < 6 {
+		height = 6
+	}
+	// Tab strip eats one row + a separator; row glyphs are 2
+	// lines tall (pill+meta). The visible row budget is half
+	// the remaining inner height so we never spill past the
+	// pane border. Minimum 1 row so a tiny terminal still
+	// shows something.
+	tabRows := 2
+	innerH := height - tabRows
+	if innerH < 4 {
+		innerH = 4
+	}
+	rowsPerTask := 2
+	maxVisible := innerH / rowsPerTask
+	if maxVisible < 1 {
+		maxVisible = 1
+	}
+
+	// Tab strip: highlight the focused tab, dim the other one.
+	activeLabel := fmt.Sprintf("Active (%d)", m.activeCount())
+	doneLabel := fmt.Sprintf("Done (%d)", m.doneCount())
+	var leftTab, rightTab string
+	if m.tab == orchTabActive {
+		leftTab = t.PaneTitle.Render(activeLabel)
+		rightTab = t.Dim.Render(doneLabel)
 	} else {
-		// Sort by startAt newest-first for a stable display
-		// even when transitions arrive out of order.
-		ids := append([]string{}, m.order...)
-		sort.SliceStable(ids, func(i, j int) bool {
-			return m.tasks[ids[i]].startAt.After(m.tasks[ids[j]].startAt)
-		})
-		for i, id := range ids {
-			task := m.tasks[id]
+		leftTab = t.Dim.Render(activeLabel)
+		rightTab = t.PaneTitle.Render(doneLabel)
+	}
+	tabStrip := leftTab + "  " + rightTab
+
+	var b strings.Builder
+	b.WriteString(tabStrip)
+	b.WriteByte('\n')
+
+	ids := m.visibleIDs()
+	if len(ids) == 0 {
+		switch m.tab {
+		case orchTabActive:
+			b.WriteString(t.Dim.Render("(no active dispatches)"))
+			b.WriteByte('\n')
+			b.WriteString(t.Dim.Render("run: clawtool send --async"))
+		case orchTabDone:
+			b.WriteString(t.Dim.Render("(no completed dispatches yet)"))
+		}
+	} else {
+		// Window the visible list around the cursor so the
+		// selected row is always on screen and the list never
+		// spills past the pane border. Slide the window when
+		// cursor moves out of the current frame.
+		start := 0
+		if m.cursor >= maxVisible {
+			start = m.cursor - maxVisible + 1
+		}
+		if start+maxVisible > len(ids) {
+			start = len(ids) - maxVisible
+			if start < 0 {
+				start = 0
+			}
+		}
+		end := start + maxVisible
+		if end > len(ids) {
+			end = len(ids)
+		}
+		// Reserve a tail row for the overflow hint when there
+		// are rows past the window — operator can scroll into
+		// them via ↑↓.
+		hasOverflow := len(ids) > maxVisible
+		if hasOverflow && end-start == maxVisible {
+			end-- // give up the last visible row for the hint
+			if end <= start {
+				end = start + 1
+			}
+		}
+		for i := start; i < end; i++ {
+			task := m.tasks[ids[i]]
 			row := m.renderSidebarRow(task, i == m.cursor)
 			b.WriteString(row)
 			b.WriteByte('\n')
 		}
-	}
-	height := m.height - 7
-	if height < 6 {
-		height = 6
+		if hasOverflow {
+			hidden := len(ids) - (end - start)
+			b.WriteString(t.Dim.Render(fmt.Sprintf("  … %d more (↑↓)", hidden)))
+		}
 	}
 	style := t.PaneBorder.Width(sidebarWidth).Height(height)
 	return style.Render(b.String())
