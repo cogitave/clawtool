@@ -131,9 +131,10 @@ func ServeWatchSocket(ctx context.Context, store *Store, hub *WatchHub, path str
 // upgrade their parser; nothing breaks if a Task lands in `Task`
 // and `Frame` stays nil.
 type WatchEnvelope struct {
-	Kind  string       `json:"kind"`            // "task" | "frame"
-	Task  *Task        `json:"task,omitempty"`  // populated when Kind=="task"
-	Frame *StreamFrame `json:"frame,omitempty"` // populated when Kind=="frame"
+	Kind   string              `json:"kind"`             // "task" | "frame" | "system"
+	Task   *Task               `json:"task,omitempty"`   // populated when Kind=="task"
+	Frame  *StreamFrame        `json:"frame,omitempty"`  // populated when Kind=="frame"
+	System *SystemNotification `json:"system,omitempty"` // populated when Kind=="system"
 }
 
 // handleWatchClient streams snapshot + live events to one connected
@@ -153,6 +154,8 @@ func handleWatchClient(ctx context.Context, c net.Conn, store *Store, hub *Watch
 	defer unsubTask()
 	frameCh, unsubFrame := hub.SubscribeFrames()
 	defer unsubFrame()
+	systemCh, unsubSystem := hub.SubscribeSystem()
+	defer unsubSystem()
 
 	emit := func(env WatchEnvelope) bool {
 		_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -204,6 +207,13 @@ func handleWatchClient(ctx context.Context, c net.Conn, store *Store, hub *Watch
 				return
 			}
 			if !emit(WatchEnvelope{Kind: "frame", Frame: &f}) {
+				return
+			}
+		case s, ok := <-systemCh:
+			if !ok {
+				return
+			}
+			if !emit(WatchEnvelope{Kind: "system", System: &s}) {
 				return
 			}
 		}

@@ -202,6 +202,37 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 				fmt.Fprintf(os.Stderr, "clawtool: biam dispatchsocket: %v\n", err)
 			}
 		}()
+
+		// Update poller — hourly GitHub-releases probe. On a
+		// transition into "update available" the poller pushes a
+		// SystemNotification onto the WatchHub; orchestrator /
+		// dashboard / `task watch` subscribers render an inline
+		// banner immediately. SessionStart still injects the
+		// same banner into the very first Claude turn, but the
+		// push channel keeps already-open sessions in the loop
+		// without re-checking on every prompt.
+		go func() {
+			pub := func(kind, severity, title, body, actionHint string) {
+				biam.Watch.BroadcastSystem(biam.SystemNotification{
+					Kind:       kind,
+					Severity:   severity,
+					Title:      title,
+					Body:       body,
+					ActionHint: actionHint,
+					TS:         time.Now().UTC(),
+				})
+			}
+			track := func(outcome string) {
+				if tc := telemetry.Get(); tc != nil && tc.Enabled() {
+					tc.Track("clawtool.update_check", map[string]any{
+						"version":        version.Resolved(),
+						"update_outcome": outcome,
+					})
+				}
+			}
+			poller := version.NewPoller(pub, version.PollerConfig{}, track)
+			poller.Run(ctx)
+		}()
 	}
 
 	// Sandbox-worker wire-up (ADR-029 phase 2). When config sets

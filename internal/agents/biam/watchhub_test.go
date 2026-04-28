@@ -44,6 +44,54 @@ func TestWatchHub_UnsubscribeRemovesSlot(t *testing.T) {
 	}
 }
 
+func TestWatchHub_SystemBroadcastFanOut(t *testing.T) {
+	hub := &WatchHub{
+		subs:   map[*watchSub]struct{}{},
+		frames: map[*frameSub]struct{}{},
+		system: map[*systemSub]struct{}{},
+	}
+	chA, unsubA := hub.SubscribeSystem()
+	chB, unsubB := hub.SubscribeSystem()
+	defer unsubA()
+	defer unsubB()
+
+	hub.BroadcastSystem(SystemNotification{
+		Kind:  "update_available",
+		Title: "clawtool 0.22.5 → 0.22.6",
+	})
+
+	for i, ch := range []<-chan SystemNotification{chA, chB} {
+		select {
+		case got := <-ch:
+			if got.Kind != "update_available" || got.Title == "" {
+				t.Errorf("subscriber %d got %+v", i, got)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("subscriber %d didn't receive system notification", i)
+		}
+	}
+}
+
+func TestWatchHub_SystemUnsubscribeFreesSlot(t *testing.T) {
+	hub := &WatchHub{
+		subs:   map[*watchSub]struct{}{},
+		frames: map[*frameSub]struct{}{},
+		system: map[*systemSub]struct{}{},
+	}
+	_, unsub := hub.SubscribeSystem()
+	if hub.SystemSubsCount() != 1 {
+		t.Fatalf("expected 1 system sub, got %d", hub.SystemSubsCount())
+	}
+	unsub()
+	if hub.SystemSubsCount() != 0 {
+		t.Fatalf("expected 0 system subs after unsub, got %d", hub.SystemSubsCount())
+	}
+	unsub() // idempotent
+	if hub.SystemSubsCount() != 0 {
+		t.Errorf("idempotent unsub broke count")
+	}
+}
+
 func TestWatchHub_BroadcastDropsOnSlowSubscriber(t *testing.T) {
 	hub := &WatchHub{subs: map[*watchSub]struct{}{}}
 	_, unsub := hub.Subscribe() // never drained

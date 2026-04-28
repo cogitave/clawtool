@@ -38,11 +38,28 @@ type StreamFrame struct {
 	TS     time.Time `json:"ts"`
 }
 
+// SystemNotification is a daemon-level inline message broadcast to
+// every connected watcher. Distinct from Task / StreamFrame because
+// it isn't tied to a dispatch — examples: "clawtool update available
+// v0.22.5 → v0.23.0", "sandbox-worker disconnected", "telemetry key
+// rotation pending". Severity drives the renderer's colour pill;
+// ActionHint is an optional one-line CLI suggestion the operator
+// can copy-paste.
+type SystemNotification struct {
+	Kind       string    `json:"kind"`     // taxonomy: "update_available" | "warning" | "info" | "error"
+	Severity   string    `json:"severity"` // "info" (default) | "warning" | "error"
+	Title      string    `json:"title"`
+	Body       string    `json:"body,omitempty"`
+	ActionHint string    `json:"action_hint,omitempty"` // e.g. "run: clawtool upgrade"
+	TS         time.Time `json:"ts"`
+}
+
 // WatchHub is the multi-subscriber broadcaster. Lifetime = process.
 type WatchHub struct {
 	mu     sync.Mutex
 	subs   map[*watchSub]struct{}
 	frames map[*frameSub]struct{}
+	system map[*systemSub]struct{}
 }
 
 type watchSub struct {
@@ -53,10 +70,15 @@ type frameSub struct {
 	ch chan StreamFrame
 }
 
+type systemSub struct {
+	ch chan SystemNotification
+}
+
 // Watch is the process-wide singleton. Tests use ResetWatchForTest.
 var Watch = &WatchHub{
 	subs:   map[*watchSub]struct{}{},
 	frames: map[*frameSub]struct{}{},
+	system: map[*systemSub]struct{}{},
 }
 
 // Subscribe registers a buffered channel for every Broadcast. Returns
@@ -116,6 +138,10 @@ func (h *WatchHub) ResetWatchForTest() {
 		close(s.ch)
 	}
 	h.frames = map[*frameSub]struct{}{}
+	for s := range h.system {
+		close(s.ch)
+	}
+	h.system = map[*systemSub]struct{}{}
 }
 
 // SubscribeFrames registers a stream-frame subscriber. Higher buffer
@@ -168,4 +194,56 @@ func (h *WatchHub) FrameSubsCount() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.frames)
+}
+
+// SubscribeSystem registers a system-notification subscriber.
+// Smaller buffer (16) than tasks/frames — system events are rare
+// (handful per hour at most). Caller MUST unsub.
+func (h *WatchHub) SubscribeSystem() (<-chan SystemNotification, func()) {
+	sub := &systemSub{ch: make(chan SystemNotification, 16)}
+	h.mu.Lock()
+	if h.system == nil {
+		h.system = map[*systemSub]struct{}{}
+	}
+	h.system[sub] = struct{}{}
+	h.mu.Unlock()
+	return sub.ch, func() {
+		h.mu.Lock()
+		if _, ok := h.system[sub]; ok {
+			delete(h.system, sub)
+			close(sub.ch)
+		}
+		h.mu.Unlock()
+	}
+}
+
+// BroadcastSystem fans one SystemNotification to every system
+// subscriber. Non-blocking — a slow watcher drops the event past
+// the 16-cap buffer. The poller / sandbox-worker monitor / etc.
+// call this when daemon-level state changes.
+func (h *WatchHub) BroadcastSystem(s SystemNotification) {
+	h.mu.Lock()
+	if h.system == nil {
+		h.mu.Unlock()
+		return
+	}
+	subs := make([]*systemSub, 0, len(h.system))
+	for sub := range h.system {
+		subs = append(subs, sub)
+	}
+	h.mu.Unlock()
+	for _, sub := range subs {
+		select {
+		case sub.ch <- s:
+		default:
+			// drop — slow consumer
+		}
+	}
+}
+
+// SystemSubsCount is test-only.
+func (h *WatchHub) SystemSubsCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.system)
 }

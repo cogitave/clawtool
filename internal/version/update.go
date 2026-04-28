@@ -29,6 +29,19 @@ import (
 // 24h cache keeps us well under that even on shared CI runners.
 const UpdateCheckURL = "https://api.github.com/repos/cogitave/clawtool/releases/latest"
 
+// updateCheckURLOverride is the test-only seam. Empty string =
+// production path uses UpdateCheckURL. Tests assign this to an
+// httptest.Server URL via stubGitHub before calling
+// CheckForUpdate, then restore it on cleanup.
+var updateCheckURLOverride string
+
+func currentUpdateCheckURL() string {
+	if updateCheckURLOverride != "" {
+		return updateCheckURLOverride
+	}
+	return UpdateCheckURL
+}
+
 // UpdateInfo is the result a caller surfaces in the UI.
 type UpdateInfo struct {
 	// HasUpdate is true when the upstream tag is newer than the
@@ -162,7 +175,7 @@ func buildInfo(c cachedUpdate) UpdateInfo {
 // fetchLatestTag hits the Releases API and returns the tag_name
 // of the latest release. Anonymous; rate-limit applies per IP.
 func fetchLatestTag(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, UpdateCheckURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, currentUpdateCheckURL(), nil)
 	if err != nil {
 		return "", err
 	}
