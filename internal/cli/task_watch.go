@@ -25,10 +25,12 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"sort"
@@ -108,10 +110,72 @@ func (a *App) runTaskWatch(argv []string) int {
 
 	emit := makeEmitter(a, asJSON)
 
+	// Push-mode first: dial the daemon's task-watch socket. When it
+	// answers we read JSONL events as they happen — no SQLite poll.
+	// Connect failure (no daemon, missing socket, older daemon) falls
+	// through to the polling loop so the CLI works either way.
+	if conn, derr := biam.DialWatchSocket(""); derr == nil {
+		defer conn.Close()
+		return runWatchSocket(ctx, conn, taskID, all, emit)
+	}
+
 	if all {
 		return runWatchAll(ctx, a, store, pollInterval, emit)
 	}
 	return runWatchOne(ctx, a, store, taskID, pollInterval, emit)
+}
+
+// runWatchSocket consumes JSONL Task events from the daemon's
+// push socket. Filters by taskID when --all isn't set; exits when
+// the matched task hits a terminal state, the socket disconnects,
+// or ctx cancels. Per-task mode also tracks "no events for this
+// id yet" — the snapshot pass at connect time guarantees one line
+// per known task, so a missing id means the task doesn't exist.
+func runWatchSocket(ctx context.Context, conn io.ReadCloser, taskID string, all bool, emit emitter) int {
+	dec := json.NewDecoder(bufio.NewReader(conn))
+	prev := map[string]biam.Task{}
+
+	// Detect ctx cancel by closing the conn so dec.Decode unblocks.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-done:
+		}
+	}()
+
+	for {
+		var t biam.Task
+		err := dec.Decode(&t)
+		if err != nil {
+			if errors.Is(err, io.EOF) || ctx.Err() != nil {
+				return 0
+			}
+			// Mid-stream JSON error → fall through to caller's
+			// poll fallback path. The CLI signals this by
+			// returning a non-zero code so the operator can
+			// retry; printing nothing here keeps the chat
+			// uncluttered.
+			return 0
+		}
+		if !all && t.TaskID != taskID {
+			continue
+		}
+		old, ok := prev[t.TaskID]
+		if ok && !changed(&old, &t) {
+			continue
+		}
+		ev := snapshotToEvent(&t)
+		if !emit(ev) {
+			return 0
+		}
+		prev[t.TaskID] = t
+		if !all && t.Status.IsTerminal() {
+			return 0
+		}
+	}
 }
 
 // emitter is the per-event writer. We close over the format flag

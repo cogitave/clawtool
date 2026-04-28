@@ -53,8 +53,32 @@ type Task struct {
 // concurrent calls — the underlying connection pool serialises
 // writes; readers fan out via WAL.
 type Store struct {
-	mu sync.Mutex
-	db *sql.DB
+	mu       sync.Mutex
+	db       *sql.DB
+	taskHook func(taskID string)
+}
+
+// SetTaskHook registers a callback fired after every successful task
+// state mutation (SetTaskStatus + PutEnvelope). Idempotent — pass nil
+// to clear. The hook runs synchronously after the store mutex is
+// released, so it can do its own DB reads without deadlocking. The
+// daemon wires this to WatchHub.Broadcast so cross-process watchers
+// (Unix socket) see live transitions instead of polling.
+func (s *Store) SetTaskHook(fn func(taskID string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.taskHook = fn
+}
+
+// fireTaskHook reads the hook under the lock then calls it without
+// the lock held. Safe for hooks that re-enter the store.
+func (s *Store) fireTaskHook(taskID string) {
+	s.mu.Lock()
+	fn := s.taskHook
+	s.mu.Unlock()
+	if fn != nil {
+		fn(taskID)
+	}
 }
 
 // OpenStore opens (creating if absent) the SQLite database at path.
@@ -170,21 +194,25 @@ func (s *Store) CreateTask(ctx context.Context, taskID, initiatedBy, agent strin
 // last_message. Pass empty `lastMessage` to leave it untouched.
 func (s *Store) SetTaskStatus(ctx context.Context, taskID string, status TaskStatus, lastMessage string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	var err error
 	if status.IsTerminal() {
-		_, err := s.db.ExecContext(ctx, `
+		_, err = s.db.ExecContext(ctx, `
 			UPDATE tasks
 			   SET status = ?, closed_at = ?, last_message = COALESCE(NULLIF(?, ''), last_message)
 			 WHERE task_id = ?
 		`, status, now, lastMessage, taskID)
-		return err
+	} else {
+		_, err = s.db.ExecContext(ctx, `
+			UPDATE tasks
+			   SET status = ?, last_message = COALESCE(NULLIF(?, ''), last_message)
+			 WHERE task_id = ?
+		`, status, lastMessage, taskID)
 	}
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE tasks
-		   SET status = ?, last_message = COALESCE(NULLIF(?, ''), last_message)
-		 WHERE task_id = ?
-	`, status, lastMessage, taskID)
+	s.mu.Unlock()
+	if err == nil {
+		s.fireTaskHook(taskID)
+	}
 	return err
 }
 
@@ -261,6 +289,16 @@ func (s *Store) ListTasks(ctx context.Context, limit int) ([]Task, error) {
 // outbound is the caller's call. Dedupe via idempotency_key prevents
 // double-inserts on retry.
 func (s *Store) PutEnvelope(ctx context.Context, env *Envelope, inbound bool) error {
+	if err := s.putEnvelopeLocked(ctx, env, inbound); err != nil {
+		return err
+	}
+	// Hook fires after the lock is released so a hook that re-reads
+	// the task row doesn't deadlock against PutEnvelope's own lock.
+	s.fireTaskHook(env.TaskID)
+	return nil
+}
+
+func (s *Store) putEnvelopeLocked(ctx context.Context, env *Envelope, inbound bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	bodyJSON, err := json.Marshal(env.Body)
