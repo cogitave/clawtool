@@ -5,7 +5,14 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.10] - 2026-04-28
+## [0.22.11] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.10 [skip ci] (8b7da7b)
+### Features
+
+- **cli:** Onboard wizard asks for primary CLI + drives smart defaults (0f8617a)## [0.22.10] - 2026-04-28
 
 ### Documentation
 
