@@ -11,7 +11,12 @@ import (
 )
 
 const taskUsage = `Usage:
-  clawtool task list [--limit N]                 Recent BIAM tasks (default 50, max 1000).
+  clawtool task list [--active|--all|--status S] [--limit N]
+                                                Recent BIAM tasks. Default = --active (live
+                                                only: pending + active). --all shows everything,
+                                                including terminal rows. --status filters to a
+                                                single state (done | failed | cancelled | expired).
+                                                Limit defaults to 50; raise with --limit (max 1000).
   clawtool task get <task_id>                    Snapshot of one task + its message timeline.
   clawtool task wait <task_id> [--timeout 5m]    Block until the task hits a terminal state.
   clawtool task watch [<task_id> | --all] [--json] [--poll-interval 250ms]
@@ -37,16 +42,35 @@ func (a *App) runTask(argv []string) int {
 	}
 	switch argv[0] {
 	case "list":
+		// Default = active-only so the eye lands on live work
+		// even when the store has thousands of historical
+		// terminal rows. --all opens the floodgates; --status
+		// filters to a single state.
 		limit := 50
+		filter := taskFilterActive
+		statusOverride := ""
 		for i := 1; i < len(argv); i++ {
-			if argv[i] == "--limit" && i+1 < len(argv) {
-				if n, err := parseIntArg(argv[i+1]); err == nil {
-					limit = n
+			switch argv[i] {
+			case "--limit":
+				if i+1 < len(argv) {
+					if n, err := parseIntArg(argv[i+1]); err == nil {
+						limit = n
+					}
+					i++
 				}
-				i++
+			case "--active":
+				filter = taskFilterActive
+			case "--all":
+				filter = taskFilterAll
+			case "--status":
+				if i+1 < len(argv) {
+					filter = taskFilterStatus
+					statusOverride = strings.ToLower(strings.TrimSpace(argv[i+1]))
+					i++
+				}
 			}
 		}
-		if err := a.TaskList(limit); err != nil {
+		if err := a.TaskList(limit, filter, statusOverride); err != nil {
 			fmt.Fprintf(a.Stderr, "clawtool task list: %v\n", err)
 			return 1
 		}
@@ -99,23 +123,87 @@ func (a *App) runTask(argv []string) int {
 	return 0
 }
 
-// TaskList prints the recent BIAM task summary.
-func (a *App) TaskList(limit int) error {
+// taskFilter selects which subset of the BIAM store rows
+// `clawtool task list` renders. Default is taskFilterActive — the
+// operator's "I want to see what's running RIGHT NOW" view; the
+// store may have thousands of historical terminal rows that we
+// don't dump on every invocation.
+type taskFilter int
+
+const (
+	taskFilterActive taskFilter = iota
+	taskFilterAll
+	taskFilterStatus
+)
+
+// TaskList prints the recent BIAM task summary, filtered by
+// `filter`. When filter == taskFilterStatus, `statusOverride`
+// names the single status to keep (done | failed | cancelled |
+// expired). To honour the operator-supplied --limit while still
+// filtering meaningfully, we pull a wider window from the store
+// (10× limit, capped at 1000) and slice client-side.
+func (a *App) TaskList(limit int, filter taskFilter, statusOverride string) error {
 	store, err := openBiamStore()
 	if err != nil {
 		return err
 	}
 	defer store.Close()
-	tasks, err := store.ListTasks(context.Background(), limit)
+
+	pull := limit * 10
+	if pull < 200 {
+		pull = 200
+	}
+	if pull > 1000 {
+		pull = 1000
+	}
+	tasks, err := store.ListTasks(context.Background(), pull)
 	if err != nil {
 		return err
 	}
-	if len(tasks) == 0 {
-		fmt.Fprintln(a.Stdout, "(no tasks — submit one via `clawtool send --async ...`)")
+
+	out := make([]biam.Task, 0, len(tasks))
+	for _, t := range tasks {
+		switch filter {
+		case taskFilterActive:
+			if !t.Status.IsTerminal() {
+				out = append(out, t)
+			}
+		case taskFilterStatus:
+			if string(t.Status) == statusOverride {
+				out = append(out, t)
+			}
+		default:
+			out = append(out, t)
+		}
+		if len(out) >= limit {
+			break
+		}
+	}
+
+	if len(out) == 0 {
+		switch filter {
+		case taskFilterActive:
+			fmt.Fprintln(a.Stdout, "(no live tasks — pass --all to see history, or run `clawtool send --async ...`)")
+		case taskFilterStatus:
+			fmt.Fprintf(a.Stdout, "(no tasks with status %q — pass --all to see every status)\n", statusOverride)
+		default:
+			fmt.Fprintln(a.Stdout, "(no tasks — submit one via `clawtool send --async ...`)")
+		}
 		return nil
 	}
+
+	header := "Tasks"
+	switch filter {
+	case taskFilterActive:
+		header = fmt.Sprintf("Live tasks (%d shown)", len(out))
+	case taskFilterStatus:
+		header = fmt.Sprintf("Tasks (%s, %d shown)", statusOverride, len(out))
+	default:
+		header = fmt.Sprintf("Tasks (%d shown of %d in store window)", len(out), len(tasks))
+	}
+	fmt.Fprintln(a.Stdout, header)
 	fmt.Fprintf(a.Stdout, "%-36s %-10s %-15s %s\n", "TASK_ID", "STATUS", "AGENT", "LAST")
-	for _, t := range tasks {
+	for _, t := range out {
 		last := truncateLine(t.LastMessage, 80)
 		fmt.Fprintf(a.Stdout, "%-36s %-10s %-15s %s\n", t.TaskID, t.Status, t.Agent, last)
 	}

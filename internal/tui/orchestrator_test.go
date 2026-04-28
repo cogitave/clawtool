@@ -37,29 +37,39 @@ func TestOrchModel_WatchEventStampsTerminalOnTransition(t *testing.T) {
 	}
 }
 
-// TestOrchModel_DropsAlreadyTerminalSnapshot asserts the watch-
-// socket snapshot pump doesn't flood the orchestrator with stale
-// terminal tasks. Without this filter the sidebar would briefly
-// show every historical row from biam.db before the post-grace
-// reaper sweep cleared them — exactly the "shows 50 then drops to
-// actives" glitch the operator reported.
-func TestOrchModel_DropsAlreadyTerminalSnapshot(t *testing.T) {
+// TestOrchModel_TerminalSnapshotsLandInDoneTab asserts already-
+// terminal task snapshots from the watch-socket replay go into the
+// Done tab and are HIDDEN on the Active tab — the operator can
+// browse history without it flooding live work. Inverse of the
+// "shows 50 then drops to actives" glitch.
+func TestOrchModel_TerminalSnapshotsLandInDoneTab(t *testing.T) {
 	m := NewOrchestrator()
 	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "old-1", Status: biam.TaskDone}})
 	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "old-2", Status: biam.TaskFailed}})
-	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "old-3", Status: biam.TaskCancelled}})
-	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "old-4", Status: biam.TaskExpired}})
-	if len(m.tasks) != 0 {
-		t.Errorf("expected zero tasks (all snapshot rows already terminal), got %d", len(m.tasks))
-	}
-	if len(m.order) != 0 {
-		t.Errorf("expected empty order, got %v", m.order)
-	}
-
-	// Live task lands as expected.
 	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "live", Status: biam.TaskActive}})
-	if len(m.tasks) != 1 || m.order[0] != "live" {
-		t.Errorf("live task should land; tasks=%d order=%v", len(m.tasks), m.order)
+
+	if len(m.tasks) != 3 {
+		t.Errorf("expected 3 tasks tracked, got %d", len(m.tasks))
+	}
+	// Active tab: only the live row.
+	m.tab = orchTabActive
+	if got := m.visibleIDs(); len(got) != 1 || got[0] != "live" {
+		t.Errorf("Active tab should show only live, got %v", got)
+	}
+	// Done tab: the two terminal rows.
+	m.tab = orchTabDone
+	got := m.visibleIDs()
+	if len(got) != 2 {
+		t.Fatalf("Done tab should show 2 terminal rows, got %d (%v)", len(got), got)
+	}
+	want := map[string]bool{"old-1": true, "old-2": true}
+	for _, id := range got {
+		if !want[id] {
+			t.Errorf("unexpected id in Done tab: %q", id)
+		}
+	}
+	if m.activeCount() != 1 || m.doneCount() != 2 {
+		t.Errorf("counts mismatch: active=%d done=%d", m.activeCount(), m.doneCount())
 	}
 }
 
@@ -110,6 +120,25 @@ func TestOrchModel_WatchFrameAppendsToTask(t *testing.T) {
 	}
 	if m.tasks["z"].frames[0] != "hello world" {
 		t.Errorf("frame line wrong: %q", m.tasks["z"].frames[0])
+	}
+}
+
+// TestOrchModel_VisibleIDsRespectsTab confirms tab switch swaps the
+// visible list without losing tasks. Cursor reset on tab switch
+// happens via Update; this test exercises the lower-level helper.
+func TestOrchModel_VisibleIDsRespectsTab(t *testing.T) {
+	m := NewOrchestrator()
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "a", Status: biam.TaskActive}})
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "b", Status: biam.TaskDone}})
+	m, _ = applyOrch(m, watchEventMsg{task: biam.Task{TaskID: "c", Status: biam.TaskActive}})
+
+	m.tab = orchTabActive
+	if ids := m.visibleIDs(); len(ids) != 2 {
+		t.Errorf("Active tab visibleIDs = %v, want 2 entries", ids)
+	}
+	m.tab = orchTabDone
+	if ids := m.visibleIDs(); len(ids) != 1 || ids[0] != "b" {
+		t.Errorf("Done tab visibleIDs = %v, want [b]", ids)
 	}
 }
 
