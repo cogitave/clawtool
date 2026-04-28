@@ -143,6 +143,46 @@ func TestOrchModel_VisibleIDsRespectsTab(t *testing.T) {
 	}
 }
 
+// TestOrchModel_SystemBannerLatchAndFade confirms the orchestrator
+// stores the most-recent SystemNotification, renders it for
+// orchSystemBannerTTL, then auto-clears on the next tick past TTL.
+func TestOrchModel_SystemBannerLatchAndFade(t *testing.T) {
+	m := NewOrchestrator()
+	m.width = 80
+	m.height = 30
+
+	// Latch a notification.
+	m, _ = applyOrch(m, watchSystemMsg{notification: biam.SystemNotification{
+		Kind:       "update_available",
+		Severity:   "info",
+		Title:      "clawtool update available: v0.22.5 → v0.22.10",
+		ActionHint: "clawtool upgrade",
+		TS:         time.Now(),
+	}})
+	if m.systemBanner == nil {
+		t.Fatal("expected systemBanner set after watchSystemMsg")
+	}
+	if got := m.renderSystemBanner(); got == "" {
+		t.Error("expected banner render to be non-empty when banner active")
+	}
+
+	// Tick within TTL — banner stays.
+	m, _ = applyOrch(m, orchTickMsg(time.Now()))
+	if m.systemBanner == nil {
+		t.Error("banner cleared too early")
+	}
+
+	// Backdate arrival past TTL, tick again — banner clears.
+	m.systemBannerAt = time.Now().Add(-2 * orchSystemBannerTTL)
+	m, _ = applyOrch(m, orchTickMsg(time.Now()))
+	if m.systemBanner != nil {
+		t.Error("banner should have faded past TTL")
+	}
+	if got := m.renderSystemBanner(); got != "" {
+		t.Errorf("rendered banner should be empty post-fade, got %q", got)
+	}
+}
+
 // TestOrchModel_OrderCappedOnSnapshotFlood confirms the orchestrator
 // drops oldest tail entries past `orchOrderCap` so a reconnect to a
 // daemon with thousands of historical rows in biam.db doesn't blow
