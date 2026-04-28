@@ -205,6 +205,8 @@ func (a *App) Run(argv []string) int {
 		return a.runRules(argv[1:])
 	case "daemon":
 		return a.runDaemon(argv[1:])
+	case "sandbox-worker":
+		return a.runSandboxWorker(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
