@@ -5,7 +5,14 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.5] - 2026-04-28
+## [0.22.6] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.5 [skip ci] (1cb5809)
+### Fixes
+
+- **biam:** Route `clawtool send --async` through daemon dispatch socket so frames reach the orchestrator (6979e71)## [0.22.5] - 2026-04-28
 
 ### Documentation
 
