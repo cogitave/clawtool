@@ -5,7 +5,18 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.13] - 2026-04-28
+## [0.22.15] - 2026-04-28
+
+### Tests
+
+- **biam:** Also short-path the missing-socket dial test on darwin (d7eb4c6)## [0.22.14] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.13 [skip ci] (30e5a64)
+### Tests
+
+- **biam:** Use /tmp-rooted sockpath helper to dodge darwin 104-byte limit (3e7e992)## [0.22.13] - 2026-04-28
 
 ### Documentation
 
