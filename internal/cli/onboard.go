@@ -14,6 +14,7 @@ import (
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/daemon"
+	"github.com/cogitave/clawtool/internal/telemetry"
 )
 
 // onboardState carries everything the wizard collects before any side
@@ -83,6 +84,16 @@ type onboardDeps struct {
 	// worker] sections (no full doctor — too noisy for the wizard
 	// tail). Output goes to stdoutLn; never errors.
 	verifySummary func()
+	// track emits a telemetry event for one wizard step. Defaults
+	// to telemetry.Get().Track in production (no-op when telemetry
+	// is disabled) and a recording stub in tests. Per-step events
+	// share `command="onboard"` and discriminate via `event_kind`
+	// + the relevant taxonomy keys (agent / bridge / outcome).
+	// Pre-1.0 the operator has already opted in by default, so the
+	// stream of step events is what tells us where the funnel
+	// drops people — fan-in for the install→onboard problem the
+	// nudges target.
+	track func(event string, props map[string]any)
 }
 
 // runOnboard is the dispatcher hooked into Run().
@@ -143,6 +154,11 @@ func (a *App) runOnboard(argv []string) int {
 			fmt.Fprintln(a.Stdout, "")
 			fmt.Fprintln(a.Stdout, "── verify ───────────────────────────────────")
 			a.runOverview(nil)
+		},
+		track: func(event string, props map[string]any) {
+			if tc := telemetry.Get(); tc != nil && tc.Enabled() {
+				tc.Track(event, props)
+			}
 		},
 	}
 	if err := a.onboard(context.Background(), d); err != nil {
@@ -285,63 +301,123 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 			Value(&state.RunInit),
 	))
 
+	track := d.track
+	if track == nil {
+		track = func(string, map[string]any) {}
+	}
+	track("clawtool.onboard", map[string]any{"event_kind": "start", "command": "onboard"})
+
 	form := huh.NewForm(groups...)
 	if err := d.runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			d.stdoutLn("clawtool onboard: aborted; nothing changed.")
+			track("clawtool.onboard", map[string]any{"event_kind": "finish", "outcome": "cancelled"})
 			return nil
 		}
+		track("clawtool.onboard", map[string]any{"event_kind": "finish", "outcome": "error"})
 		return fmt.Errorf("form: %w", err)
 	}
 
+	track("clawtool.onboard", map[string]any{
+		"event_kind": "host_detect",
+		"agent":      state.PrimaryCLI,
+	})
+
 	for _, fam := range state.InstallBridges {
+		outcome := "success"
 		if err := d.bridgeAdd(fam); err != nil {
+			outcome = "error"
 			d.stdoutLn(fmt.Sprintf("  ! bridge %s: %v", fam, err))
 		} else {
 			d.stdoutLn(fmt.Sprintf("  ✓ bridge %s installed", fam))
 		}
+		track("clawtool.onboard", map[string]any{
+			"event_kind": "bridge_install",
+			"bridge":     fam,
+			"outcome":    outcome,
+		})
 	}
 
 	for _, h := range state.ClaimMCP {
 		if d.claimMCPHost == nil {
 			d.stdoutLn(fmt.Sprintf("  ! MCP claim %s: not wired (test build?)", h))
+			track("clawtool.onboard", map[string]any{
+				"event_kind": "mcp_claim",
+				"agent":      h,
+				"outcome":    "skipped",
+			})
 			continue
 		}
+		outcome := "success"
 		url, err := d.claimMCPHost(h)
 		if err != nil {
+			outcome = "error"
 			d.stdoutLn(fmt.Sprintf("  ! MCP claim %s: %v", h, err))
 		} else {
 			d.stdoutLn(fmt.Sprintf("  ✓ %s registered → %s", h, url))
 		}
+		track("clawtool.onboard", map[string]any{
+			"event_kind": "mcp_claim",
+			"agent":      h,
+			"outcome":    outcome,
+		})
 	}
 
 	if state.StartDaemon && d.ensureDaemon != nil {
+		outcome := "success"
 		if url, err := d.ensureDaemon(); err != nil {
+			outcome = "error"
 			d.stdoutLn(fmt.Sprintf("  ! daemon: %v", err))
 		} else {
 			d.stdoutLn(fmt.Sprintf("  ✓ daemon up → %s", url))
 		}
+		track("clawtool.onboard", map[string]any{
+			"event_kind": "daemon_start",
+			"outcome":    outcome,
+		})
 	}
 
 	if state.CreateIdentity {
 		if err := d.createIdentity(); err != nil {
+			track("clawtool.onboard", map[string]any{
+				"event_kind": "identity_create",
+				"outcome":    "error",
+			})
 			return fmt.Errorf("create identity: %w", err)
 		}
 		d.stdoutLn("  ✓ BIAM identity ready")
+		track("clawtool.onboard", map[string]any{
+			"event_kind": "identity_create",
+			"outcome":    "success",
+		})
 	}
 
 	if state.InitSecrets && d.initSecrets != nil {
+		outcome := "success"
 		if err := d.initSecrets(); err != nil {
+			outcome = "error"
 			d.stdoutLn(fmt.Sprintf("  ! secrets store: %v", err))
 		} else {
 			d.stdoutLn("  ✓ secrets store ready (~/.config/clawtool/secrets.toml, mode 0600)")
 		}
+		track("clawtool.onboard", map[string]any{
+			"event_kind": "secrets_init",
+			"outcome":    outcome,
+		})
 	}
 
 	if state.Telemetry {
 		d.stdoutLn("  ✓ telemetry opt-in recorded (CLAWTOOL_TELEMETRY=1)")
+		track("clawtool.onboard", map[string]any{
+			"event_kind": "telemetry_optin",
+			"outcome":    "success",
+		})
 	} else {
 		d.stdoutLn("  · telemetry: opted out")
+		track("clawtool.onboard", map[string]any{
+			"event_kind": "telemetry_optout",
+			"outcome":    "success",
+		})
 	}
 
 	// Mark the host as onboarded so the install.sh / SessionStart
@@ -380,6 +456,22 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		d.stdoutLn("off any time with: clawtool telemetry off")
 		d.stdoutLn("───────────────────────────────────────────────────")
 	}
+
+	// Star CTA. The closing nudge — operators who got this far
+	// almost-certainly have something working, and a star is the
+	// cheapest signal we can ask for. Plain text, single line,
+	// shown after the telemetry block so the wizard finishes on
+	// "here's where to give back" rather than "here's a privacy
+	// disclosure". No prompt — just an URL the operator can click
+	// (most modern terminals OSC-8 underline-link plain URLs).
+	d.stdoutLn("")
+	d.stdoutLn("⭐ Enjoying clawtool? A GitHub star helps a lot:")
+	d.stdoutLn("   https://github.com/cogitave/clawtool")
+
+	track("clawtool.onboard", map[string]any{
+		"event_kind": "finish",
+		"outcome":    "success",
+	})
 	return nil
 }
 

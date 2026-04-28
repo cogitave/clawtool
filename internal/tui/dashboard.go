@@ -34,6 +34,12 @@ import (
 // live without dominating the render loop.
 const pollInterval = 1 * time.Second
 
+// dashSystemBannerTTL is how long a SystemNotification stays visible
+// before the next tick fades it. Matches the orchestrator's TTL so
+// both surfaces feel consistent — a release-available banner that
+// appears in one is gone from the other after roughly the same time.
+const dashSystemBannerTTL = 30 * time.Second
+
 // Model is the Bubble Tea state.
 type Model struct {
 	store *biam.Store
@@ -50,6 +56,14 @@ type Model struct {
 
 	focused int
 	cursor  int
+
+	// systemBanner is the most-recent SystemNotification the daemon
+	// pushed (release-available, daemon-degraded, etc). Latched on
+	// arrival, faded by the tick loop after dashSystemBannerTTL.
+	// nil = no banner. Same shape as the orchestrator's so the two
+	// surfaces share visual idiom.
+	systemBanner   *biam.SystemNotification
+	systemBannerAt time.Time
 }
 
 func New(store *biam.Store, sup agents.Supervisor) Model {
@@ -119,10 +133,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// v1's bug: tick chained after refresh, so a single
 		// refresh error stopped the whole loop. Now tick is
 		// independent of refresh outcome.
+		if m.systemBanner != nil && time.Since(m.systemBannerAt) > dashSystemBannerTTL {
+			m.systemBanner = nil
+			m.systemBannerAt = time.Time{}
+		}
 		return m, tea.Batch(
 			refreshCmd(m.store, m.sup),
 			tickCmd(),
 		)
+
+	case watchSystemMsg:
+		// Latch the daemon-pushed notification. Replacing on
+		// every event means a fresher banner (e.g. a newer
+		// release tag) overwrites any stale one — the operator
+		// always sees the most-recent system event. The tick
+		// loop sweeps it after dashSystemBannerTTL.
+		n := msg.notification
+		m.systemBanner = &n
+		m.systemBannerAt = time.Now()
+		return m, watchReadCmd(msg.dec, msg.conn)
 
 	case watchEventMsg:
 		// Push update from the daemon's task-watch socket.
@@ -201,14 +230,58 @@ func (m Model) View() string {
 		agentsRows = 2
 	}
 
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		banner(m.lastRefresh),
+	rows := []string{banner(m.lastRefresh)}
+	if b := m.renderSystemBanner(); b != "" {
+		rows = append(rows, b)
+	}
+	rows = append(rows,
 		paneDispatches(m.tasks, m.focused == 0, m.cursor, m.width, dispRows),
 		paneAgents(m.agents, m.focused == 1, m.cursor, m.width, agentsRows),
 		paneStats(m.tasks, m.agents, m.focused == 2, m.width),
 		footer(),
 	)
-	return body
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+// renderSystemBanner formats the daemon-pushed system notification
+// as a single full-width row inserted between the header banner and
+// the dispatches pane. Empty string when no banner is active —
+// caller skips the row, the layout below is unaffected.
+//
+// Severity drives a foreground tint; Kind drives the leading icon.
+// Falls back to the neutral release-package emoji + default
+// foreground so banners without explicit metadata still render
+// reasonably.
+func (m Model) renderSystemBanner() string {
+	if m.systemBanner == nil {
+		return ""
+	}
+	icon := "📦"
+	switch m.systemBanner.Kind {
+	case "warning":
+		icon = "⚠"
+	case "error":
+		icon = "✘"
+	}
+	row := icon + " " + m.systemBanner.Title
+	if m.systemBanner.ActionHint != "" {
+		row += "  → " + m.systemBanner.ActionHint
+	}
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("212")).
+		Background(lipgloss.Color("237")).
+		Padding(0, 1).
+		Bold(true)
+	switch m.systemBanner.Severity {
+	case "warning":
+		style = style.Foreground(lipgloss.Color("215"))
+	case "error":
+		style = style.Foreground(lipgloss.Color("203"))
+	}
+	if m.width > 0 {
+		style = style.Width(m.width)
+	}
+	return style.Render(row)
 }
 
 // ─── render helpers ─────────────────────────────────────────────
@@ -547,10 +620,10 @@ func watchReadCmd(dec *json.Decoder, conn net.Conn) tea.Cmd {
 }
 
 // readNextEnvelope blocks until the next WatchEnvelope arrives,
-// loops past stream frames (the dashboard's tasks pane only cares
-// about Task transitions for now), and returns either a
-// watchEventMsg with the materialised Task or watchClosedMsg on
-// disconnect.
+// loops past stream frames (the dashboard's tasks pane doesn't
+// render frames — only the orchestrator does), and surfaces task
+// transitions + daemon-level system notifications. Returns
+// watchClosedMsg on disconnect so the model can fall back to polling.
 func readNextEnvelope(dec *json.Decoder, conn net.Conn) tea.Msg {
 	for {
 		var env biam.WatchEnvelope
@@ -564,12 +637,14 @@ func readNextEnvelope(dec *json.Decoder, conn net.Conn) tea.Msg {
 				continue
 			}
 			return watchEventMsg{task: *env.Task, dec: dec, conn: conn}
+		case "system":
+			if env.System == nil {
+				continue
+			}
+			return watchSystemMsg{notification: *env.System, dec: dec, conn: conn}
 		case "frame":
-			// Dashboard tasks pane doesn't render frames —
-			// only the orchestrator does. Skip and read again.
 			continue
 		default:
-			// Unknown kind — defensively skip.
 			continue
 		}
 	}
