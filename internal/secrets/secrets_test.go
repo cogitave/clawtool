@@ -182,3 +182,62 @@ func TestExpand_ReportsMissingDeduplicated(t *testing.T) {
 		t.Errorf("missing = %v, want 2 unique entries (alpha, beta)", missing)
 	}
 }
+
+func TestRename_MovesAllKeys(t *testing.T) {
+	s := &Store{Scopes: map[string]map[string]string{}}
+	s.Set("github", "GITHUB_TOKEN", "tok")
+	s.Set("github", "GITHUB_API_URL", "url")
+	s.Set("other", "STAY", "put")
+
+	if !s.Rename("github", "github-personal") {
+		t.Fatal("Rename returned false; expected true (moved 2 keys)")
+	}
+	if v, ok := s.Get("github-personal", "GITHUB_TOKEN"); !ok || v != "tok" {
+		t.Errorf("token not under new scope: %q ok=%v", v, ok)
+	}
+	if v, ok := s.Get("github-personal", "GITHUB_API_URL"); !ok || v != "url" {
+		t.Errorf("api url not under new scope: %q ok=%v", v, ok)
+	}
+	if _, ok := s.Scopes["github"]; ok {
+		t.Errorf("old scope should be removed; still present: %+v", s.Scopes["github"])
+	}
+	if v, ok := s.Get("other", "STAY"); !ok || v != "put" {
+		t.Errorf("unrelated scope mutated: %q ok=%v", v, ok)
+	}
+}
+
+func TestRename_AbsentScopeReturnsFalse(t *testing.T) {
+	s := &Store{Scopes: map[string]map[string]string{}}
+	s.Set("github", "GITHUB_TOKEN", "tok")
+	if s.Rename("ghost", "ghost-renamed") {
+		t.Error("Rename of absent scope should return false")
+	}
+	if _, ok := s.Get("github", "GITHUB_TOKEN"); !ok {
+		t.Error("unrelated scope was disturbed")
+	}
+}
+
+func TestRename_SameNameNoOp(t *testing.T) {
+	s := &Store{Scopes: map[string]map[string]string{}}
+	s.Set("github", "GITHUB_TOKEN", "tok")
+	if s.Rename("github", "github") {
+		t.Error("Rename to same name should return false")
+	}
+	if v, _ := s.Get("github", "GITHUB_TOKEN"); v != "tok" {
+		t.Errorf("scope mutated by no-op rename: %q", v)
+	}
+}
+
+func TestRename_EmptyScopeNormalisesToGlobal(t *testing.T) {
+	s := &Store{Scopes: map[string]map[string]string{}}
+	s.Set("global", "K", "v")
+	if !s.Rename("", "renamed-global") {
+		t.Fatal("Rename from empty (= global) should succeed")
+	}
+	if _, ok := s.Scopes["global"]; ok {
+		t.Errorf("global scope should be cleared after rename")
+	}
+	if v, ok := s.Get("renamed-global", "K"); !ok || v != "v" {
+		t.Errorf("key did not move: %q ok=%v", v, ok)
+	}
+}

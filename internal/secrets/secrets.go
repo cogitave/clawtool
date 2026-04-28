@@ -128,6 +128,41 @@ func (s *Store) Delete(scope, key string) {
 	}
 }
 
+// Rename moves every secret stored under `oldScope` to `newScope`.
+// Returns true when at least one key was moved, false when oldScope
+// was empty or absent. If newScope already has keys, oldScope's
+// values overwrite collisions — the caller is expected to refuse
+// the rename earlier (config-side instance collision check) so
+// reaching the secrets layer with an existing target is a logic
+// error in the caller, not user-survivable input. Empty oldScope /
+// newScope are normalised to "global" the same way Set / Get do.
+func (s *Store) Rename(oldScope, newScope string) bool {
+	if oldScope == "" {
+		oldScope = "global"
+	}
+	if newScope == "" {
+		newScope = "global"
+	}
+	if oldScope == newScope {
+		return false
+	}
+	src, ok := s.Scopes[oldScope]
+	if !ok || len(src) == 0 {
+		return false
+	}
+	if s.Scopes == nil {
+		s.Scopes = map[string]map[string]string{}
+	}
+	if s.Scopes[newScope] == nil {
+		s.Scopes[newScope] = map[string]string{}
+	}
+	for k, v := range src {
+		s.Scopes[newScope][k] = v
+	}
+	delete(s.Scopes, oldScope)
+	return true
+}
+
 // Resolve takes the env map a catalog entry asks for (e.g.
 // {GITHUB_TOKEN: "${GITHUB_TOKEN}"}) and returns the env that should be
 // set on the spawned source. Each ${VAR} reference is filled in by:
