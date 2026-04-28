@@ -183,6 +183,20 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		agents.SetGlobalBiamRunner(runner)
 		core.SetBiamStore(store)
 
+		// Shutdown order matters: cancel the runner FIRST so its
+		// in-flight goroutines stop touching the store, then
+		// close the store. Ctx cancellation only fires Stop here;
+		// the build-flow's defer mgr.Stop() handles source-process
+		// teardown separately. Without runner.Stop, in-flight
+		// dispatches keep writing during teardown and either race
+		// store.Close (nil-deref pre-d96d23b) or get killed by
+		// process exit, leaving rows stuck `active`.
+		go func() {
+			<-ctx.Done()
+			runner.Stop()
+			_ = store.Close()
+		}()
+
 		// The next three goroutines (watchsocket, dispatchsocket,
 		// version poller) are daemon-lifetime services. Running
 		// them inside short-lived stdio respawns is a triple

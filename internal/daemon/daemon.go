@@ -205,7 +205,29 @@ func pidAlive(pid int) bool {
 //
 // Spawn flow: pick a free port, ensure the bearer token, fork the
 // detached process, write state, poll /v1/health for up to 5s.
+//
+// Concurrency: two CLI invocations within the spawn window
+// (read-state → IsRunning → spawn → write-state) would both see
+// "no daemon" and both fork, leaving an orphan racing for the
+// state file + ports. We bracket the whole sequence with an OS
+// advisory lock on a sibling .lock file (flock on POSIX,
+// LockFileEx on Windows via fileLockExclusive). The fast path —
+// a healthy daemon already running — does not need the lock; we
+// re-check IsRunning inside the lock so a concurrent winner's
+// state is observed before we duplicate-spawn.
 func Ensure(ctx context.Context) (*State, error) {
+	if s, err := ReadState(); err == nil && IsRunning(s) {
+		return s, nil
+	}
+
+	unlock, err := acquireSpawnLock()
+	if err != nil {
+		return nil, fmt.Errorf("ensure: acquire spawn lock: %w", err)
+	}
+	defer unlock()
+
+	// Re-check after acquiring — a concurrent invocation may have
+	// won the race and left a healthy daemon for us.
 	if s, err := ReadState(); err == nil && IsRunning(s) {
 		return s, nil
 	}
