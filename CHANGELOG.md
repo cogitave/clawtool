@@ -5,7 +5,19 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.0] - 2026-04-28
+## [0.22.1] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.0 [skip ci] (d340fd0)
+### Features
+
+- **tui:** Orchestrator Phase 3 — live byte stream + theme + sidebar layout (5e76d75)
+- **telemetry:** Expand event coverage + pre-1.0 default-on consent (bb00e1b)
+- **telemetry:** Bake cogitave PostHog defaults so opt-in Just Works (9de8e2e)
+### Tests
+
+- **biam:** Cover stream-frame broadcasting + watchsocket envelope multiplex (74b4a76)## [0.22.0] - 2026-04-28
 
 ### CI
 
