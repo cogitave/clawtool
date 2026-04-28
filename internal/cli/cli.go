@@ -20,11 +20,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/telemetry"
+	"github.com/cogitave/clawtool/internal/tools/core"
 )
 
 // emitCommandEvent fires the per-dispatch telemetry event. Strict
@@ -117,21 +119,56 @@ func (a *App) Init() error {
 	return nil
 }
 
-// ToolsList prints registered core tools and their resolved enabled state.
+// ToolsList prints every shipped tool — both the file/exec/web
+// primitives in config.KnownCoreTools and the dispatch/agent/task/
+// recipe/bridge surface registered via core.BuildManifest().
+//
+// Pre-v0.22.20 this only listed config.KnownCoreTools (9 entries),
+// which created a confusing UX gap: SendMessage / AgentList /
+// TaskGet / etc. WERE registered with the MCP server at daemon
+// boot (host CLIs see them as `mcp__clawtool__SendMessage`) but
+// `clawtool tools list` never showed them — operators couldn't
+// confirm what surface their hosts actually had access to. Now
+// the union of both sources is rendered, deduped on Name, sorted
+// alphabetically. Resolution still flows through cfg.IsEnabled so
+// per-selector overrides work for every tool — even ones that
+// don't have an explicit core_tools.X entry.
 func (a *App) ToolsList() error {
 	cfg, err := config.LoadOrDefault(a.Path())
 	if err != nil {
 		return err
 	}
-	entries := cfg.ListCoreTools()
 	w := a.Stdout
+
+	// Union: config.KnownCoreTools + manifest names.
+	seen := map[string]bool{}
+	type row struct {
+		selector string
+		res      config.Resolution
+	}
+	var rows []row
+	add := func(name string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		rows = append(rows, row{selector: name, res: cfg.IsEnabled(name)})
+	}
+	for _, name := range config.KnownCoreTools {
+		add(name)
+	}
+	for _, name := range core.BuildManifest().SortedNames() {
+		add(name)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].selector < rows[j].selector })
+
 	fmt.Fprintln(w, "TOOL                          STATE      RULE")
-	for _, e := range entries {
+	for _, r := range rows {
 		state := "enabled"
-		if !e.Resolution.Enabled {
+		if !r.res.Enabled {
 			state = "disabled"
 		}
-		fmt.Fprintf(w, "%-29s %-10s %s\n", e.Selector, state, e.Resolution.Rule)
+		fmt.Fprintf(w, "%-29s %-10s %s\n", r.selector, state, r.res.Rule)
 	}
 	// v0.2 doesn't yet enumerate sourced tools — note that explicitly so
 	// users know the full picture is coming.
