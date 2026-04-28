@@ -25,6 +25,17 @@ import (
 	posthog "github.com/posthog/posthog-go"
 )
 
+// Embedded cogitave PostHog project credentials. Public client-side
+// key — same convention as posthog-js shipping the key in browser
+// bundles. Operators who want their telemetry routed to a different
+// project override `[telemetry] api_key` / `host` in config.toml; an
+// empty operator key falls back to these baked-in defaults so opting
+// in via `clawtool onboard` Just Works.
+const (
+	cogitavePostHogKey  = "phc_uew8RTmHh9TCzwLg7zdsDGdegEaPy9EjJuaoYcEeVTUp"
+	cogitavePostHogHost = "https://eu.i.posthog.com"
+)
+
 // Client wraps a PostHog client + the per-host anonymous distinct ID.
 // Nil-safe: `(*Client)(nil).Track(...)` is a clean no-op.
 type Client struct {
@@ -50,15 +61,27 @@ var allowedKeys = map[string]bool{
 // New initialises the client when telemetry is enabled. Disabled
 // config returns a nil-friendly client (Track is a no-op). Init
 // failures degrade silently — telemetry is never load-bearing.
+//
+// API key precedence: cfg.APIKey > cogitavePostHogKey baked-in
+// default. Same for host. Operator-provided values always win so a
+// self-hosted PostHog instance can capture the data instead of the
+// shared cogitave project.
 func New(cfg config.TelemetryConfig) *Client {
-	if !cfg.Enabled || strings.TrimSpace(cfg.APIKey) == "" {
+	if !cfg.Enabled {
 		return &Client{enabled: false}
+	}
+	apiKey := strings.TrimSpace(cfg.APIKey)
+	if apiKey == "" {
+		apiKey = cogitavePostHogKey
 	}
 	host := cfg.Host
 	if host == "" {
-		host = "https://app.posthog.com"
+		host = cogitavePostHogHost
 	}
-	c, err := posthog.NewWithConfig(cfg.APIKey, posthog.Config{Endpoint: host})
+	if apiKey == "" {
+		return &Client{enabled: false}
+	}
+	c, err := posthog.NewWithConfig(apiKey, posthog.Config{Endpoint: host})
 	if err != nil {
 		return &Client{enabled: false}
 	}
