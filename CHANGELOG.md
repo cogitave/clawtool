@@ -5,7 +5,35 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.21.7] - 2026-04-28
+## [0.22.0] - 2026-04-28
+
+### CI
+
+- **integration:** Drop setup-node `cache: npm` — no lockfile in a Go repo (fd2b03e)
+### Chores
+
+- **rules:** Add race-clean pre_commit rule (5da4187)
+- **rules:** Add gofmt-clean pre_commit rule (9b61a38)
+### Documentation
+
+- **changelog:** Regenerate for v0.21.7 [skip ci] (289958e)
+### Features
+
+- **tui:** Orchestrator Phase 2 — split-pane streaming TUI per dispatch (718107b)
+- **cli:** Setup wizard Phase 2 — single huh form + per-feature matrix (aa585bf)
+- **tui:** Orchestrator Phase 1 — dashboard subscribes to task-watch socket (7d5181b)
+- **cli:** Clawtool setup — unified first-run entry (Phase 1) (cbc5bda)
+- **biam:** Cross-host bidi via from_instance — codex/gemini/opencode can dispatch back (be7a5fa)
+- **biam:** Push-based task watch via Unix socket — kill the 250ms poll (592ff37)
+### Refactor
+
+- **ux:** Strip internal doc IDs from user-facing surfaces (cabd434)
+### Style
+
+- Gofmt across all sources (6524b46)
+### Tests
+
+- **biam:** Fix data race in HonoursFromInstance — submit before goroutine (59b302f)## [0.21.7] - 2026-04-28
 
 ### Chores
 
