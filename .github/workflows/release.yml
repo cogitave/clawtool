@@ -80,18 +80,49 @@ jobs:
           fi
           git config user.name "clawtool-release-bot"
           git config user.email "clawtool-release-bot@users.noreply.github.com"
+
+          # Stash any drift goreleaser produced (go.mod/go.sum
+          # tidies, version stamps, etc.) — without this, `git pull
+          # --rebase` refuses to run with "unstaged changes" and the
+          # whole step exits non-zero before the changelog ever
+          # commits. The stash is intentionally discarded after
+          # rebase: we only care about CHANGELOG.md here, and
+          # goreleaser's drift would not survive the upstream rebase
+          # anyway.
+          git stash push -u -m "release-drift-$$" -- ':!CHANGELOG.md' || true
+
           git checkout main
           git pull --rebase origin main || true
-          # Re-stage in case the rebase changed CHANGELOG.md.
           git add CHANGELOG.md
-          # If after rebase there's nothing to commit (someone else
-          # already pushed our regen — unlikely but possible), bail
-          # cleanly.
           if git diff --cached --quiet; then
             echo "CHANGELOG.md already up to date on main after rebase"
             exit 0
           fi
           git commit -m "docs(changelog): regenerate for ${GITHUB_REF_NAME} [skip ci]"
-          git push origin main
+
+          # Push with retries: if a concurrent tag fired its own
+          # release pipeline and pushed first, our base ref is now
+          # stale. Rebase + retry (up to 3 times). Each retry
+          # re-regenerates the cliff output for the new base so the
+          # changelog stays authoritative even after concurrent
+          # commits land.
+          attempts=0
+          until git push origin main; do
+            attempts=$((attempts + 1))
+            if [ "$attempts" -ge 3 ]; then
+              echo "::error::push to main failed 3 times; another release likely won the race — abandoning changelog regen for ${GITHUB_REF_NAME}"
+              exit 0
+            fi
+            echo "push rejected (attempt ${attempts}); rebasing onto upstream and retrying"
+            git fetch origin main
+            git reset --soft HEAD^
+            git pull --rebase origin main || true
+            git add CHANGELOG.md
+            if git diff --cached --quiet; then
+              echo "CHANGELOG.md already current upstream after rebase — nothing left to push"
+              exit 0
+            fi
+            git commit -m "docs(changelog): regenerate for ${GITHUB_REF_NAME} [skip ci]"
+          done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
