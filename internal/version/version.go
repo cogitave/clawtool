@@ -28,10 +28,14 @@ import (
 )
 
 // x-release-please-start-version
-const (
-	Name    = "clawtool"
-	Version = "0.21.7" // x-release-please-version
-)
+const Name = "clawtool"
+
+// Version is the build-stamped semver string. Declared as `var`
+// (not `const`) so goreleaser can override it via
+// `-ldflags='-X github.com/cogitave/clawtool/internal/version.Version=…'`
+// at link time. `-X` cannot patch constants; that's why this is a
+// var even though it's effectively immutable at runtime.
+var Version = "0.21.7" // x-release-please-version
 
 // x-release-please-end
 
