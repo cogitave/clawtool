@@ -132,14 +132,36 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	// shutdownDone signals when the graceful Shutdown finished.
+	// Without this, ListenAndServe returns ErrServerClosed the
+	// instant Shutdown begins, and the caller proceeds to tear
+	// down the manager / telemetry / store while in-flight
+	// handlers are still draining. The bounded 30 s deadline on
+	// Shutdown is the upper limit for any active SSE / streaming
+	// MCP HTTP request to flush before we force-close.
+	shutdownDone := make(chan struct{})
 	go func() {
 		<-ctx.Done()
-		_ = srv.Shutdown(context.Background())
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+		close(shutdownDone)
 	}()
 
 	fmt.Fprintf(os.Stderr, "clawtool: listening on %s (token-file: %s)\n", opts.Listen, opts.TokenFile)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("listen %s: %w", opts.Listen, err)
+	listenErr := srv.ListenAndServe()
+	if listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
+		return fmt.Errorf("listen %s: %w", opts.Listen, listenErr)
+	}
+	// Block until the shutdown goroutine finishes draining. ctx
+	// already fired (that's why ListenAndServe returned), so this
+	// just waits out the in-flight handlers. If ListenAndServe
+	// errored for a non-shutdown reason (port in use, etc.) the
+	// goroutine is still waiting on ctx.Done — let the caller's
+	// ctx cancellation eventually fire it; a stuck goroutine
+	// outlives a fatal listen error and that's fine.
+	if errors.Is(listenErr, http.ErrServerClosed) {
+		<-shutdownDone
 	}
 	return nil
 }

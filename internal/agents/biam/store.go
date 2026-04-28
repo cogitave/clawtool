@@ -114,8 +114,18 @@ func DefaultStorePath() string {
 }
 
 // Close flushes + closes the underlying database. Idempotent.
+//
+// `s.db` mutation needs s.mu — every other store method
+// dereferences `s.db` under the same lock (or via sql.DB's own
+// pool concurrency). Without this, a Close racing an in-flight
+// PutEnvelope / GetTask nil-derefs in the middle of teardown.
 func (s *Store) Close() error {
-	if s == nil || s.db == nil {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil {
 		return nil
 	}
 	err := s.db.Close()
