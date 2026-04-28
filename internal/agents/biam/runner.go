@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -289,30 +290,47 @@ func (r *Runner) recordResult(prompt *Envelope, kind EnvelopeKind, body string, 
 	reply.ParentID = prompt.MessageID
 	_ = reply.Sign(r.identity)
 
-	// Best-effort persist of the reply envelope; failure is logged
-	// implicitly via the discarded error but doesn't abort the task
-	// flip — callers waiting on the terminal state must unblock
-	// even if SQLite is temporarily wedged.
-	_ = r.store.PutEnvelope(bg, reply, true)
-	// Always flip the task row to terminal — the row's last_message
-	// column carries the body via SetTaskStatus, so the persist
-	// outcome above doesn't gate the user-visible state. (Pre-fix
-	// this was an if/else where both arms called the same line; the
-	// branching was a no-op with an empty success path that looked
-	// like an unfinished refactor.)
-	_ = r.store.SetTaskStatus(bg, prompt.TaskID, terminal, summary(body))
+	// Best-effort persist of the reply envelope. Failure is logged
+	// to stderr (so operators see the SQLite-busy / corruption
+	// signal) and downgrades the published status — without that
+	// downgrade, a waiter would see kind=KindResult + Status=done
+	// while the actual row hadn't been flipped, so a re-query
+	// after Notifier wake would either miss the result body or
+	// see a stale `active` row.
+	persistErr := r.store.PutEnvelope(bg, reply, true)
+	if persistErr != nil {
+		fmt.Fprintf(os.Stderr, "biam: persist reply envelope (task=%s): %v\n",
+			prompt.TaskID, persistErr)
+	}
+	// Flip the task row. Same downgrade rule on failure: if the
+	// flip didn't make it to disk, the published terminal status
+	// claims a state the store doesn't actually carry.
+	flipErr := r.store.SetTaskStatus(bg, prompt.TaskID, terminal, summary(body))
+	if flipErr != nil {
+		fmt.Fprintf(os.Stderr, "biam: flip task to %s (task=%s): %v\n",
+			terminal, prompt.TaskID, flipErr)
+	}
 	// In-process completion push so TaskNotify callers wake the
-	// instant a task settles, no SQLite poll. Done after the row
-	// flip so subscribers see the terminal state if they re-query.
-	// Best-effort GetTask: if it fails (DB transient) we still
-	// publish a synthetic Task so the subscriber unblocks rather
-	// than waiting on a poll that may never arrive.
+	// instant a task settles, no SQLite poll. When persistence /
+	// flip failed, we publish TaskFailed regardless of the
+	// caller's intended terminal — the durable state is unreliable
+	// so claiming "done" would lie to the waiter.
+	publishStatus := terminal
+	if persistErr != nil || flipErr != nil {
+		publishStatus = TaskFailed
+	}
 	if t, err := r.store.GetTask(bg, prompt.TaskID); err == nil && t != nil {
+		// Override the in-memory snapshot's status when the
+		// flip failed — the GetTask read can race the failed
+		// flip and see stale `active`.
+		if publishStatus != terminal {
+			t.Status = publishStatus
+		}
 		Notifier.Publish(*t)
 	} else {
 		Notifier.Publish(Task{
 			TaskID: prompt.TaskID,
-			Status: terminal,
+			Status: publishStatus,
 			Agent:  prompt.To.InstanceID,
 		})
 	}
