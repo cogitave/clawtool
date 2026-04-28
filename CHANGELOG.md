@@ -5,7 +5,18 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.15] - 2026-04-28
+## [0.22.17] - 2026-04-28
+
+### Documentation
+
+- **cli:** Drop "Future:" section + dead "long form" hint from help (0ec89dc)## [0.22.16] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.15 [skip ci] (1960b5c)
+### Features
+
+- **onboard:** Auto-launch from install.sh + per-step telemetry + star CTA + dashboard banner (b1fc838)## [0.22.15] - 2026-04-28
 
 ### Tests
 
