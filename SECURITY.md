@@ -29,8 +29,8 @@ Out of scope (handle upstream):
 
 These are invariants we will treat as security bugs if violated:
 
-- `~/.config/clawtool/secrets.toml` is created with mode `0600` (per ADR-008). The Save path is atomic temp+rename.
-- `Bash` runs with process-group SIGKILL on context cancel so a runaway child cannot hold open the captured pipes (ADR-005 quality bar). Output is preserved up to the kill point.
+- `~/.config/clawtool/secrets.toml` is created with mode `0600`. The Save path is atomic temp+rename.
+- `Bash` runs with process-group SIGKILL on context cancel so a runaway child cannot hold open the captured pipes. Output is preserved up to the kill point.
 - `Read` refuses files containing NUL bytes; `Edit` and `Write` apply the same rule symmetrically.
 - `WebFetch` rejects schemes other than `http://` / `https://`. Body capped at 10 MiB.
 - `WebSearch` reads its API key from secrets store first, env second; the key is never echoed in tool output.

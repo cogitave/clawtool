@@ -2,8 +2,7 @@
 
 All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
-project follows [Semantic Versioning](https://semver.org/) — see
-ADR-009 for the policy details.
+project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.22.24] - 2026-04-28
 
@@ -175,7 +174,54 @@ ADR-009 for the policy details.
 - **changelog:** Regenerate for v0.22.0 [skip ci] (d340fd0)
 ### Features
 
-- **tui:** Orchestrator Phase 3 — live byte stream + theme + sidebar layout (5e76d75)
+- Feat(tui): orchestrator Phase 3 — live byte stream + theme + sidebar layout Phase 3. Orchestrator becomes the production "teammate panel":
+left sidebar (sticky 28col) lists every active dispatch with status
+pill + agent + message count, right pane is a bubbles/viewport that
+renders the selected task's StreamFrame ringbuffer line by line as
+the agent emits them. Tail-follow toggle, scrollback (pgup/pgdn,
+home/end), reconnect (r), quit (q).
+
+Layout inspired by gh-dash / k9s / lazygit conventions: header bar
++ sidebar + flex detail pane + status bar with key hints. Theme
+package added — Catppuccin-ish palette, AdaptiveColor for light/dark
+terminals, status pills with bg colour, focus borders.
+
+Backend:
+
+- internal/agents/biam/watchhub.go: StreamFrame type + SubscribeFrames /
+  BroadcastFrame channel. Cap-256 buffer, drop-on-full so a slow
+  consumer doesn't stall the publisher.
+- internal/agents/biam/runner.go: readCappedBroadcast replaces
+  readCapped — line-by-line scan via bufio, every line both appended
+  to the persisted body AND broadcast as a StreamFrame. Body bytes
+  are byte-identical to the old path; live consumers now see lines
+  as they arrive rather than waiting for the final result envelope.
+- internal/agents/biam/watchsocket.go: WatchEnvelope wrapping
+  ({"kind":"task"|"frame", ...}) so a single connection multiplexes
+  state transitions and stream lines. handleWatchClient subscribes
+  to BOTH channels and emits one envelope per event.
+
+Front:
+
+- internal/tui/theme/theme.go: 22-style theme set — pane borders,
+  status pills, stream caret, help-bar key/desc, success/warning/
+  error semantics. AdaptiveColor everywhere. Default() singleton.
+- internal/tui/orchestrator.go: rewritten end-to-end. OrchModel
+  carries map[string]*orchTask (frames ringbuffer) + bubbles/viewport
+  for the live stream. Sidebar + detail layout via lipgloss.JoinHorizontal.
+  Header / footer rendered with theme styles.
+- internal/tui/dashboard.go: reads new WatchEnvelope shape — task
+  events still update the tasks pane, frames are skipped (orchestrator
+  is the canonical live-stream surface).
+- internal/cli/task_watch.go: envelope-aware. Stream frames render as
+  inline tail lines with status="stream" so `task watch <id>` also
+  shows live output without changing flags.
+
+Tests:
+
+- internal/tui/orchestrator_test.go rewritten — insert / terminal-
+  stamp / sweep grace window / frame appending / ringbuffer cap.
+- All packages race-clean (`go test -race ./...` green). (5e76d75)
 - **telemetry:** Expand event coverage + pre-1.0 default-on consent (bb00e1b)
 - **telemetry:** Bake cogitave PostHog defaults so opt-in Just Works (9de8e2e)
 ### Tests
@@ -215,7 +261,7 @@ ADR-009 for the policy details.
 - **release:** V0.21.7 — UX polish (overview + doctor sandbox-worker + ambiguity) (b25eed3)
 ### Documentation
 
-- **onboard:** Surface sandbox-worker setup hint (ADR-029) (387e65d)
+- **onboard:** Surface sandbox-worker setup hint (387e65d)
 ### Features
 
 - **cli:** `clawtool overview` — one-screen system status (ca98eb7)
@@ -223,16 +269,16 @@ ADR-009 for the policy details.
 
 ### Chores
 
-- **release:** V0.21.6 — claude.ai sandbox parity (ADR-029) (a6b841f)
+- **release:** V0.21.6 — claude.ai sandbox parity (a6b841f)
 ### Documentation
 
 - **changelog:** Regenerate for v0.21.5 [skip ci] (9f6c33c)
 ### Features
 
-- **egress:** Allowlist proxy binary (ADR-029 phase 4, #209) (ccd809b)
-- **skill:** SkillList + SkillLoad — on-demand mount (ADR-029, #208) (44ee058)
-- **sandbox:** Worker phase 2 — daemon-side routing for Bash (ADR-029) (b2f42d8)
-- **sandbox:** Worker container — claude.ai parity (ADR-029 phase 1) (cf6f2c2)
+- **egress:** Allowlist proxy binary (ccd809b)
+- **skill:** SkillList + SkillLoad — on-demand mount (44ee058)
+- **sandbox:** Worker phase 2 — daemon-side routing for Bash (b2f42d8)
+- **sandbox:** Worker container — claude.ai parity (cf6f2c2)
 - **doctor:** Surface daemon state (UX smoke pass #193) (68a8311)## [0.21.5] - 2026-04-27
 
 ### Chores
@@ -250,7 +296,7 @@ ADR-009 for the policy details.
 
 - **sandbox:** Bwrap fail-closes when policy can't be enforced (audit #203) (3d60f2c)
 - **sandbox:** Per-call resolution fail-closed (audit #202) (6c8fb55)
-- **unattended:** Inject elevation flags into upstream CLI args (ADR-023) (5ba2370)## [0.21.4] - 2026-04-27
+- **unattended:** Inject elevation flags into upstream CLI args (5ba2370)## [0.21.4] - 2026-04-27
 
 ### Chores
 
@@ -287,7 +333,7 @@ ADR-009 for the policy details.
 - **release:** V0.21.1 — CHANGELOG auto-regen + sandbox dispatch + task watch + Hermes plugin fix (2fa6416)
 ### Features
 
-- **task:** `clawtool task watch` — stream BIAM transitions to Monitor (ADR-026) (e057ba9)
+- **task:** `clawtool task watch` — stream BIAM transitions to Monitor (e057ba9)
 - **supervisor:** Sandbox dispatch integration (#163 closes) (0c362c4)
 ### Fixes
 
@@ -302,7 +348,7 @@ ADR-009 for the policy details.
 - **registry:** Step 3a — 12 individual-Register tools join the manifest (#173) (a0dccc4)
 - **registry:** Step 2 — typed manifest entries for 6 newest tools (#173) (bcf6a9e)
 - **registry:** Typed ToolSpec manifest — Step 1 of #173 (Codex's #1 ROI refactor) (8206450)
-- **a2a:** Phase 1 — Agent Card serializer + `clawtool a2a card` (ADR-024) (c35328a)
+- **a2a:** Phase 1 — Agent Card serializer + `clawtool a2a card` (c35328a)
 ### Tests
 
 - **version:** Release pipeline regression tests (2952842)## [0.20.2] - 2026-04-27
@@ -334,37 +380,402 @@ ADR-009 for the policy details.
 - **readme:** V0.14 / v0.15 surface — BIAM, bridges, send --async, worktree, upgrade (498a241)
 ### Features
 
-- **unattended:** --unattended flag + per-repo trust + JSONL audit (ADR-023 phase 1) (474fa97)
-- **checkpoint:** Commit core tool — Conventional Commits + Co-Authored-By block + rules gate (ADR-022 phase 1) (a9452be)
+- **unattended:** --unattended flag + per-repo trust + JSONL audit (474fa97)
+- **checkpoint:** Commit core tool — Conventional Commits + Co-Authored-By block + rules gate (a9452be)
 - **rules:** Predicate-based invariant engine + RulesCheck tool (9421e8c)
 - **bridges:** Hermes-agent — fifth supported family (NousResearch, MIT, 120K stars) (16313bf)
 - **agent:** User-defined personas — `clawtool agent new` + AgentNew tool (12c701c)
 - **biam:** TaskNotify — edge-triggered fan-in completion push (9152d3d)
-- **bash:** Background mode + BashOutput / BashKill (ADR-021 phase B) (3e9a055)
-- **websearch:** Provider-neutral filter shape — domains / recency / country / topic (1ea710d)
-- **v0.18.6:** Core tools polish phase B — Glob .gitignore + WebFetch SSRF guard (ab1647c)
-- **v0.18.1:** Bwrap engine real Wrap — Profile→argv compiler + live sandbox enforcement (01cd88e)
-- **v0.18.4:** Core tools polish phase A — Read hashes, Write Read-before-Write, Edit diff (ADR-021) (ec2dd44)
+- **bash:** Background mode + BashOutput / BashKill (3e9a055)
+- Feat(websearch): provider-neutral filter shape — domains / recency / country / topic continuation — WebSearch's last gap. Adds five
+optional MCP args that map onto Brave's native API where possible
+and fall back to local post-filtering otherwise.
+
+- include_domains / exclude_domains (newline- or comma-separated):
+  allow / deny lists matched as either exact host or registrable-
+  suffix (so 'python.org' covers 'docs.python.org'). Applied locally
+  in filterHitsByDomain() AFTER the backend call so the contract
+  holds even when the backend silently ignored the flag.
+- recency: '24h' | '1d' | '1w' | '7d' | '1m' | '1y'. Brave maps
+  these to its 'pd' / 'pw' / 'pm' / 'py' freshness param via
+  braveFreshness().
+- country: ISO 3166-1 alpha-2. Brave reads it directly.
+- topic: free-form string passed through; backends honour what
+  they support.
+
+Backend interface change: Backend.Search now takes a fifth arg,
+SearchOptions{}. Brave updated; the mock test path passes
+SearchOptions{}. Future backends (Tavily, Google CSE, SearXNG)
+get the same shape and can map each field idiomatically.
+
+Per we don't reimplement domain filtering — net/url
+parsing isn't needed since backends emit normalised URLs and the
+extractHost helper is 6 lines of strings.TrimPrefix + IndexAny.
+Cheap, correct, no allocation per hit.
+
+Tests: 3 new — splitFilterList covers comma + newline + space +
+case folding; filterHitsByDomain covers include / exclude / suffix
+match; braveFreshness covers the 7 mappings + bogus input. All
+existing WebSearch tests preserved (signature update threaded
+through one mock-Brave call site). (1ea710d)
+- Feat(v0.18.6): core tools polish phase B — Glob .gitignore + WebFetch SSRF guard (partial — Glob + WebFetch). Grep / Bash / WebSearch
+follow-ups land separately so each diff stays auditable.
+
+Glob:
+- .gitignore-aware traversal default-on. Inside a Git worktree
+  shell to `git ls-files --cached --others --exclude-standard -z
+  --deduplicate`, then run doublestar.PathMatch over the candidate
+  set. Outside a worktree (or when the operator sets
+  respect_gitignore=false) the legacy doublestar walker stays. Same
+  ignore semantics as ripgrep, no new in-process gitignore matcher
+  needed for v1 — Codex flagged the hybrid approach.
+- include_hidden=false (default) drops paths whose any segment
+  starts with '.'. Patterns that explicitly name a dot segment
+  (e.g. '**/.env', '.config/**') override the filter so the agent
+  can still target dotfiles when it means to.
+- Engine label switches between 'doublestar' and
+  'doublestar+git-ls-files' so the operator can see which path
+  ran without re-reading the source.
+- 2 new tests, 5 existing tests preserved (executeGlob signature
+  changed to globArgs struct — call sites updated in-place).
+
+WebFetch SSRF guard:
+- Refuses targets whose hostname resolves to private / loopback /
+  link-local / cloud-metadata IPs BEFORE the GET. Codex flagged
+  this as 'security-first, do this BEFORE adding features'.
+- 14 deny-list CIDRs cover RFC1918, loopback (v4 + v6),
+  link-local + AWS/Azure/GCP metadata (169.254.169.254),
+  carrier-grade NAT, IPv6 unique-local, multicast, unspecified.
+- Redirect chain re-runs the guard via http.Client.CheckRedirect
+  so a public 302 → private redirect can't slip through. Userinfo
+  in redirect URLs refused (phishing vector).
+- allow_private MCP arg lets operators opt back in for legitimate
+  localhost fetches (dev server, /etc/resolv.conf-style probes).
+  Default false. executeWebFetch threads the flag via context so
+  CheckRedirect honours it on every hop.
+- 3 new tests: loopback blocked, AWS metadata blocked, range
+  membership table covers public IPs (8.8.8.8, 1.1.1.1) staying
+  green. Existing 6 webfetch tests updated to pass
+  allowPrivate=true since httptest binds 127.0.0.1.
+
+Both verified locally (clawtool's full suite race-clean) plus
+the CI Go-1.26 fix from 4ab2eaf is now green across Lint /
+ubuntu / macOS / cross-compile. (ab1647c)
+- Feat(v0.18.1): bwrap engine real Wrap — Profile→argv compiler + live sandbox enforcement. The bwrap adapter ships its actual Wrap() now:
+the Profile compiles into bubblewrap CLI flags, cmd.Path becomes
+the bwrap binary, the original argv lands as exec args after `--`,
+and cmd.Env is rebuilt to honour the EnvPolicy allow/deny.
+Per we never reimplement namespace setup — bwrap owns
+that. clawtool's polish layer is the typed Profile-to-argv
+translator.
+
+Real-process verified (bwrap available on this WSL2 host):
+  TestBwrap_LiveCat       — sandboxed `cat /etc/hostname` runs
+                            inside bwrap and returns the host name
+                            correctly while inhabiting an isolated
+                            namespace tree.
+  TestBwrap_LiveNetUnshare — sandboxed `bash -c 'echo > /dev/tcp/1.1.1.1/53'`
+                            FAILS as expected (network mode
+                            "none" → --unshare-net → empty network
+                            namespace, no route to anywhere).
+
+The compiler:
+- Baseline flags (always on): --die-with-parent, --unshare-pid,
+  --unshare-ipc, --unshare-uts, --unshare-cgroup-try, plus
+  --proc /proc, --dev /dev, --tmpfs /tmp so almost every program
+  finds its expected pseudo-fs without exposing host details.
+- Network modes:
+    none / loopback → --unshare-net (loopback is treated like
+                       none for now; bwrap can't filter egress
+                       and a future commit pairs this with an
+                       nftables layer).
+    allowlist       → --share-net + warning (egress filtering
+                      lives outside bwrap's scope).
+    open            → --share-net.
+- Filesystem rules: ro → --ro-bind-try, rw → --bind-try,
+  none → no flag (default "not visible"). Path expansion
+  honours ${VAR} substitution against the host env, then makes
+  relative paths absolute via filepath.Abs.
+- Env policy: --setenv each survivor; deny patterns trump
+  matching allow entries (operator can say "AWS_*" allow +
+  "AWS_SECRET" deny → only AWS_DEFAULT_REGION makes it
+  through). Wildcard support via filepath.Match.
+- --chdir picks the first rw directory in the rule set, so
+  CLI tools that need a sane cwd don't blow up landing in /.
+
+Tests:
+- 4 unit tests over buildBwrapArgs (network modes, env
+  allow/deny, rw bind shape, baseline flags).
+- 2 LIVE tests that actually exec bwrap and assert on the
+  outcome (cat works, network really is unshared). Skipped
+  cleanly when bwrap isn't on PATH so the suite stays
+  portable.
+
+Phase 3 deferred: --share-net + nftables egress allowlist
+(Codex flagged this as "bwrap doesn't filter; needs an
+external firewall"). Tracked in open questions. (01cd88e)
+- Feat(v0.18.4): core tools polish phase A — Read hashes, Write Read-before-Write, Edit diff. Synthesised from parallel Codex (BIAM task 6435286b)
+and Gemini (task c977810b) audits against Cursor / Cline / Aider /
+Cody best practice. Codex flagged the critical correctness point:
+MCP session_id is NOT model-supplied — must come from
+server.ClientSessionFromContext(ctx). Implemented exactly that.
+
+Live-tested end-to-end against built binary:
+  Read .../existing.txt → file_hash=a948904f2f0f... (SHA-256 verified)
+  Read .../existing.txt with_line_numbers=true → render carries '   1 | hello world' prefix
+  Write .../existing.txt content='new'  → REFUSED:
+    'has not Read /tmp/.../existing.txt — Read it first (or pass mode="create" ...)'
+  Edit .../multiline.go old='old' new='NEW' → returns diff_unified:
+    --- a/.../multiline.go
+    +++ b/.../multiline.go
+    @@ -1,3 +1,3 @@
+
+- internal/tools/core/session_state.go — SessionState + SessionKey,
+  Sessions singleton, RecordRead / ReadOf / SessionKeyFromContext
+  (uses server.ClientSessionFromContext, anonymous fallback for
+  stdio/tests). HashFile + HashString + hashBytes helpers.
+- internal/tools/core/session_state_helpers.go — readFileForHash
+  shim so tests can stub disk reads without touching production
+  ReadFile callers.
+- internal/tools/core/read.go — ReadResult gains FileHash +
+  RangeHash. runRead computes both after a successful read and
+  records into the session registry. New with_line_numbers flag
+  (default false) prefixes the rendered text with '%4d | ' —
+  agents can reference lines accurately, JSON content stays raw
+  so Edit's exact-substring matching keeps working.
+- internal/tools/core/write.go — Read-before-Write guardrail.
+  guardReadBeforeWrite() runs before executeWrite. Three new args:
+    mode: 'create' | 'overwrite' (default '')
+    must_not_exist: bool
+    unsafe_overwrite_without_read: bool
+  Existing file + no prior Read on the session = error message
+  pointing at the four ways to satisfy the check (Read first,
+  mode='create', must_not_exist, or the explicit unsafe bypass).
+  Stale detection: if file's current SHA-256 doesn't match the
+  one recorded at Read time, refuse with 'changed since this
+  session Read it'.
+- internal/tools/core/edit.go — EditResult gains HashBefore,
+  HashAfter, DiffUnified. unifiedDiff() emits a 'diff -u'-style
+  patch (--- a/path / +++ b/path / @@ hunk / line-by-line walk),
+  capped at 200 lines so multi-line rewrites don't bloat the
+  response. lcsLen kept as a stub for the future LCS-driven
+  hunk algorithm.
+- internal/tools/core/session_state_test.go — 11 tests:
+  hashBytes determinism, HashFile round-trip, Sessions
+  record/lookup with isolation across keys + paths, anonymous
+  fallback, prefixLineNumbers formatter, guard rejecting
+  no-prior-Read, allowing after recorded Read, rejecting on
+  stale hash, create-mode rejecting existing file, create-mode
+  passing for new path, unsafe override bypassing guard.
+- wiki/decisions/021-core-tools-polish.md (accepted) — full
+  design + the eight items, two-phase rollout plan, hash strategy,
+  MCP session id contract, open questions.
+
+Phase B (next commit): Glob .gitignore default-on, Grep context
+lines + multi-pattern, Bash background mode, WebFetch SSRF
+guard, WebSearch filters. (ec2dd44)
 - Dockerize clawtool — 15MB distroless static image + Compose stack (0713937)
-- **v0.18:** Clawtool sandbox surface + ADR-020 (bwrap/sandbox-exec/docker) (8c81e37)
+- Feat(v0.18): clawtool sandbox surface + (bwrap/sandbox-exec/docker) lands. Synthesised from parallel BIAM async dispatches: Codex
+(task 4468aa25) recommended `mcp`-style noun + native-flag composition
++ BIAM cancel fix; Gemini (task 87343e0f) recommended `vault` (rejected
+— HashiCorp Vault collides) + Engine interface shape. Both reviewers
+converged on bwrap (Linux/WSL2) / sandbox-exec (macOS) / docker
+(fallback) + external-wrap-over-native-delegate.
+
+This commit ships the SURFACE: profile parser, engine probes,
+read-only verbs (list / show / doctor), MCP tool catalog. The
+dispatch-time wrapping (clawtool send --sandbox <profile> actually
+constraining the upstream agent) lands incrementally per:
+v0.18.1 bwrap adapter, v0.18.2 sandbox-exec, v0.18.3 docker, v0.19
+Windows. Same incremental pattern v0.16.4 used for `mcp` before
+v0.17 filled in the generator.
+
+Live smoke against built binary verified the full surface:
+  clawtool sandbox list   → two configured profiles + bwrap engine
+  clawtool sandbox show   → renders paths/network/limits correctly
+  clawtool sandbox doctor → bwrap + docker both detected on this
+                            WSL2 host, noop fallback always
+                            available, bwrap selected as primary
+
+- internal/config/config.go: SandboxConfig + SandboxPath +
+  SandboxNetwork + SandboxLimits + SandboxEnv added next to
+  PortalConfig. Schema covers paths (ro/rw/none), network
+  policy (none/loopback/allowlist/open), allow list, env
+  allow + deny, timeout / memory / CPU shares / process count.
+- internal/sandbox/sandbox.go: Engine interface (Name/Available/
+  Wrap), Profile type, ParseProfile (validates modes + network
+  policy + duration + byte sizes), parseBytes ("1GB", "512M",
+  raw), SelectEngine (priority order, falls through to noop),
+  AvailableEngines (for doctor).
+- internal/sandbox/bwrap_linux.go: bubblewrap engine probe.
+  Available() looks for bwrap on PATH. Wrap() returns a
+  deferred-feature error pointing at v0.18.1 (matching the
+  pattern v0.16.1 used for portal ask).
+- internal/sandbox/sandbox_exec_darwin.go: macOS sandbox-exec
+  probe + deferred Wrap (v0.18.2).
+- internal/sandbox/docker_anywhere.go: cross-platform fallback.
+  Available() runs `docker info` to check the daemon, not just
+  the client binary. Deferred Wrap (v0.18.3).
+- internal/sandbox/sandbox_test.go: 7 tests (full-shape parse,
+  bad mode, bad network policy, allow-without-allowlist,
+  parseBytes table, SelectEngine non-nil, AvailableEngines
+  includes noop).
+- internal/cli/sandbox.go: list / show / doctor / run dispatcher.
+  list iterates configured profiles + reports the selected engine.
+  show parses one profile through ParseProfile + renders all
+  fields. doctor walks every registered engine + Available.
+  run is the escape hatch (deferred error today).
+- internal/tools/core/sandbox_tool.go: SandboxList / SandboxShow /
+  SandboxDoctor MCP tools. SandboxRun deliberately omitted —
+  letting a model spawn sandboxed commands has the wrong default.
+- ToolSearch indexes the three new MCP tools.
+- topUsage block in cli.go updated.
+- docs/sandbox.md walks engines / profile schema / per-agent
+  default / native composition / failure modes.
+- wiki/decisions/020-sandbox-feature.md (accepted) — full design
+  including the `[sandboxes.X.native]` sub-stanza Codex
+  contributed and the BIAM cancel fix Codex flagged at
+  internal/agents/biam/runner.go:61. (8c81e37)
 - Clawtool uninstall — full footprint cleanup (ce9bed7)
-- **v0.17:** Clawtool mcp generator — Go / Python / TypeScript scaffolds (b6a3359)
-- **v0.16.4:** Clawtool mcp authoring noun + surface (ADR-019) (8301353)
+- Feat(v0.17): clawtool mcp generator — Go / Python / TypeScript scaffolds generator lands. `clawtool mcp new <name>` walks the operator
+through a huh.Form wizard (or `--yes` for defaults) and writes a real,
+compilable MCP server. Per each language adapter wraps the
+canonical SDK in its ecosystem.
+
+Live smoke against built binary verified the full chain:
+  clawtool mcp new my-thing --yes  → 9 files including Go server.
+  go mod tidy && go build ...      → 6.7MB binary.
+  echo '<initialize JSON-RPC>' | ./bin/my-thing
+                                   → correct serverInfo response.
+                                   The server actually speaks MCP.
+  clawtool mcp install . --as smoke-test
+                                   → [sources.smoke-test] in config.toml.
+  clawtool mcp list --root <dir>   → discovers the scaffold.
+
+- internal/mcpgen/: package for the generator.
+  - mcpgen.go — Spec / ToolSpec / File / Adapter interface +
+    Generate orchestrator + name validators + writeFile guard.
+  - common.go — language-agnostic files: .clawtool/mcp.toml marker,
+    README, .gitignore, .claude-plugin/plugin.json (opt-in).
+  - go_adapter.go — mark3labs/mcp-go v0.49.0. cmd/<name>/main.go +
+    internal/tools/example.go + Makefile + go.mod + (opt-in)
+    Dockerfile.
+  - python_adapter.go — fastmcp ≥0.4. src/<pkg>/ layout +
+    pyproject.toml + Makefile + tests/.
+  - typescript_adapter.go — @modelcontextprotocol/sdk ≥1.0.
+    src/server.ts + tools/ + package.json + tsconfig + test/.
+  - mcpgen_test.go — 12 tests: per-language plan, docker opt-in,
+    plugin opt-out, refuses existing dir, name + tool name + language
+    validators.
+
+- internal/cli/mcp_wizard.go: huh.Form sequence (description,
+  language, transport, packaging, plugin manifest, first tool).
+  --yes path uses minimal defaults (Go / stdio / native / one
+  echo_back tool). mcpgenDeps interface lets tests drive without
+  TTY.
+
+- internal/cli/mcp_install.go: reads .clawtool/mcp.toml, derives
+  the launch command from language + packaging, writes
+  [sources.<instance>] into config.toml. Same registry the
+  catalog (clawtool source add) populates — no new code path in
+  internal/sources/manager.go.
+
+- internal/cli/mcp.go: rewired from v0.16.4 stub to real impls.
+  mcp list now does filepath.Walk skipping noise dirs. mcp run /
+  mcp build shim through the project's Makefile (per:
+  don't reinvent build orchestration).
+
+- internal/tools/core/mcp_tool.go: McpNew + McpList wired to the
+  real generator + walker. McpRun / McpBuild / McpInstall surface
+  a hint to invoke the CLI shortcut (those touch the operator's
+  filesystem + language toolchain so the model giving advice
+  is the natural pattern, not driving the build via MCP).
+
+- internal/cli/mcp_test.go: wizard --yes happy path + bad-name
+  rejection + existing-dir refusal + walker discovery.
+
+Total surface: 5 CLI verbs, 5 MCP tools, 12+ unit tests, real
+end-to-end smoke. README + docs/mcp-authoring.md updated to
+"v0.17 shipped". Wiki log entry captures the design + smoke
+results. (b6a3359)
+- Feat(v0.16.4): clawtool mcp authoring noun + surface lands. `mcp` is the new authoring noun for MCP server source
+code, sister to `skill` (Agent Skills). Co-designed with Codex (task
+55a5a480) and Gemini (task 13d4ea86) in parallel BIAM async
+dispatches; synthesis preserves Codex's naming + repo-relative
+output, both reviewers' .claude-plugin/ day-one + operator-managed
+marketplace.
+
+This commit is the SURFACE STUB — generator (`mcp new / run / build /
+install`) lands in v0.17. Same deferred-feature pattern v0.16.1
+used for `portal ask` before v0.16.2 wired the CDP driver: surface
+booked today so agents discover the namespace early; rewriting it
+post-adoption isn't free.
+
+- internal/cli/mcp.go: CLI subcommand dispatcher.
+  - `mcp list` ships read-only (walker stub; upgrades when generator
+    writes .clawtool/mcp.toml markers).
+  - `mcp new / run / build / install` return McpNotImplementedError
+    sentinel pointing at.
+- internal/tools/core/mcp_tool.go: McpList / McpNew / McpRun /
+  McpBuild / McpInstall MCP tools. RegisterMcpTools wired alongside
+  RegisterPortalTools in server.go.
+- internal/tools/core/toolsearch.go: 5 new entries so ToolSearch
+  surfaces the surface.
+- internal/cli/cli.go topUsage block: `clawtool mcp ...` near
+  `clawtool skill ...`, with one-liner clarification (mcp = MCP
+  server source code; skill = Agent Skill folder).
+- README.md hero block: MCP authoring bullet alongside Browser
+  tools / Portals.
+- docs/mcp-authoring.md: full preview — wizard prompts, per-language
+  artifact, install flow, today's interim hand-roll path.
+- wiki/decisions/019-mcp-authoring-scaffolder.md (accepted), with
+  cross-refs to / 007 / 008 / 010 / 014 / 018.
+- wiki/log.md: design synthesis captured (Codex `mcp` + Gemini
+  `forge` reviewers) plus the chromedp lesson from v0.16.3. (8301353)
 - **v0.16.3:** Portal add interactive wizard (chromedp + Chrome) (3532ffa)
 - **v0.16.2:** Portal CDP driver — Ask flow + per-portal MCP aliases (8067955)
-- **v0.16.1:** Portal feature — saved web-UI targets (ADR-018) (0171284)
-- **v0.16:** BrowserFetch + BrowserScrape — Obscura-backed JS render (6cbec23)
+- **v0.16.1:** Portal feature — saved web-UI targets (0171284)
+- Feat(v0.16): BrowserFetch + BrowserScrape — Obscura-backed JS render stays untouched: browser is a Tool surface, not a Transport.
+clawtool wraps github.com/h4ckf0r0day/obscura (Apache-2.0, V8 + Chrome
+DevTools Protocol, 30 MB memory vs Chromium's 200+) per so
+agents can render SPA / hydrated pages without us hand-rolling a
+headless engine.
+
+- BrowserFetch (internal/tools/core/browser_fetch.go): stateless
+  single-URL render via `obscura fetch --dump html | --eval ...`. Result
+  shape mirrors WebFetch (title / byline / sitename / content) plus
+  optional eval_result so agents can swap the two without rewriting
+  parsing. Optional CSS-selector wait, --stealth pass-through.
+- BrowserScrape (internal/tools/core/browser_scrape.go): bulk parallel
+  via `obscura scrape ... --concurrency N --eval ... --format json`,
+  hard cap 500 URLs / 50 workers. Tolerates both NDJSON and JSON-array
+  output; per-URL errors fold into the row so the batch keeps going.
+- engines.go now caches `obscura` alongside `rg` / `pdftotext`. Missing
+  binary surfaces a one-shot install hint (Linux/macOS one-liners) at
+  call time — no boot-time refusal.
+- Tests cover the missing-binary, bad-URL, HTML readability, eval
+  pass-through, non-zero exit paths plus the NDJSON/array parser and
+  the URL splitter helper. Race-clean.
+- Both registered in server.go (always-on) and indexed in
+  CoreToolDocs so ToolSearch surfaces them.
+- docs/browser-tools.md walks through install, the two tool schemas,
+  worked Next.js + bulk-scrape examples, failure modes, and the
+  reasoning for picking Obscura over Headless Chrome. README links it
+  from the v0.15 hero block. The cookie-driven interactive surface
+  (BrowserAction, CDP-over-WebSocket) lands as a follow-up commit
+  because cookie injection requires the obscura serve transport, not
+  the fetch CLI. (6cbec23)
 - **v0.15:** F5 telemetry + F6 hooks CLI + F7 process-group reaping + README (9096d7b)
 - **v0.15:** F3 hooks subsystem + F4 clawtool onboard wizard (71334d8)
 - **v0.15:** Per-instance rate limiter (F1) + clawtool upgrade subcommand (F2) (9b74041)
-- **biam:** Ship ADR-015 Phase 1 (async dispatch + signed envelopes + SQLite store) + 3 polish fixes (42b4889)
+- **biam:** Ship Phase 1 (async dispatch + signed envelopes + SQLite store) + 3 polish fixes (42b4889)
 - **v0.14:** T3 mem0 + T5 git-worktree isolation + T6 SemanticSearch (148f001)
 - **v0.14:** T1 OTel + T2 auto-lint + T4 Verify MCP tool (22994f7)
 - **serve:** POST /v1/recipe/apply + GET /v1/recipes + --mcp-http transport, plus claude/gemini transport fixes from live smoke (4b843ba)
-- **supervisor:** Ship Phase 4 of ADR-014 — dispatch policies (round-robin, failover, tag-routed) (d806663)
-- **relay:** Ship Phase 3 of ADR-014 — Docker image + clawtool-relay recipe (94130c2)
-- **serve:** Ship Phase 2 of ADR-014 — clawtool serve --listen HTTP gateway (be91f9f)
-- **agents:** Ship Phase 1 of ADR-014 — Transport, Supervisor, send/bridge CLI, MCP tools (c875a54)
+- **supervisor:** Ship Phase 4 of — dispatch policies (round-robin, failover, tag-routed) (d806663)
+- **relay:** Ship Phase 3 of — Docker image + clawtool-relay recipe (94130c2)
+- **serve:** Ship Phase 2 of — clawtool serve --listen HTTP gateway (be91f9f)
+- **agents:** Ship Phase 1 of — Transport, Supervisor, send/bridge CLI, MCP tools (c875a54)
 ### Fixes
 
 - **test:** Allowlist clawtool-unattended.md as CLI-verb-only (e7c3c91)
@@ -380,7 +791,7 @@ CI repair:
   always is). Loosened the assertion to a regex that accepts
   either label. Local e2e + go test pass; CI should follow.
 
-Grep upgrades (ADR-021 phase B continuation):
+Grep upgrades ( continuation):
 
 - context_before / context_after MCP args (default 0, hard cap 50)
   emit `rg -B` / `-A` and parse the resulting `context` events
@@ -421,7 +832,7 @@ Tests:
 - **ci:** Make e2e EXIT trap tolerate already-dead background process (4b4b269)
 ### Refactor
 
-- **portal:** Swap hand-rolled CDP for chromedp (ADR-007) (e6af0f2)
+- **portal:** Swap hand-rolled CDP for chromedp (e6af0f2)
 ### Style
 
 - Gofmt -w . — fix drift in 7 files (c95a8f8)
@@ -542,7 +953,41 @@ Signed-off-by: dependabot[bot] <support@github.com> (81f7952)
 - **cli:** Clawtool recipe list/status/apply (a6ec288)
 - **setup:** Three more recipes — license, codeowners, dependabot (f3edfe7)
 - **tools:** Split MCP output — pretty text + structuredContent (c45192d)
-- **setup:** Foundation for clawtool init — recipes, runner, repo-config (1afde74)
+- Feat(setup): foundation for clawtool init — recipes, runner, repo-config codified: clawtool init is an injector that wraps upstream
+tools, never reimplements them. This commit lands the framework
+recipes plug into:
+
+  internal/setup/category.go     — 9 frozen categories (governance,
+                                   commits, release, ci, quality,
+                                   supply-chain, knowledge, agents,
+                                   runtime). Set is the v1.0 API
+                                   contract; adding a category is a
+                                   major bump.
+  internal/setup/recipe.go       — Recipe interface + Registry. Meta
+                                   requires Upstream as a non-empty
+                                   field, so the wrap-don't-reinvent
+                                   rule is compile-time enforced —
+                                   a from-scratch reimplementation
+                                   literally won't register.
+  internal/setup/runner.go       — stitches Detect→Prereqs→Apply→
+                                   Verify into one Apply call with
+                                   Prompter (TTY/MCP/auto) and
+                                   CommandRunner abstractions.
+  internal/setup/repoconfig.go   — .clawtool.toml load/save/upsert
+                                   (atomic temp+rename, sorted
+                                   recipe list for clean diffs).
+  internal/setup/fs.go           — WriteAtomic + marker helpers
+                                   shared across recipe packages.
+
+First recipe under the new framework: conventional-commits-ci
+(category: commits) wraps amannn/action-semantic-pull-request.
+Drops a marker-stamped workflow, refuses to overwrite anything
+the user wrote themselves.
+
+29 unit tests, race-clean. No CLI/MCP wiring yet — that lands in
+follow-up commits per the v0.9 milestone.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com> (1afde74)
 - **install:** Add curl one-liner installer (aa20331)
 ### Fixes
 

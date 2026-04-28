@@ -129,7 +129,7 @@ docker run --rm -i \
 The container will see your sources, agents, portals, hooks,
 sandboxes — but can't mutate them (read-only mount).
 
-## Sandbox (ADR-020) inside Docker
+## Sandbox profiles inside Docker
 
 The container has no `bwrap` / `sandbox-exec` and Docker-in-Docker
 adds friction. If you want sandbox enforcement around dispatched

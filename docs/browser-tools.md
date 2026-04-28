@@ -6,7 +6,7 @@ Protocol, single 70 MB static binary, 30 MB memory footprint, drop-in
 for Puppeteer / Playwright) — to give agents a way to render JS-heavy
 content the way a real browser sees it.
 
-> **`Tool` not `Transport`.** Per ADR-014 the supervisor only dispatches
+> **`Tool` not `Transport`.** clawtool's `SendMessage` only dispatches
 > prompts to upstreams that publish a stable headless contract
 > (claude / codex / opencode / gemini). Browser-driven LLM portals
 > have no such contract, change weekly, and break Terms of Service.
@@ -134,17 +134,13 @@ batch keeps going through individual failures.
 | Anti-detect | built-in | none |
 | Puppeteer / Playwright | yes | yes |
 
-Per ADR-007 we wrap whichever engine has the right shape; Obscura
-won the slot because its CDP API is broad enough for our v0.16
-surface and the binary is small enough to ship next to clawtool's
-~50 MB Go binary without doubling the install cost.
+We wrap whichever engine has the right shape; Obscura won the slot
+because its CDP API is broad enough for our browser surface and the
+binary is small enough to ship next to clawtool's ~50 MB Go binary
+without doubling the install cost.
 
 ## Cross-references
 
-- ADR-014 (`wiki/decisions/`): the relay/dispatch contract — explains
-  why browser tooling is a Tool rather than a Transport.
-- ADR-007 (`wiki/decisions/`): "wrap, don't reinvent" — the principle
-  that picked Obscura over hand-rolling a CDP client.
 - `internal/tools/core/browser_fetch.go` and
   `internal/tools/core/browser_scrape.go` — implementations.
 - `docs/http-api.md` — Postman / cURL recipes for the HTTP gateway,

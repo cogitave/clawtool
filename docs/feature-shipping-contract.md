@@ -69,7 +69,7 @@ list:
 - [ ] `skills/clawtool/SKILL.md` routing map row added
 - [ ] SKILL.md description field updated with trigger phrases
 - [ ] If the tool replaces a Bash idiom, explicit redirect is in SKILL.md
-- [ ] `wiki/decisions/NNN-<x>.md` ADR if the feature has a
+- [ ] An architecture decision record under `wiki/` if the feature has a
       non-trivial design choice
 
 ## Deviations
