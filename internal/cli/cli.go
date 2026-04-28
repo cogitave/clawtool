@@ -187,6 +187,8 @@ func (a *App) Run(argv []string) int {
 		return a.runRecipe(argv[1:])
 	case "doctor":
 		return a.runDoctor(argv[1:])
+	case "overview":
+		return a.runOverview(argv[1:])
 	case "skill":
 		return a.runSkill(argv[1:])
 	case "mcp":
