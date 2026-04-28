@@ -37,6 +37,35 @@ type Config struct {
 	Telemetry     TelemetryConfig            `toml:"telemetry,omitempty"`
 	Portals       map[string]PortalConfig    `toml:"portals,omitempty"`
 	Sandboxes     map[string]SandboxConfig   `toml:"sandboxes,omitempty"`
+	SandboxWorker SandboxWorkerConfig        `toml:"sandbox_worker,omitempty"`
+}
+
+// SandboxWorkerConfig wires the daemon to a sandbox-worker
+// container (ADR-029). When Mode != "off", Bash / Read / Edit /
+// Write tool calls route through the worker WebSocket instead of
+// shelling out on the host process. Defaults preserve the v0.21.5
+// behaviour: Mode="off" — every tool runs in the daemon's own
+// process. Operator opts in by flipping Mode to "container" and
+// pointing URL at the container's exposed port.
+type SandboxWorkerConfig struct {
+	// Mode is "off" (default), "host" (worker on the same host),
+	// or "container" (worker reachable over the network at URL).
+	Mode string `toml:"mode,omitempty"`
+	// URL is the worker's WebSocket endpoint, e.g.
+	// "ws://127.0.0.1:2024/ws". Required when Mode != "off".
+	URL string `toml:"url,omitempty"`
+	// TokenFile is the path to the bearer-token file shared with
+	// the worker. Default $XDG_CONFIG_HOME/clawtool/worker-token.
+	TokenFile string `toml:"token_file,omitempty"`
+	// AutoStart asks the daemon to spawn `clawtool sandbox-worker`
+	// (or pull + run a container, future work) when no live
+	// worker is reachable. Phase 1 surfaces the flag but does not
+	// implement spawn — operator runs the worker manually.
+	AutoStart bool `toml:"auto_start,omitempty"`
+	// Image is the docker image tag the operator built (or
+	// pulled) for the worker container. Phase 2 will use it for
+	// auto_start; Phase 1 stores it as documentation.
+	Image string `toml:"image,omitempty"`
 }
 
 // SandboxConfig is one [sandboxes.<name>] profile (ADR-020).

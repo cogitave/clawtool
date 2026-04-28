@@ -29,6 +29,7 @@ import (
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/observability"
+	"github.com/cogitave/clawtool/internal/sandbox/worker"
 	"github.com/cogitave/clawtool/internal/search"
 	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/cogitave/clawtool/internal/sources"
@@ -142,6 +143,15 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 		core.SetBiamStore(store)
 	}
 
+	// Sandbox-worker wire-up (ADR-029 phase 2). When config sets
+	// sandbox_worker.mode != "off", we instantiate the daemon-side
+	// client and register it process-wide. Bash / Read / Edit /
+	// Write tool handlers consult worker.Global() per call and
+	// route through the worker when present (host fallback when
+	// nil). Failures here are non-fatal — the daemon keeps serving
+	// with host execution.
+	wireSandboxWorker(cfg)
+
 	mgr := sources.NewManager(cfg, sec)
 	if err := mgr.Start(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "clawtool: some sources failed to start: %v\n", err)
@@ -191,6 +201,40 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 		s.AddTool(st.Tool, st.Handler)
 	}
 	return s, mgr, cfg, sec, nil
+}
+
+// wireSandboxWorker reads cfg.SandboxWorker and registers a
+// process-wide worker.Client if Mode != "off". Tool handlers see
+// it via worker.Global(); nil = fall back to host. Mirror of
+// observability + biam wiring above.
+func wireSandboxWorker(cfg config.Config) {
+	mode := cfg.SandboxWorker.Mode
+	if mode == "" || mode == "off" {
+		worker.SetGlobal(nil)
+		return
+	}
+	url := cfg.SandboxWorker.URL
+	if url == "" {
+		fmt.Fprintln(os.Stderr,
+			"clawtool: sandbox_worker.mode != off but URL empty; falling back to host execution")
+		worker.SetGlobal(nil)
+		return
+	}
+	tokenPath := cfg.SandboxWorker.TokenFile
+	if tokenPath == "" {
+		tokenPath = worker.DefaultTokenPath()
+	}
+	tok, err := worker.LoadToken(tokenPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"clawtool: sandbox_worker token load failed (%v); falling back to host. Generate one via `clawtool sandbox-worker --init-token`\n",
+			err)
+		worker.SetGlobal(nil)
+		return
+	}
+	worker.SetGlobal(worker.NewClient(url, tok))
+	fmt.Fprintf(os.Stderr,
+		"clawtool: sandbox-worker wired (mode=%s, url=%s)\n", mode, url)
 }
 
 // buildIndexDocs flattens the manifest into search.Doc entries
