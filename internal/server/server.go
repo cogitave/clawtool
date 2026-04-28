@@ -141,6 +141,16 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 		})
 		agents.SetGlobalBiamRunner(runner)
 		core.SetBiamStore(store)
+
+		// Push-based task watch — Unix socket peer of the in-process
+		// WatchHub. `clawtool task watch` dials this and ditches
+		// SQLite polling. Failures are non-fatal: watchers fall back
+		// to polling automatically when the socket is missing.
+		go func() {
+			if err := biam.ServeWatchSocket(ctx, store, biam.Watch, ""); err != nil {
+				fmt.Fprintf(os.Stderr, "clawtool: biam watchsocket: %v\n", err)
+			}
+		}()
 	}
 
 	// Sandbox-worker wire-up (ADR-029 phase 2). When config sets
