@@ -180,6 +180,15 @@ chmod +x "$TARGET.new"
 mv "$TARGET.new" "$TARGET"
 ok "installed clawtool $VERSION to $TARGET"
 
+# Mark this host as installed via the script so the install-event
+# telemetry attributes correctly. The marker is read by Go runtime
+# via $CLAWTOOL_INSTALL_METHOD; we write it to a tiny env file the
+# daemon can read regardless of which shell rc the user runs.
+mkdir -p "$HOME/.config/clawtool"
+cat > "$HOME/.config/clawtool/install-method" <<METHOD
+script
+METHOD
+
 # ── PATH hint ───────────────────────────────────────────────────────
 
 case ":$PATH:" in

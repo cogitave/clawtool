@@ -138,6 +138,13 @@ func buildMCPServer(ctx context.Context) (*server.MCPServer, *sources.Manager, c
 		tc.Track("server.start", map[string]any{
 			"version": version.Version,
 		})
+		// Fresh-host install event — fires once per host (marker
+		// file lives at $XDG_DATA_HOME/clawtool/install-emitted).
+		// Subsequent daemon boots are no-ops. Source attribution
+		// comes from $CLAWTOOL_INSTALL_METHOD set by install.sh /
+		// brew formula / go-install wrapper at install time;
+		// missing maps to "unknown" so we still get the event.
+		telemetry.EmitInstallOnce(tc, version.Version)
 	}
 
 	// BIAM Phase 1 (ADR-015): bring up the per-instance identity +
