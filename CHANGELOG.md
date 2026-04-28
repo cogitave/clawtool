@@ -5,7 +5,25 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.19] - 2026-04-28
+## [0.22.22] - 2026-04-28
+
+### Fixes
+
+- **biam:** Close broadcast-vs-unsubscribe race in WatchHub (573d9af)
+### Refactor
+
+- **biam:** Collapse no-op if/else in recordResult into linear flow (35ca6ff)## [0.22.21] - 2026-04-28
+
+### Features
+
+- **cli:** Tools list now shows the full MCP surface (dispatch, agent, task, recipe, bridge…) (4304148)## [0.22.20] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.19 [skip ci] (049111f)
+### Fixes
+
+- **config:** Make telemetry default-on honest on upgrade + persist explicit opt-out (5daa42b)## [0.22.19] - 2026-04-28
 
 ### Documentation
 
