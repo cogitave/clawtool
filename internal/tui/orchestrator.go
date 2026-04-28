@@ -192,7 +192,7 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !ok {
 			t = &orchTask{
 				task:    msg.task,
-				startAt: time.Now(),
+				startAt: orchStartFor(msg.task),
 			}
 			m.tasks[msg.task.TaskID] = t
 			m.order = append([]string{msg.task.TaskID}, m.order...)
@@ -210,6 +210,14 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else {
 			t.task = msg.task
+			// If the snapshot carries a real CreatedAt and ours
+			// was a synthesised time.Now() (frame-stub path),
+			// upgrade to the canonical store value so elapsed
+			// reflects time-since-task-began, not time-since-
+			// orchestrator-saw-it.
+			if !msg.task.CreatedAt.IsZero() {
+				t.startAt = msg.task.CreatedAt
+			}
 		}
 		// Stamp terminal time on the first transition / first
 		// sight as terminal — needed so the orchTickMsg sweep
@@ -225,7 +233,7 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		m.refreshStreamForSelection()
-		return m, watchReadCmd(msg.dec, msg.conn)
+		return m, orchReadCmd(msg.dec, msg.conn)
 
 	case watchFrameMsg:
 		t, ok := m.tasks[msg.frame.TaskID]
@@ -256,7 +264,7 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.stream.GotoBottom()
 			}
 		}
-		return m, watchReadCmd(msg.dec, msg.conn)
+		return m, orchReadCmd(msg.dec, msg.conn)
 
 	case watchSystemMsg:
 		// Latch the banner; the ticker will sweep it after
@@ -267,7 +275,7 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		n := msg.notification
 		m.systemBanner = &n
 		m.systemBannerAt = time.Now()
-		return m, watchReadCmd(msg.dec, msg.conn)
+		return m, orchReadCmd(msg.dec, msg.conn)
 
 	case watchClosedMsg:
 		m.err = fmt.Errorf("watch socket disconnected — press r to reconnect")
@@ -731,6 +739,35 @@ func orchSubscribeCmd() tea.Cmd {
 			return watchClosedMsg{}
 		}
 		dec := json.NewDecoder(bufio.NewReader(conn))
+		return readNextOrchEnvelope(dec, conn)
+	}
+}
+
+// orchStartFor returns the canonical start time for a task — the
+// store's CreatedAt when set, otherwise time.Now() as a fallback
+// for frame-stub tasks the orchestrator synthesises before the
+// first snapshot lands. The fallback gets overwritten on the next
+// watchEventMsg (see the upsert path) so reconnects always settle
+// on the real CreatedAt instead of every replay resetting elapsed
+// to zero.
+func orchStartFor(t biam.Task) time.Time {
+	if !t.CreatedAt.IsZero() {
+		return t.CreatedAt
+	}
+	return time.Now()
+}
+
+// orchReadCmd chains the next read through the orchestrator's own
+// envelope reader. The dashboard's watchReadCmd routes through
+// readNextEnvelope which has `case "frame": continue` — useful for
+// the dashboard pane (frames don't belong there) but a regression
+// for the orchestrator, which lives precisely to render the live
+// stream. Without this, the orchestrator only ever shows the first
+// envelope after subscribe and silently drops every subsequent
+// frame, so the right pane stays at "(awaiting first event…)" even
+// while the daemon is broadcasting fine.
+func orchReadCmd(dec *json.Decoder, conn net.Conn) tea.Cmd {
+	return func() tea.Msg {
 		return readNextOrchEnvelope(dec, conn)
 	}
 }
