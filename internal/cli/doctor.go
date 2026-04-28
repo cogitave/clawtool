@@ -20,6 +20,7 @@ import (
 	"github.com/cogitave/clawtool/internal/sandbox/worker"
 	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/cogitave/clawtool/internal/setup"
+	"github.com/cogitave/clawtool/internal/telemetry"
 	"github.com/cogitave/clawtool/internal/version"
 )
 
@@ -59,6 +60,7 @@ func (a *App) runDoctor(_ []string) int {
 
 	a.doctorBinary(w, rep)
 	a.doctorConfig(w, rep)
+	a.doctorTelemetry(w, rep)
 	a.doctorDaemon(w, rep)
 	a.doctorSandboxWorker(w, rep)
 	a.doctorAgents(w, rep)
@@ -122,6 +124,47 @@ func (a *App) doctorConfig(w io.Writer, rep *doctorReport) {
 		rep.info(w, fmt.Sprintf("%s not found (no secrets configured)", secPath))
 	} else {
 		rep.warn(w, fmt.Sprintf("stat %s: %v", secPath, err), "")
+	}
+	fmt.Fprintln(w)
+}
+
+// doctorTelemetry reports whether anonymous telemetry is enabled,
+// where the resolved config sits, and whether the live process-
+// global telemetry client matches the on-disk flag (so an operator
+// who flipped `clawtool telemetry off` mid-session can see "config
+// off, process still on — restart" instead of being silently
+// confused).
+//
+// Quiet by design: when telemetry is off and that matches the
+// process state, just print "off". The whole section is one OK / one
+// info line in the common case; warnings only surface drift.
+func (a *App) doctorTelemetry(w io.Writer, rep *doctorReport) {
+	fmt.Fprintln(w, "[telemetry]")
+	cfg, err := config.LoadOrDefault(a.Path())
+	if err != nil {
+		rep.warn(w, fmt.Sprintf("load config: %v", err), "")
+		fmt.Fprintln(w)
+		return
+	}
+	wantOn := cfg.Telemetry.Enabled
+	state := "off"
+	if wantOn {
+		state = "on"
+	}
+	rep.ok(w, fmt.Sprintf("config: %s", state))
+
+	// Drift check — process-local client snapshots at startup,
+	// so a `clawtool telemetry on` after the daemon has already
+	// booted reads as "config on, runtime off (restart needed)".
+	tc := telemetry.Get()
+	processOn := tc != nil && tc.Enabled()
+	if processOn != wantOn {
+		fix := "clawtool daemon restart"
+		if processOn {
+			rep.warn(w, "config says off but process telemetry client is on", fix)
+		} else {
+			rep.warn(w, "config says on but process telemetry client is off", fix)
+		}
 	}
 	fmt.Fprintln(w)
 }
