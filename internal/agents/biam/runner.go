@@ -248,14 +248,18 @@ func (r *Runner) recordResult(prompt *Envelope, kind EnvelopeKind, body string, 
 	reply.ParentID = prompt.MessageID
 	_ = reply.Sign(r.identity)
 
-	if err := r.store.PutEnvelope(bg, reply, true); err != nil {
-		// Best-effort: even if persist fails, still flip the task so
-		// callers don't block forever. The task row's last_message
-		// records the body via SetTaskStatus.
-		_ = r.store.SetTaskStatus(bg, prompt.TaskID, terminal, summary(body))
-	} else {
-		_ = r.store.SetTaskStatus(bg, prompt.TaskID, terminal, summary(body))
-	}
+	// Best-effort persist of the reply envelope; failure is logged
+	// implicitly via the discarded error but doesn't abort the task
+	// flip — callers waiting on the terminal state must unblock
+	// even if SQLite is temporarily wedged.
+	_ = r.store.PutEnvelope(bg, reply, true)
+	// Always flip the task row to terminal — the row's last_message
+	// column carries the body via SetTaskStatus, so the persist
+	// outcome above doesn't gate the user-visible state. (Pre-fix
+	// this was an if/else where both arms called the same line; the
+	// branching was a no-op with an empty success path that looked
+	// like an unfinished refactor.)
+	_ = r.store.SetTaskStatus(bg, prompt.TaskID, terminal, summary(body))
 	// In-process completion push so TaskNotify callers wake the
 	// instant a task settles, no SQLite poll. Done after the row
 	// flip so subscribers see the terminal state if they re-query.
