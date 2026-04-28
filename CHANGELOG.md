@@ -5,7 +5,32 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.21.5] - 2026-04-27
+## [0.21.7] - 2026-04-28
+
+### Chores
+
+- **release:** V0.21.7 — UX polish (overview + doctor sandbox-worker + ambiguity) (b25eed3)
+### Documentation
+
+- **onboard:** Surface sandbox-worker setup hint (ADR-029) (387e65d)
+### Features
+
+- **cli:** `clawtool overview` — one-screen system status (ca98eb7)
+- **doctor:** Sandbox-worker section + guided agent-ambiguity error (ddeb308)## [0.21.6] - 2026-04-28
+
+### Chores
+
+- **release:** V0.21.6 — claude.ai sandbox parity (ADR-029) (a6b841f)
+### Documentation
+
+- **changelog:** Regenerate for v0.21.5 [skip ci] (9f6c33c)
+### Features
+
+- **egress:** Allowlist proxy binary (ADR-029 phase 4, #209) (ccd809b)
+- **skill:** SkillList + SkillLoad — on-demand mount (ADR-029, #208) (44ee058)
+- **sandbox:** Worker phase 2 — daemon-side routing for Bash (ADR-029) (b2f42d8)
+- **sandbox:** Worker container — claude.ai parity (ADR-029 phase 1) (cf6f2c2)
+- **doctor:** Surface daemon state (UX smoke pass #193) (68a8311)## [0.21.5] - 2026-04-27
 
 ### Chores
 
