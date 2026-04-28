@@ -3,11 +3,25 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cogitave/clawtool/internal/version"
 )
+
+// init swaps in a no-network default for fetchUpdate so the test
+// package never hits api.github.com. Per-test overrides assign
+// fetchUpdate directly + use t.Cleanup to restore — that wins over
+// this default within the test, then the package-level value
+// snaps back when the test exits.
+func init() {
+	fetchUpdate = func() version.UpdateInfo {
+		return version.UpdateInfo{HasUpdate: false}
+	}
+}
 
 // hookOutput mirrors the JSON shape claude-bootstrap emits so the
 // tests can decode and assert on additionalContext directly without
@@ -145,6 +159,76 @@ func TestClaudeBootstrap_AlwaysEmitsValidJSON(t *testing.T) {
 	}
 	if _, ok := v["hookSpecificOutput"]; !ok {
 		t.Errorf("missing hookSpecificOutput key: %s", out.String())
+	}
+}
+
+// TestClaudeBootstrap_InjectsUpgradeLineWhenAvailable confirms the
+// SessionStart hook surfaces "vX → vY available" when fetchUpdate
+// reports a newer release. Stub the seam so the test never hits
+// GitHub.
+func TestClaudeBootstrap_InjectsUpgradeLineWhenAvailable(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	prev := fetchUpdate
+	t.Cleanup(func() { fetchUpdate = prev })
+	fetchUpdate = func() version.UpdateInfo {
+		return version.UpdateInfo{HasUpdate: true, Latest: "v9.9.9", Current: "0.22.6"}
+	}
+
+	out := runBootstrap(t, dir)
+	ctx := out.HookSpecificOutput.AdditionalContext
+	for _, want := range []string{
+		"clawtool update available",
+		"0.22.6",
+		"v9.9.9",
+		"clawtool upgrade",
+	} {
+		if !strings.Contains(ctx, want) {
+			t.Errorf("missing %q in upgrade-line block\nfull: %s", want, ctx)
+		}
+	}
+}
+
+func TestClaudeBootstrap_NoUpgradeLineWhenUpToDate(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	prev := fetchUpdate
+	t.Cleanup(func() { fetchUpdate = prev })
+	fetchUpdate = func() version.UpdateInfo {
+		return version.UpdateInfo{HasUpdate: false, Latest: "0.22.6", Current: "0.22.6"}
+	}
+
+	out := runBootstrap(t, dir)
+	if strings.Contains(out.HookSpecificOutput.AdditionalContext, "update available") {
+		t.Errorf("up-to-date check leaked the upgrade banner: %s", out.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+func TestClaudeBootstrap_UpgradeCheckFailureSilent(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	prev := fetchUpdate
+	t.Cleanup(func() { fetchUpdate = prev })
+	fetchUpdate = func() version.UpdateInfo {
+		return version.UpdateInfo{Err: errors.New("network down")}
+	}
+
+	out := runBootstrap(t, dir)
+	if strings.Contains(out.HookSpecificOutput.AdditionalContext, "update available") {
+		t.Errorf("network failure should NOT show upgrade banner")
+	}
+	// But the rest of the marker block should still render.
+	if !strings.Contains(out.HookSpecificOutput.AdditionalContext, "clawtool is active") {
+		t.Errorf("error path should not suppress the rest of the context")
 	}
 }
 
