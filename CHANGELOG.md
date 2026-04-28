@@ -4,7 +4,20 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.29] - 2026-04-28
+## [0.22.31] - 2026-04-28
+
+### Features
+
+- **cli:** Tools export-typescript — code-mode stub generator (MVP) (0a261a0)## [0.22.30] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.29 [skip ci] (d4024e4)
+### Fixes
+
+- **egress:** Join CONNECT tunnels + force-close on shutdown (de4ece9)
+- **daemon:** Flock spawn race + Runner.Stop join + ordered teardown (a5080f9)
+- **biam:** Error-aware result publish, locked Close, awaited HTTP shutdown (a182a4f)## [0.22.29] - 2026-04-28
 
 ### Fixes
 
