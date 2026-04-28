@@ -5,7 +5,14 @@ All notable changes to clawtool are documented here. Format adheres to
 project follows [Semantic Versioning](https://semver.org/) — see
 ADR-009 for the policy details.
 
-## [0.22.11] - 2026-04-28
+## [0.22.12] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.11 [skip ci] (7bac219)
+### Features
+
+- **tui:** Orchestrator renders SystemNotification banner with 30s auto-fade (75d875c)## [0.22.11] - 2026-04-28
 
 ### Documentation
 
