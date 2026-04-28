@@ -158,9 +158,11 @@ type PortalBrowserSettings struct {
 	Locale         string `toml:"locale,omitempty"`
 }
 
-// TelemetryConfig drives anonymous PostHog event emission. Default
-// disabled; clawtool onboard records the user's choice here. Per
-// ADR-007 we wrap posthog/posthog-go.
+// TelemetryConfig drives anonymous PostHog event emission. Pre-1.0
+// default = on (config.Default() seeds Enabled=true to match the
+// onboard wizard's "default = on" claim); flips to off at v1.0.0.
+// Operator opt-out: `clawtool telemetry off`. Per ADR-007 we wrap
+// posthog/posthog-go.
 //
 // Events emitted: command name, version, OS/arch, duration_ms,
 // exit_code, error_class. NO prompts, NO paths, NO secrets, NO env
@@ -345,6 +347,17 @@ func Default() Config {
 	return Config{
 		CoreTools: tools,
 		Profile:   ProfileConfig{Active: "default"},
+		// Pre-1.0 default = on. Matches the wizard form's title
+		// ("Anonymous telemetry (pre-1.0 default = on)") + the
+		// post-onboard thank-you copy ("Telemetry stays on through
+		// v1.0.0 while clawtool is in active development"). The
+		// allow-list payload (command + version + duration +
+		// exit_code + agent family + recipe / engine / bridge
+		// names) carries no prompts, paths, secrets, or env
+		// values; opt-out is one command (`clawtool telemetry
+		// off`). When v1.0.0 ships we collapse this back to
+		// false — tracked in the roadmap.
+		Telemetry: TelemetryConfig{Enabled: true},
 	}
 }
 
