@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -138,6 +139,86 @@ func TestIsCoreToolSelector(t *testing.T) {
 	for _, c := range cases {
 		if got := isCoreToolSelector(c.in); got != c.want {
 			t.Errorf("isCoreToolSelector(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+// TestLoad_TelemetryUpgradeMergesDefaultOn covers the v0.22.19+
+// upgrade path: a config.toml that exists but omits `[telemetry]
+// enabled` should NOT silently flip the user to off (zero-value
+// of bool). Pre-fix, Load() returned Enabled=false here, which
+// contradicted Default() and the wizard's "pre-1.0 default = on"
+// claim. The fix: mergeDefaults patches absent telemetry-enabled
+// keys with Default()'s value.
+func TestLoad_TelemetryUpgradeMergesDefaultOn(t *testing.T) {
+	cases := []struct {
+		name string
+		toml string
+		want bool
+	}{
+		{
+			name: "omitted entirely → default on",
+			toml: "profile = { active = \"default\" }\n",
+			want: true,
+		},
+		{
+			name: "section present but enabled key absent → default on",
+			toml: "[telemetry]\napi_key = \"x\"\n",
+			want: true,
+		},
+		{
+			name: "explicit enabled = false → respected",
+			toml: "[telemetry]\nenabled = false\n",
+			want: false,
+		},
+		{
+			name: "explicit enabled = true → respected",
+			toml: "[telemetry]\nenabled = true\n",
+			want: true,
+		},
+		{
+			name: "comment-only between section and key → still treated as absent",
+			toml: "[telemetry]\n# enabled = true (commented out)\napi_key = \"x\"\n",
+			want: true,
+		},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.toml")
+		if err := os.WriteFile(path, []byte(c.toml), 0o644); err != nil {
+			t.Fatalf("%s: write: %v", c.name, err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("%s: load: %v", c.name, err)
+		}
+		if cfg.Telemetry.Enabled != c.want {
+			t.Errorf("%s: Telemetry.Enabled = %v, want %v", c.name, cfg.Telemetry.Enabled, c.want)
+		}
+	}
+}
+
+// TestHasTelemetryEnabledKey_Direct unit-tests the string scanner
+// independently of Load() so future TOML grammar surprises
+// (whitespace variants, inline tables) get caught at the helper
+// boundary, not via the higher-level Load round-trip.
+func TestHasTelemetryEnabledKey_Direct(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want bool
+	}{
+		{"", false},
+		{"[telemetry]\n", false},
+		{"[telemetry]\nenabled = true\n", true},
+		{"[telemetry]\nenabled=false\n", true},
+		{"[telemetry]\n  enabled = true\n", true},
+		{"[telemetry]\n# enabled = true\n", false},
+		{"[other]\nenabled = true\n", false},
+		{"[telemetry]\napi_key = \"x\"\n[other]\nenabled = false\n", false},
+	}
+	for _, c := range cases {
+		if got := hasTelemetryEnabledKey([]byte(c.raw)); got != c.want {
+			t.Errorf("hasTelemetryEnabledKey(%q) = %v, want %v", c.raw, got, c.want)
 		}
 	}
 }
