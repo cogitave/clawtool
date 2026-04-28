@@ -5,7 +5,33 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"time"
+
+	"github.com/cogitave/clawtool/internal/telemetry"
 )
+
+// emitRecipeApplyEvent fires after every recipe Apply terminates.
+// Allow-listed shape: recipe name (public catalog), duration,
+// outcome (success / error / skipped). Verify-failed counts as
+// "verify_failed" outcome so the dashboard can split.
+func emitRecipeApplyEvent(name string, start time.Time, res *ApplyResult) {
+	tc := telemetry.Get()
+	if tc == nil || !tc.Enabled() {
+		return
+	}
+	outcome := "success"
+	switch {
+	case res.Skipped:
+		outcome = "skipped"
+	case res.VerifyErr != nil:
+		outcome = "verify_failed"
+	}
+	tc.Track("recipe.apply", map[string]any{
+		"recipe":      name,
+		"duration_ms": time.Since(start).Milliseconds(),
+		"outcome":     outcome,
+	})
+}
 
 // CurrentPlatform returns the host's Platform. Recipes consult this
 // when picking install commands; runtime/setup callers use it to
@@ -157,11 +183,15 @@ var ErrSkippedByUser = errors.New("recipe skipped by user")
 // (Result.Skipped + non-nil err on user-skip; Result.VerifyErr +
 // nil err on apply-ok-but-verify-failed).
 func Apply(ctx context.Context, recipe Recipe, ao ApplyOptions) (ApplyResult, error) {
+	start := time.Now()
 	res := ApplyResult{
 		Recipe:       recipe.Meta().Name,
 		Category:     recipe.Meta().Category,
 		UpstreamUsed: recipe.Meta().Upstream,
 	}
+	defer func() {
+		emitRecipeApplyEvent(recipe.Meta().Name, start, &res)
+	}()
 	if ao.Prompter == nil {
 		return res, errors.New("ApplyOptions.Prompter is required")
 	}

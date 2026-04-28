@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/hooks"
+	"github.com/cogitave/clawtool/internal/telemetry"
 )
 
 // SendStream is the function shape the runner expects from Supervisor:
@@ -279,6 +280,58 @@ func (r *Runner) recordResult(prompt *Envelope, kind EnvelopeKind, body string, 
 			"status":  string(terminal),
 		})
 	}
+
+	// Telemetry: BIAM task terminal. Family extracted from instance
+	// label by trimming the trailing -<n> suffix that BridgeAdd
+	// appends; stays anonymous (no instance-specific label leaks).
+	if tc := telemetry.Get(); tc != nil && tc.Enabled() {
+		duration := int64(0)
+		if t, err := r.store.GetTask(bg, prompt.TaskID); err == nil && t != nil {
+			if t.ClosedAt != nil {
+				duration = t.ClosedAt.Sub(t.CreatedAt).Milliseconds()
+			}
+		}
+		tc.Track("biam.task.terminal", map[string]any{
+			"agent":       familyFromInstance(prompt.To.InstanceID),
+			"outcome":     biamOutcome(terminal),
+			"duration_ms": duration,
+		})
+	}
+}
+
+// familyFromInstance strips trailing -<n> suffixes that the bridge
+// installer appends so the telemetry stays at family granularity
+// only (claude / codex / gemini / opencode / hermes), never the
+// per-instance label.
+func familyFromInstance(inst string) string {
+	for i := len(inst) - 1; i >= 0; i-- {
+		c := inst[i]
+		if c >= '0' && c <= '9' {
+			continue
+		}
+		if c == '-' && i < len(inst)-1 {
+			return inst[:i]
+		}
+		break
+	}
+	if idx := strings.IndexByte(inst, '-'); idx > 0 {
+		return inst[:idx]
+	}
+	return inst
+}
+
+func biamOutcome(s TaskStatus) string {
+	switch s {
+	case TaskDone:
+		return "success"
+	case TaskFailed:
+		return "error"
+	case TaskCancelled:
+		return "cancelled"
+	case TaskExpired:
+		return "timeout"
+	}
+	return string(s)
 }
 
 // summary trims the body to a one-line summary stored on the task row.

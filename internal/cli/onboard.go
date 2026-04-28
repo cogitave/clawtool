@@ -221,10 +221,15 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 			Description("Routes Bash/Read/Edit/Write tool calls through an isolated container instead of the daemon's host process. Default = off (host execution). To enable later: build the worker image and flip [sandbox_worker] mode to \"container\" in ~/.config/clawtool/config.toml. Run `clawtool sandbox-worker --help` for the full surface."),
 	))
 
+	// Pre-1.0 development phase: default to opt-in. The wizard
+	// description explains exactly what flows; the operator can
+	// still flip Negative if they want full silence. We collapse
+	// back to opt-out default at v1.0 (tracked in the roadmap).
+	state.Telemetry = true
 	groups = append(groups, huh.NewGroup(
 		huh.NewConfirm().
-			Title("Anonymous telemetry").
-			Description("Emits command name, version, OS/arch, duration, exit code, and error class. No prompts, paths, file contents, secrets, or env values.").
+			Title("Anonymous telemetry (pre-1.0 default = on)").
+			Description("Until v1.0.0 ships, telemetry is on by default — clawtool is in active development and the dashboard is what tells us which paths actually get used. Emits ONLY: command name + subcommand, version, OS/arch, duration, exit code, error class, agent FAMILY (claude/codex/gemini/opencode/hermes — never the instance label), recipe / engine / bridge names from the public catalog. NEVER: prompts, paths, file contents, secrets, env values, instance IDs, hostnames. Anonymous distinct ID at ~/.local/share/clawtool/telemetry-id. Flip to 'No thanks' for total silence.").
 			Affirmative("Opt in").
 			Negative("No thanks").
 			Value(&state.Telemetry),
@@ -307,6 +312,21 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 
 	if d.verifySummary != nil {
 		d.verifySummary()
+	}
+
+	// Pre-1.0 telemetry thank-you. Lands at the very end so it's
+	// the last thing the operator reads before the prompt comes
+	// back. Only when they actually opted in.
+	if state.Telemetry {
+		d.stdoutLn("")
+		d.stdoutLn("───────────────────────────────────────────────────")
+		d.stdoutLn("Telemetry stays on through v1.0.0 while clawtool is")
+		d.stdoutLn("in active development — anonymous usage data tells")
+		d.stdoutLn("us which paths actually get used so we can sharpen")
+		d.stdoutLn("them. Thank you for contributing to the build by")
+		d.stdoutLn("leaving it on; if it ever feels invasive, flip it")
+		d.stdoutLn("off any time with: clawtool telemetry off")
+		d.stdoutLn("───────────────────────────────────────────────────")
 	}
 	return nil
 }

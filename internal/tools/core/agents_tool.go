@@ -19,6 +19,7 @@ import (
 
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/agents/biam"
+	"github.com/cogitave/clawtool/internal/telemetry"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -242,7 +243,32 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 		out.ErrorReason = fmt.Sprintf("upstream exited non-zero: %v", closeErr)
 	}
 	out.DurationMs = time.Since(start).Milliseconds()
+	emitAgentDispatchEvent(out.Family, out.DurationMs, out.IsError(), bidi)
 	return resultOf(out), nil
+}
+
+// emitAgentDispatchEvent fires after every SendMessage dispatch.
+// Allow-listed shape: family only (never instance), duration,
+// success/error outcome, sync vs bidi.
+func emitAgentDispatchEvent(family string, durMs int64, isErr, bidi bool) {
+	tc := telemetry.Get()
+	if tc == nil || !tc.Enabled() {
+		return
+	}
+	outcome := "success"
+	if isErr {
+		outcome = "error"
+	}
+	flags := "sync"
+	if bidi {
+		flags = "bidi"
+	}
+	tc.Track("agent.dispatch", map[string]any{
+		"agent":       family,
+		"duration_ms": durMs,
+		"outcome":     outcome,
+		"flags":       flags,
+	})
 }
 
 func runAgentList(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {

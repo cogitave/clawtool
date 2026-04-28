@@ -47,15 +47,29 @@ type Client struct {
 
 // allowedKeys is the strict allow-list for payload properties.
 // Anything else gets dropped before the event reaches PostHog.
+//
+// Every key here MUST be either an enumerable / public-catalog value
+// (recipe names, sandbox engine names, agent families) or a
+// process-level metric (duration, exit code, error class). NEVER
+// add anything that could carry user-typed text, file paths, env
+// values, secret material, or instance-specific identifiers
+// (`claude-personal`, repo slugs, host names).
 var allowedKeys = map[string]bool{
 	"command":     true,
+	"subcommand":  true, // first sub-arg of a verb (e.g. "source add" → "add")
 	"version":     true,
 	"os":          true,
 	"arch":        true,
 	"duration_ms": true,
 	"exit_code":   true,
 	"error_class": true,
-	"agent":       true, // family name only, never instance ID (could leak `claude-personal`)
+	"outcome":     true, // taxonomy: "success" | "error" | "skipped" | "timeout" | "cancelled"
+	"agent":       true, // family name only, never instance ID
+	"bridge":      true, // bridge family being installed/upgraded/removed
+	"recipe":      true, // public recipe name from internal/setup catalog
+	"engine":      true, // sandbox engine: bwrap | sandbox-exec | docker | noop
+	"event_kind":  true, // optional sub-categorisation for high-cardinality events
+	"flags":       true, // CSV of feature-toggle flags used (--async, --unattended, --json, …)
 }
 
 // New initialises the client when telemetry is enabled. Disabled
