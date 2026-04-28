@@ -15,8 +15,11 @@
 package tui
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -59,6 +62,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		refreshCmd(m.store, m.sup),
 		tickCmd(),
+		watchSubscribeCmd(),
 	)
 }
 
@@ -118,6 +122,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			refreshCmd(m.store, m.sup),
 			tickCmd(),
 		)
+
+	case watchEventMsg:
+		// Push update from the daemon's task-watch socket.
+		// Replace the matching task in-place; append when new.
+		// Keeps the dashboard reactive to state transitions
+		// within ~50ms instead of waiting up to 1s for the
+		// next polling tick.
+		updated := false
+		for i := range m.tasks {
+			if m.tasks[i].TaskID == msg.task.TaskID {
+				m.tasks[i] = msg.task
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			m.tasks = append([]biam.Task{msg.task}, m.tasks...)
+		}
+		m.lastRefresh = time.Now()
+		return m, watchReadCmd(msg.dec, msg.conn)
+
+	case watchClosedMsg:
+		// Socket disconnected — fall back to polling. Schedule
+		// a reconnect attempt on the next tick so a daemon
+		// restart heals the dashboard automatically.
+		return m, nil
 	}
 
 	return m, nil
@@ -434,6 +464,50 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(pollInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+// ─── push-mode watch socket subscription ───────────────────────────
+//
+// Phase 1 of the orchestrator (ADR-028): consume the daemon's
+// task-watch Unix socket so state transitions reach the dashboard
+// in real time instead of waiting for the 1s SQLite tick. Connect
+// failures are silently absorbed — the polling tick keeps the
+// dashboard alive.
+
+type watchEventMsg struct {
+	task biam.Task
+	dec  *json.Decoder
+	conn net.Conn
+}
+
+type watchClosedMsg struct{}
+
+func watchSubscribeCmd() tea.Cmd {
+	return func() tea.Msg {
+		conn, err := biam.DialWatchSocket("")
+		if err != nil {
+			// No daemon / no socket → polling-only mode.
+			return watchClosedMsg{}
+		}
+		dec := json.NewDecoder(bufio.NewReader(conn))
+		var t biam.Task
+		if err := dec.Decode(&t); err != nil {
+			_ = conn.Close()
+			return watchClosedMsg{}
+		}
+		return watchEventMsg{task: t, dec: dec, conn: conn}
+	}
+}
+
+func watchReadCmd(dec *json.Decoder, conn net.Conn) tea.Cmd {
+	return func() tea.Msg {
+		var t biam.Task
+		if err := dec.Decode(&t); err != nil {
+			_ = conn.Close()
+			return watchClosedMsg{}
+		}
+		return watchEventMsg{task: t, dec: dec, conn: conn}
+	}
 }
 
 func Run(store *biam.Store, sup agents.Supervisor) error {
