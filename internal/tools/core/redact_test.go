@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -61,21 +60,29 @@ func TestRedactSecrets_NoFalsePositiveOnPlainPath(t *testing.T) {
 	}
 }
 
-func TestBaseResultMarshalJSON_RedactsErrorReason(t *testing.T) {
+// Pre-2026-04-30 BaseResult.MarshalJSON ran every envelope through
+// redactSecrets — but Go's interface promotion meant outer tool
+// result types inherited that MarshalJSON, shadowing every sibling
+// field (Stdout / ExitCode / Matches / …) and dropping
+// structuredContent to just {duration_ms: N}. We dropped the
+// MarshalJSON; redaction now lives in ErrorLine() (rendered text,
+// content[].text wire channel) which is the surface model + UI
+// actually read. structuredContent.error_reason carries the raw
+// err.Error() string, matching the v0.21 wire shape.
+//
+// This test guards the user-visible contract: the rendered text
+// returned to the chat UI must be redacted.
+func TestBaseResultErrorLine_RedactsViaRenderedText(t *testing.T) {
 	br := BaseResult{
 		Operation:   "fetch",
 		ErrorReason: "boom: OPENAI_API_KEY=sk-secret-1234567890abcdef in env",
 	}
-	b, err := json.Marshal(br)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	got := string(b)
+	got := br.ErrorLine("")
 	if strings.Contains(got, "sk-secret-1234567890abcdef") {
-		t.Fatalf("MarshalJSON leaked secret: %s", got)
+		t.Fatalf("ErrorLine leaked secret: %s", got)
 	}
 	if !strings.Contains(got, "[REDACTED]") {
-		t.Fatalf("no redaction in marshaled output: %s", got)
+		t.Fatalf("no redaction in rendered ErrorLine: %s", got)
 	}
 }
 
