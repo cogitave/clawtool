@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -39,7 +40,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cogitave/clawtool/internal/agents/biam"
+	"github.com/cogitave/clawtool/internal/daemon"
 	"github.com/cogitave/clawtool/internal/tui/theme"
+	"github.com/cogitave/clawtool/internal/version"
 )
 
 const (
@@ -113,7 +116,68 @@ func (m OrchModel) Init() tea.Cmd {
 	return tea.Batch(
 		orchSubscribeCmd(),
 		orchTickCmd(),
+		orchVersionProbeCmd(),
 	)
+}
+
+// orchVersionMismatchMsg lands when the daemon's /v1/health
+// advertises a different clawtool version than this binary. The
+// model upgrades it into a SystemNotification so the operator
+// sees a banner instead of debugging a silent rendering bug for
+// an hour. The frame-broadcast pipeline IS resilient to
+// version-skew (the wire shape is stable since v0.22.5), but a
+// stale orchestrator binary can miss the orchReadCmd fix shipped
+// in v0.22.27 — without this banner the symptom is "right pane
+// stuck on (awaiting first event)" with no diagnostic.
+type orchVersionMismatchMsg struct {
+	daemonVersion string
+	binaryVersion string
+}
+
+// orchVersionProbeCmd does a one-shot HTTP GET against the
+// daemon's /v1/health and emits orchVersionMismatchMsg when the
+// versions differ. Failures are silent — the daemon may not be
+// up yet, may be on a build that pre-dates /v1/health, or this
+// orchestrator may be a CLI-only invocation against the watch
+// socket alone. We only complain about a positive mismatch.
+func orchVersionProbeCmd() tea.Cmd {
+	return func() tea.Msg {
+		s, err := daemon.ReadState()
+		if err != nil || s == nil || s.HealthURL() == "" {
+			return nil
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.HealthURL(), nil)
+		if err != nil {
+			return nil
+		}
+		if tok, _ := daemon.ReadToken(); tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
+		if err != nil {
+			return nil
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil
+		}
+		var body struct {
+			Version string `json:"version"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&body) != nil {
+			return nil
+		}
+		mine := version.Resolved()
+		if body.Version == "" || body.Version == mine {
+			return nil
+		}
+		return orchVersionMismatchMsg{
+			daemonVersion: body.Version,
+			binaryVersion: mine,
+		}
+	}
 }
 
 type orchTickMsg time.Time
@@ -265,6 +329,24 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, orchReadCmd(msg.dec, msg.conn)
+
+	case orchVersionMismatchMsg:
+		// Latch as a SystemNotification so the existing banner
+		// rendering picks it up. Severity=warning so the
+		// operator sees an amber pill instead of mistaking it
+		// for a routine info notice.
+		n := biam.SystemNotification{
+			Kind:     "warning",
+			Severity: "warning",
+			Title: fmt.Sprintf("orchestrator v%s ↔ daemon v%s — version mismatch",
+				msg.binaryVersion, msg.daemonVersion),
+			Body:       "Frames may render incorrectly when orchestrator and daemon disagree on the watch-envelope shape.",
+			ActionHint: "pkill -f clawtool && go install ./cmd/clawtool — then restart `clawtool serve` and this orchestrator.",
+			TS:         time.Now(),
+		}
+		m.systemBanner = &n
+		m.systemBannerAt = time.Now()
+		return m, nil
 
 	case watchSystemMsg:
 		// Latch the banner; the ticker will sweep it after
