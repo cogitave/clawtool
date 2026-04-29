@@ -165,6 +165,17 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		// missing maps to "unknown" so we still get the event.
 		telemetry.EmitInstallOnce(tc, version.Resolved())
 
+		// Host fingerprint — one event per daemon boot carrying
+		// every coarse hardware / environment / agent-presence
+		// dimension we collect. Lights up "what does the
+		// operator's setup look like" PostHog cohort queries
+		// without us needing to ask. Strict legal limits: every
+		// dimension is an enumerable bucket / public runtime
+		// attribute / presence boolean — see fingerprint.go.
+		fp := telemetry.FingerprintProps(os.Getenv("CLAWTOOL_INSTALL_METHOD"))
+		fp["version"] = version.Resolved()
+		tc.Track("clawtool.host_fingerprint", fp)
+
 		// Daemon log forwarder — only on the persistent HTTP
 		// daemon (transport=="http"); the stdio path is per-call
 		// and lives only for the duration of one MCP session.
