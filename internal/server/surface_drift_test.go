@@ -46,6 +46,8 @@ var surfaceAllowlist = map[string]string{
 	"BashOutput": "companion to Bash background mode; agent-facing",
 	"BashKill":   "companion to Bash background mode; agent-facing",
 	"RulesCheck": "agent-facing primitive; rules.toml is the user surface",
+	"SetContext": "agent-facing primitive (ambient editor context); no user verb — IDE / agent integrations write directly via MCP",
+	"GetContext": "agent-facing primitive (ambient editor context); no user verb — paired read for SetContext",
 
 	// Sourced/aggregated tools land per-source under wire names
 	// like `<instance>__<tool>` — they don't have plugin slash

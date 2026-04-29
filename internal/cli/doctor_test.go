@@ -80,6 +80,7 @@ func TestRunDoctor_ProducesAllSections(t *testing.T) {
 		"[agents]",
 		"[sources]",
 		"[recipes — current cwd]",
+		"[uninstall plan]",
 		"[summary]",
 	} {
 		if !strings.Contains(got, section) {
