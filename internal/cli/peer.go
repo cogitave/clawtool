@@ -422,27 +422,18 @@ func daemonRequest(method, path string, body *bytes.Reader, out any) error {
 	return nil
 }
 
-// peerStateDir returns ~/.config/clawtool/peers.d (XDG-aware).
-func peerStateDir() string {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "clawtool", "peers.d")
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		return filepath.Join(home, ".config", "clawtool", "peers.d")
-	}
-	return "peers.d"
-}
-
+// peerIDFile resolves the on-disk pointer for a session's saved
+// peer_id. Lives under a2a.PeersStateDir() so daemon's inbox files
+// and the CLI's session pointers share one directory.
 func peerIDFile(session string) string {
 	if session == "" {
 		session = "default"
 	}
-	return filepath.Join(peerStateDir(), sanitizeSession(session)+".id")
+	return filepath.Join(a2a.PeersStateDir(), sanitizeSession(session)+".id")
 }
 
 func writePeerIDFile(session, peerID string) error {
-	dir := peerStateDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(a2a.PeersStateDir(), 0o700); err != nil {
 		return err
 	}
 	return os.WriteFile(peerIDFile(session), []byte(peerID+"\n"), 0o600)
