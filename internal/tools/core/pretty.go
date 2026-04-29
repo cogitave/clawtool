@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -28,16 +29,36 @@ func (b BaseResult) IsError() bool { return b.ErrorReason != "" }
 
 // ErrorLine renders the canonical failure one-liner. Every tool
 // that fails uses this — keeps "✗ <verb> — <reason>" consistent
-// across the whole catalog.
+// across the whole catalog. Reason is redacted for known secret
+// shapes (API keys, bearer tokens, cookies) so an upstream error
+// message that includes a credential doesn't leak to the peer.
+// See internal/tools/core/redact.go for the canonical patterns.
 func (b BaseResult) ErrorLine(target string) string {
 	op := b.Operation
 	if op == "" {
 		op = "operation"
 	}
+	reason := redactSecrets(b.ErrorReason)
 	if target != "" {
-		return fmt.Sprintf("✗ %s %s — %s", op, target, b.ErrorReason)
+		return fmt.Sprintf("✗ %s %s — %s", op, target, reason)
 	}
-	return fmt.Sprintf("✗ %s — %s", op, b.ErrorReason)
+	return fmt.Sprintf("✗ %s — %s", op, reason)
+}
+
+// MarshalJSON guarantees the JSON envelope's error_reason is
+// redacted regardless of how the field was set. Tool handlers
+// have ~60 sites that assign `out.ErrorReason = err.Error()`
+// directly (common Go idiom); routing every one through a
+// setter is high-friction and one missed call site is a
+// silent leak. Owning the wire-format step here means every
+// envelope is safe by construction. The struct's zero values
+// + omitempty semantics are preserved by re-marshalling
+// through a private alias.
+func (b BaseResult) MarshalJSON() ([]byte, error) {
+	type alias BaseResult
+	cp := alias(b)
+	cp.ErrorReason = redactSecrets(cp.ErrorReason)
+	return json.Marshal(cp)
 }
 
 // SuccessLine is the canonical single-line success format used by
