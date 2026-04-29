@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.34] - 2026-04-29
+## [0.22.35] - 2026-04-29
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.34 [skip ci] (5ba4491)
+### Tests
+
+- **tui:** Orchestrator regression suite + LocalRulesPath walk-up (e0c81f7)## [0.22.34] - 2026-04-29
 
 ### Documentation
 
