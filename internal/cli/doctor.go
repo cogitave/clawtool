@@ -66,6 +66,7 @@ func (a *App) runDoctor(_ []string) int {
 	a.doctorAgents(w, rep)
 	a.doctorSources(w, rep)
 	a.doctorRecipes(w, rep)
+	a.doctorUninstallPlan(w, rep)
 
 	a.doctorSummary(w, rep)
 	if rep.critical > 0 {
@@ -410,4 +411,70 @@ func configRelativeDot(p string) string {
 		return "~" + strings.TrimPrefix(p, home)
 	}
 	return filepath.Clean(p)
+}
+
+// doctorUninstallPlan surfaces what `clawtool uninstall` would
+// remove on this host — the symmetric mirror of the install
+// surface. Repowire pattern: every install verb has a matching
+// "what would be undone" introspection so the operator can audit
+// before purging. We deliberately use the SAME planner the
+// uninstall command does (planUninstallTargets), so a future
+// addition to the uninstall scope automatically shows up here
+// too — no second list to keep in sync.
+//
+// Output is informational (every line is `info`, not `warn`) —
+// having state on disk that uninstall WOULD remove is the
+// expected condition, not a defect. We only `warn` when the
+// binary install path isn't writable (uninstall would fail at
+// purge time), so the operator gets a heads-up before they need it.
+func (a *App) doctorUninstallPlan(w io.Writer, rep *doctorReport) {
+	fmt.Fprintln(w, "[uninstall plan]")
+
+	// Render the "default" uninstall scope: full sweep + binary
+	// purge. Operators who want the surgical scope can read the
+	// per-target paths and pick. We don't build a per-flag matrix
+	// because doctor is a snapshot, not a planner.
+	plan := planUninstallTargets(uninstallArgs{purgeBinary: true})
+	if len(plan) == 0 {
+		rep.info(w, "no clawtool artifacts found on this host (fresh install / already uninstalled)")
+		fmt.Fprintln(w)
+		return
+	}
+
+	// Group by kind so the output reads as a checklist instead
+	// of an inscrutable path dump.
+	byKind := map[string][]string{}
+	order := []string{"binary", "config", "sticky", "secrets", "cache", "data", "biam"}
+	for _, t := range plan {
+		byKind[t.kind] = append(byKind[t.kind], t.path)
+	}
+	for _, kind := range order {
+		paths := byKind[kind]
+		if len(paths) == 0 {
+			continue
+		}
+		sort.Strings(paths)
+		for _, p := range paths {
+			rep.info(w, fmt.Sprintf("%-7s %s", kind, p))
+		}
+	}
+
+	// Binary install path writability check — the one place a
+	// failure is actionable BEFORE running uninstall.
+	binPath := binaryInstallPath()
+	if binPath != "" {
+		if _, err := os.Stat(binPath); err == nil {
+			parent := filepath.Dir(binPath)
+			if info, err := os.Stat(parent); err == nil {
+				if info.Mode().Perm()&0o200 == 0 {
+					rep.warn(w,
+						fmt.Sprintf("binary install dir %s is not writable", parent),
+						"sudo clawtool uninstall --purge-binary  (or move the binary to ~/.local/bin)")
+				}
+			}
+		}
+	}
+
+	rep.info(w, "preview removal: clawtool uninstall --keep-config (surgical) | clawtool uninstall --purge-binary (full)")
+	fmt.Fprintln(w)
 }
