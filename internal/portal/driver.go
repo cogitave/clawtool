@@ -26,9 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/runtime"
@@ -313,31 +311,4 @@ type obscuraServer struct {
 // any caller that still detects it.
 var ErrSessionContextDone = errors.New("portal: browser session context cancelled")
 
-// fetchBrowserWSFromHost is the same /json/version probe the
-// chromedp RemoteAllocator uses — exported here so callers (e.g.
-// the runtime obscura spawner) can resolve a ws:// URL when they
-// know only the host:port. Kept tiny, no retries — caller picks
-// timing.
-func fetchBrowserWSFromHost(ctx context.Context, host string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/json/version", nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	var body struct {
-		WebSocketURL string `json:"webSocketDebuggerUrl"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return "", err
-	}
-	if body.WebSocketURL == "" {
-		return "", errors.New("portal: /json/version returned no webSocketDebuggerUrl")
-	}
-	return body.WebSocketURL, nil
-}
 
-var _ = time.Now // reserved for future deadline tuning

@@ -130,6 +130,26 @@ func TestWatchHub_UnsubscribeRemovesSlot(t *testing.T) {
 	}
 }
 
+func TestWatchHub_FrameUnsubscribeFreesSlot(t *testing.T) {
+	hub := &WatchHub{
+		subs:   map[*watchSub]struct{}{},
+		frames: map[*frameSub]struct{}{},
+		system: map[*systemSub]struct{}{},
+	}
+	_, unsub := hub.SubscribeFrames()
+	if hub.FrameSubsCount() != 1 {
+		t.Fatalf("expected 1 frame sub, got %d", hub.FrameSubsCount())
+	}
+	unsub()
+	if hub.FrameSubsCount() != 0 {
+		t.Fatalf("expected 0 frame subs after unsub, got %d", hub.FrameSubsCount())
+	}
+	unsub() // idempotent
+	if hub.FrameSubsCount() != 0 {
+		t.Errorf("idempotent frame unsub broke count")
+	}
+}
+
 func TestWatchHub_SystemBroadcastFanOut(t *testing.T) {
 	hub := &WatchHub{
 		subs:   map[*watchSub]struct{}{},

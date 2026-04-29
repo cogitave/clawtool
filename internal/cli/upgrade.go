@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"runtime/debug"
 	"time"
 
 	"github.com/cogitave/clawtool/internal/daemon"
@@ -232,19 +231,4 @@ func isComparableVersion(v string) bool {
 	return true
 }
 
-// readBinaryVersion pulls the build version from runtime/debug. When
-// the binary was built without -ldflags='-X version.Version=…' (e.g.
-// `go build` from source), debug.ReadBuildInfo's Main.Version reports
-// "(devel)"; we surface that verbatim so users see they're on a
-// dev build.
-func readBinaryVersion() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "(unknown)"
-	}
-	v := info.Main.Version
-	if v == "" {
-		return "(devel)"
-	}
-	return v
-}
+
