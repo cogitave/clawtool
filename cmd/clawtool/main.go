@@ -10,15 +10,30 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/cogitave/clawtool/internal/cli"
 	"github.com/cogitave/clawtool/internal/server"
 	"github.com/cogitave/clawtool/internal/version"
 )
 
+// rootCtx is the process-wide context every long-running entrypoint
+// roots its work under. SIGINT / SIGTERM cancel it, which propagates
+// through ServeStdio / ServeHTTP / the runner / cli subcommands so
+// deferred cleanup actually runs (HTTP graceful shutdown,
+// runner.Stop's WaitGroup join, store.Close, audit-log Close, tmp
+// worktree reap). Pre-fix this was context.Background() everywhere
+// and Ctrl-C left the daemon mid-write.
+var rootCtx context.Context
+
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(),
+		os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	rootCtx = ctx
 	os.Exit(run(os.Args[1:]))
 }
 
@@ -70,14 +85,14 @@ func runServe(argv []string) int {
 
 	if opts.Listen == "" {
 		// Default path: stdio MCP server.
-		if err := server.ServeStdio(context.Background()); err != nil {
+		if err := server.ServeStdio(rootCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "clawtool: serve failed: %v\n", err)
 			return 1
 		}
 		return 0
 	}
 
-	if err := server.ServeHTTP(context.Background(), opts); err != nil {
+	if err := server.ServeHTTP(rootCtx, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "clawtool: serve --listen %s failed: %v\n", opts.Listen, err)
 		return 1
 	}
