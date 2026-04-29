@@ -34,6 +34,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 // State is the persisted snapshot of a running daemon.
@@ -77,23 +79,13 @@ func TokenPath() string {
 
 // LogPath returns the daemon's combined-output log path.
 func LogPath() string {
-	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
-		return filepath.Join(dir, "clawtool", "daemon.log")
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		return filepath.Join(home, ".local", "state", "clawtool", "daemon.log")
-	}
-	return "daemon.log"
+	return filepath.Join(xdg.StateDir(), "daemon.log")
 }
 
+// configDir delegates to the central xdg package so every callsite
+// (daemon, secrets, a2a, telemetry, …) shares one fallback chain.
 func configDir() string {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "clawtool")
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		return filepath.Join(home, ".config", "clawtool")
-	}
-	return "."
+	return xdg.ConfigDir()
 }
 
 // ReadToken returns the bearer token contents (whitespace-trimmed).
