@@ -4,7 +4,15 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.36] - 2026-04-29
+## [0.22.38] - 2026-04-29
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.36 [skip ci] (4a4448c)
+### Features
+
+- **onboard:** Clear-screen entry + boxed header + structured phase output (9749d4f)
+- **telemetry:** Host fingerprint + GeoIP suppression for Microsoft-level diagnostics (bec137f)## [0.22.36] - 2026-04-29
 
 ### CI
 
