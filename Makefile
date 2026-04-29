@@ -37,6 +37,14 @@ integration: build ## Multi-instance soak against real upstream MCP servers (npx
 	@command -v npx >/dev/null 2>&1 || { echo "npx required (install Node.js 18+)"; exit 1; }
 	@bash test/e2e/integration.sh
 
+.PHONY: e2e-onboard
+e2e-onboard: ## Run the onboard --yes container e2e (Docker required).
+	CLAWTOOL_E2E_DOCKER=1 $(GO) test -count=1 -timeout=300s ./test/e2e/onboard/...
+
+.PHONY: e2e-upgrade
+e2e-upgrade: ## Run the binary-swap + daemon-restart container e2e (Docker required).
+	CLAWTOOL_E2E_DOCKER=1 $(GO) test -count=1 -timeout=300s ./test/e2e/upgrade/...
+
 .PHONY: stub-server
 stub-server: ## Build the stub MCP server used as a test fixture.
 	$(GO) build -o test/e2e/stub-server/stub-server ./test/e2e/stub-server
