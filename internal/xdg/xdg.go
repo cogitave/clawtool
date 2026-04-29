@@ -96,3 +96,32 @@ func CacheDirOrTemp() string {
 	}
 	return filepath.Join(os.TempDir(), appName)
 }
+
+// ConfigDirIfHome / DataDirIfHome / CacheDirIfHome return the
+// per-app directory when $XDG_X_HOME or $HOME is resolvable,
+// else return the empty string. The empty-sentinel signals
+// "skip this path" — uninstall and other cleanup walkers iterate
+// candidate directories and need to avoid stepping on cwd-relative
+// literals, which would let `clawtool uninstall` walk into a
+// stray ./clawtool directory in the operator's project tree.
+//
+// Use these instead of ConfigDir / DataDir / CacheDir whenever the
+// caller would prefer to skip the path entirely over scanning a
+// surprise cwd-relative match. Production callers that always
+// want a real path (state writes, log files, identity) should
+// keep using the literal-fallback variants.
+func ConfigDirIfHome() string { return resolveIfHome("XDG_CONFIG_HOME", ".config") }
+func DataDirIfHome() string {
+	return resolveIfHome("XDG_DATA_HOME", filepath.Join(".local", "share"))
+}
+func CacheDirIfHome() string { return resolveIfHome("XDG_CACHE_HOME", ".cache") }
+
+func resolveIfHome(envKey, defaultRel string) string {
+	if v := os.Getenv(envKey); v != "" {
+		return filepath.Join(v, appName)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, defaultRel, appName)
+	}
+	return ""
+}

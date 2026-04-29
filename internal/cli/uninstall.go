@@ -21,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 const uninstallUsage = `Usage:
@@ -148,9 +150,9 @@ func planUninstallTargets(args uninstallArgs) []uninstallTarget {
 		}
 	}
 
-	cfgDir := filepath.Dir(configPathDefault())
-	cacheDir := xdgClawCache()
-	dataDir := xdgClawData()
+	cfgDir := xdg.ConfigDirIfHome()
+	cacheDir := xdg.CacheDirIfHome()
+	dataDir := xdg.DataDirIfHome()
 
 	if args.keepConfig {
 		// Surgical removal: pointers, hooks state, telemetry id —
@@ -174,43 +176,6 @@ func planUninstallTargets(args uninstallArgs) []uninstallTarget {
 		add("binary", binaryInstallPath())
 	}
 	return out
-}
-
-// configPathDefault mirrors config.DefaultPath without importing
-// the config package (avoids a circular import — config doesn't
-// import cli, but we want to keep this file dependency-light so
-// the uninstall surface can live in any future repo split).
-func configPathDefault() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "config.toml")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "config.toml"
-	}
-	return filepath.Join(home, ".config", "clawtool", "config.toml")
-}
-
-func xdgClawCache() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CACHE_HOME")); x != "" {
-		return filepath.Join(x, "clawtool")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ""
-	}
-	return filepath.Join(home, ".cache", "clawtool")
-}
-
-func xdgClawData() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); x != "" {
-		return filepath.Join(x, "clawtool")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ""
-	}
-	return filepath.Join(home, ".local", "share", "clawtool")
 }
 
 // binaryInstallPath honours the Makefile's INSTALL_DIR convention
