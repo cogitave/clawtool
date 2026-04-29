@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/cli/listfmt"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/sandbox"
 )
@@ -42,7 +43,12 @@ func (a *App) runSandbox(argv []string) int {
 	}
 	switch argv[0] {
 	case "list":
-		return dispatchPlainErr(a.Stderr, "sandbox list", a.SandboxList())
+		format, _, err := listfmt.ExtractFlag(argv[1:])
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool sandbox list: %v\n", err)
+			return 2
+		}
+		return dispatchPlainErr(a.Stderr, "sandbox list", a.SandboxList(format))
 	case "show":
 		if len(argv) != 2 {
 			fmt.Fprintln(a.Stderr, "usage: clawtool sandbox show <name>")
@@ -66,7 +72,7 @@ func (a *App) runSandbox(argv []string) int {
 
 // SandboxList prints every configured profile + the engine that
 // would run it on this host.
-func (a *App) SandboxList() error {
+func (a *App) SandboxList(format listfmt.Format) error {
 	cfg, err := config.LoadOrDefault(config.DefaultPath())
 	if err != nil {
 		return err
@@ -82,12 +88,12 @@ func (a *App) SandboxList() error {
 	sort.Strings(names)
 
 	engine := sandbox.SelectEngine()
-	fmt.Fprintf(a.Stdout, "%-28s %-12s %s\n", "PROFILE", "ENGINE", "DESCRIPTION")
+	cols := listfmt.Cols{Header: []string{"PROFILE", "ENGINE", "DESCRIPTION"}}
 	for _, n := range names {
 		p := cfg.Sandboxes[n]
-		fmt.Fprintf(a.Stdout, "%-28s %-12s %s\n", n, engine.Name(), strings.TrimSpace(p.Description))
+		cols.Rows = append(cols.Rows, []string{n, engine.Name(), strings.TrimSpace(p.Description)})
 	}
-	return nil
+	return listfmt.Render(a.Stdout, format, cols)
 }
 
 // SandboxShow parses one profile + prints the resolved view.

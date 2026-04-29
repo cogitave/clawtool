@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/cli/listfmt"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/portal"
 	"github.com/cogitave/clawtool/internal/secrets"
@@ -52,7 +53,12 @@ func (a *App) runPortal(argv []string) int {
 	}
 	switch argv[0] {
 	case "list":
-		return a.dispatchPortalErr("list", a.PortalList())
+		format, _, err := listfmt.ExtractFlag(argv[1:])
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool portal list: %v\n", err)
+			return 2
+		}
+		return a.dispatchPortalErr("list", a.PortalList(format))
 	case "which":
 		return a.dispatchPortalErr("which", a.PortalWhich())
 	case "use":
@@ -133,7 +139,7 @@ func (a *App) loadPortals() (map[string]config.PortalConfig, string, error) {
 // PortalList prints the configured portals one per line — same
 // shape as `clawtool send --list` so the operator sees both
 // surfaces consistently.
-func (a *App) PortalList() error {
+func (a *App) PortalList(format listfmt.Format) error {
 	portals, _, err := a.loadPortals()
 	if err != nil {
 		return err
@@ -143,16 +149,16 @@ func (a *App) PortalList() error {
 		return nil
 	}
 	cfg := config.Config{Portals: portals}
-	fmt.Fprintf(a.Stdout, "%-22s %-46s %s\n", "NAME", "BASE URL", "AUTH COOKIES")
+	cols := listfmt.Cols{Header: []string{"NAME", "BASE_URL", "AUTH_COOKIES"}}
 	for _, name := range portal.Names(cfg) {
 		p := portals[name]
 		auth := strings.Join(p.AuthCookieNames, ",")
 		if auth == "" {
 			auth = "(none declared)"
 		}
-		fmt.Fprintf(a.Stdout, "%-22s %-46s %s\n", name, p.BaseURL, auth)
+		cols.Rows = append(cols.Rows, []string{name, p.BaseURL, auth})
 	}
-	return nil
+	return listfmt.Render(a.Stdout, format, cols)
 }
 
 // PortalWhich resolves the sticky-default portal. Same precedence
