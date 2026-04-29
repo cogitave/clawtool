@@ -29,6 +29,7 @@ import (
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/daemon"
 	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/observability"
 	"github.com/cogitave/clawtool/internal/sandbox/worker"
@@ -163,6 +164,19 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		// brew formula / go-install wrapper at install time;
 		// missing maps to "unknown" so we still get the event.
 		telemetry.EmitInstallOnce(tc, version.Resolved())
+
+		// Daemon log forwarder — only on the persistent HTTP
+		// daemon (transport=="http"); the stdio path is per-call
+		// and lives only for the duration of one MCP session.
+		// Tails $XDG_STATE_HOME/clawtool/daemon.log and forwards
+		// classified panic / error / warn events as
+		// `clawtool.daemon.log_event` so we can see when an
+		// operator's host is in trouble. Rate-limited (60/min),
+		// classification-only (line bodies never cross the wire).
+		if transport == "http" {
+			watcher := telemetry.NewLogWatcher(tc, daemon.LogPath())
+			go watcher.Run(ctx)
+		}
 	}
 
 	// BIAM Phase 1 (ADR-015): bring up the per-instance identity +
