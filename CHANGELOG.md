@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.32] - 2026-04-29
+## [0.22.33] - 2026-04-29
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.32 [skip ci] (745a055)
+### Fixes
+
+- **config:** Round-2 audit batch — secret leak, races, signal handling (eea198f)## [0.22.32] - 2026-04-29
 
 ### Documentation
 
