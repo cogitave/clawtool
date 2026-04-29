@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -31,14 +32,7 @@ type Store struct {
 // DefaultPath returns ~/.config/clawtool/secrets.toml (or the XDG variant).
 // Mirrors config.DefaultPath but with the secrets.toml filename.
 func DefaultPath() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "secrets.toml")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "secrets.toml"
-	}
-	return filepath.Join(home, ".config", "clawtool", "secrets.toml")
+	return filepath.Join(xdg.ConfigDir(), "secrets.toml")
 }
 
 // LoadOrEmpty reads the secrets file. A missing file is not an error; we

@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/google/uuid"
 )
 
@@ -79,13 +80,7 @@ type Inbox struct {
 //	peers.d/<session>.id            — CLI's session→peer_id pointer
 //	peers.d/<peer_uuid>.inbox.json  — daemon's per-peer mailbox
 func PeersStateDir() string {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "clawtool", "peers.d")
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		return filepath.Join(home, ".config", "clawtool", "peers.d")
-	}
-	return "peers.d"
+	return filepath.Join(xdg.ConfigDir(), "peers.d")
 }
 
 func inboxPath(peerID string) string {
