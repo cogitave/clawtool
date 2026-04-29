@@ -83,7 +83,7 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 				outcome = "error"
 			}
 			tc.Track("server.stop", map[string]any{
-				"version":     version.Version,
+				"version":     version.Resolved(),
 				"duration_ms": time.Since(bootedAt).Milliseconds(),
 				"outcome":     outcome,
 				"transport":   "http",
@@ -244,7 +244,7 @@ func authMiddleware(expected string) func(http.Handler) http.Handler {
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	// Resolved() picks the goreleaser-baked ldflags string when
 	// present, falls back to debug.ReadBuildInfo, then to the
-	// const. Pre-fix this read version.Version directly, so a
+	// const. Pre-fix this read version.Resolved() directly, so a
 	// container running v0.22.x advertised "0.21.7" on /v1/health
 	// (the const value at the time the var was introduced) — caught
 	// during Docker e2e probe at v0.22.23.

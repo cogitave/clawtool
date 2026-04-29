@@ -60,7 +60,7 @@ func ServeStdio(ctx context.Context) error {
 	// shutdown even if ServeStdio errors out.
 	if mgr := hooks.Get(); mgr != nil {
 		_ = mgr.Emit(ctx, hooks.EventOnServerStop, map[string]any{
-			"version": version.Version,
+			"version": version.Resolved(),
 			"pid":     os.Getpid(),
 		})
 	}
@@ -75,7 +75,7 @@ func ServeStdio(ctx context.Context) error {
 			outcome = "error"
 		}
 		tc.Track("server.stop", map[string]any{
-			"version":     version.Version,
+			"version":     version.Resolved(),
 			"duration_ms": time.Since(bootedAt).Milliseconds(),
 			"outcome":     outcome,
 			"transport":   "stdio",
@@ -129,7 +129,7 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	hookMgr := hooks.New(cfg.Hooks)
 	hooks.SetGlobal(hookMgr)
 	_ = hookMgr.Emit(ctx, hooks.EventOnServerStart, map[string]any{
-		"version": version.Version,
+		"version": version.Resolved(),
 		"pid":     os.Getpid(),
 	})
 
@@ -140,7 +140,7 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		tc := telemetry.New(cfg.Telemetry)
 		telemetry.SetGlobal(tc)
 		tc.Track("server.start", map[string]any{
-			"version":   version.Version,
+			"version":   version.Resolved(),
 			"transport": transport,
 		})
 		// Fresh-host install event — fires once per host (marker
@@ -149,7 +149,7 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		// comes from $CLAWTOOL_INSTALL_METHOD set by install.sh /
 		// brew formula / go-install wrapper at install time;
 		// missing maps to "unknown" so we still get the event.
-		telemetry.EmitInstallOnce(tc, version.Version)
+		telemetry.EmitInstallOnce(tc, version.Resolved())
 	}
 
 	// BIAM Phase 1 (ADR-015): bring up the per-instance identity +
