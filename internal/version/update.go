@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/atomicfile"
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 // UpdateCheckURL is the GitHub Releases API endpoint we hit. The
@@ -72,14 +73,7 @@ type UpdateInfo struct {
 // to. Honors XDG_CACHE_HOME, falls back to $HOME/.cache, falls
 // back further to a tempfile path. Never returns empty.
 func updateCachePath() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CACHE_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "update.json")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join(os.TempDir(), "clawtool-update.json")
-	}
-	return filepath.Join(home, ".cache", "clawtool", "update.json")
+	return filepath.Join(xdg.CacheDirOrTemp(), "update.json")
 }
 
 // updateCacheTTL controls how long we trust a cached result.

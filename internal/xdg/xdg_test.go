@@ -51,6 +51,37 @@ func TestCacheDir_UsesDotCache(t *testing.T) {
 	}
 }
 
+func TestCacheDirOrTemp_HonoursXDG(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "/tmp/custom-cache")
+	if got := CacheDirOrTemp(); got != "/tmp/custom-cache/clawtool" {
+		t.Errorf("CacheDirOrTemp() = %q, want /tmp/custom-cache/clawtool", got)
+	}
+}
+
+func TestCacheDirOrTemp_FallsBackToHome(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("HOME", "/home/operator")
+	got := CacheDirOrTemp()
+	want := filepath.Join("/home/operator", ".cache", "clawtool")
+	if got != want {
+		t.Errorf("CacheDirOrTemp() = %q, want %q", got, want)
+	}
+}
+
+func TestCacheDirOrTemp_FallsBackToTempDir(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("HOME", "")
+	if old, ok := os.LookupEnv("USERPROFILE"); ok {
+		t.Setenv("USERPROFILE", "")
+		defer t.Setenv("USERPROFILE", old)
+	}
+	got := CacheDirOrTemp()
+	want := filepath.Join(os.TempDir(), "clawtool")
+	if got != want {
+		t.Errorf("CacheDirOrTemp() with no env+home = %q, want %q", got, want)
+	}
+}
+
 func TestResolve_EmptyHomeFallsBackToCwdRelative(t *testing.T) {
 	// Defensive: when both env and HOME are empty (rare — minimal
 	// containers without /etc/passwd) we should still produce a

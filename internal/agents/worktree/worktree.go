@@ -34,6 +34,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/gofrs/flock"
 )
 
@@ -75,25 +76,11 @@ type manager struct {
 func New() Manager { return &manager{cacheDir: defaultWorktreeRoot(), lockDir: defaultLockRoot()} }
 
 func defaultWorktreeRoot() string {
-	if v := strings.TrimSpace(os.Getenv("XDG_CACHE_HOME")); v != "" {
-		return filepath.Join(v, "clawtool", "worktrees")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join(os.TempDir(), "clawtool-worktrees")
-	}
-	return filepath.Join(home, ".cache", "clawtool", "worktrees")
+	return filepath.Join(xdg.CacheDirOrTemp(), "worktrees")
 }
 
 func defaultLockRoot() string {
-	if v := strings.TrimSpace(os.Getenv("XDG_CACHE_HOME")); v != "" {
-		return filepath.Join(v, "clawtool", "locks")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join(os.TempDir(), "clawtool-locks")
-	}
-	return filepath.Join(home, ".cache", "clawtool", "locks")
+	return filepath.Join(xdg.CacheDirOrTemp(), "locks")
 }
 
 func (m *manager) Create(ctx context.Context, repoPath, taskID, agent string) (string, func(), error) {

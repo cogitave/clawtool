@@ -73,3 +73,26 @@ func resolve(envKey, defaultRel string) string {
 	}
 	return filepath.Join(defaultRel, appName)
 }
+
+// CacheDirOrTemp returns CacheDir() when $XDG_CACHE_HOME or $HOME
+// is resolvable, else falls back to filepath.Join(os.TempDir(),
+// "clawtool"). Differs from CacheDir() only in the last-ditch fallback:
+// CacheDir returns the cwd-relative literal "clawtool/" (callers
+// inside the project tree get a real but surprising path);
+// CacheDirOrTemp routes to /tmp where the path is at least
+// world-writeable + non-colliding-with-source.
+//
+// Used by code paths that need a real, writeable, non-shared
+// directory even on hosts without $HOME — worktrees (rare on
+// production hosts but common in CI), update cache (shipped via
+// scratch CI runners). Callers append their own leaf via
+// filepath.Join — this only resolves the per-app root.
+func CacheDirOrTemp() string {
+	if v := os.Getenv("XDG_CACHE_HOME"); v != "" {
+		return filepath.Join(v, appName)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".cache", appName)
+	}
+	return filepath.Join(os.TempDir(), appName)
+}
