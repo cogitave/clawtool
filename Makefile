@@ -45,6 +45,10 @@ e2e-onboard: ## Run the onboard --yes container e2e (Docker required).
 e2e-upgrade: ## Run the binary-swap + daemon-restart container e2e (Docker required).
 	CLAWTOOL_E2E_DOCKER=1 $(GO) test -count=1 -timeout=300s ./test/e2e/upgrade/...
 
+.PHONY: e2e-realinstall
+e2e-realinstall: ## Run the Alpine + install.sh + GitHub-release e2e (Docker + network required).
+	CLAWTOOL_E2E_DOCKER=1 $(GO) test -count=1 -timeout=300s ./test/e2e/realinstall/...
+
 .PHONY: stub-server
 stub-server: ## Build the stub MCP server used as a test fixture.
 	$(GO) build -o test/e2e/stub-server/stub-server ./test/e2e/stub-server
