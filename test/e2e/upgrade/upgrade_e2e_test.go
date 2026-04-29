@@ -95,11 +95,15 @@ func TestUpgrade_BinarySwapAndDaemonRestart_InContainer(t *testing.T) {
 	}
 
 	stdout := sections["STDOUT"]
-	if !strings.Contains(stdout, "v0.0.0-old") {
-		t.Errorf("expected stdout to mention old version v0.0.0-old; got:\n%s", stdout)
+	// version.Resolved() strips a leading `v` from the
+	// ldflags-injected version string, so `--version` and
+	// `/v1/health` both report `0.0.0-old` / `0.0.0-new` not
+	// `v0.0.0-...`. Assertions match the canonical form.
+	if !strings.Contains(stdout, "0.0.0-old") {
+		t.Errorf("expected stdout to mention old version 0.0.0-old; got:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "v0.0.0-new") {
-		t.Errorf("expected stdout to mention new version v0.0.0-new (post-restart health); got:\n%s", stdout)
+	if !strings.Contains(stdout, "0.0.0-new") {
+		t.Errorf("expected stdout to mention new version 0.0.0-new (post-restart health); got:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "PASS — upgrade flow validated end-to-end") {
 		t.Errorf("expected final PASS marker; got:\n%s", stdout)
@@ -143,8 +147,8 @@ func TestSplitSections_ParsesMarkers(t *testing.T) {
 	in := strings.Join([]string{
 		"build noise",
 		"==STDOUT==",
-		"old --version: v0.0.0-old",
-		"new health: {\"version\":\"v0.0.0-new\"}",
+		"old --version: clawtool 0.0.0-old",
+		"new health: {\"version\":\"0.0.0-new\"}",
 		"PASS — upgrade flow validated end-to-end",
 		"==EXIT==",
 		"0",
@@ -157,10 +161,10 @@ func TestSplitSections_ParsesMarkers(t *testing.T) {
 			t.Errorf("section %q = %q, want %q", name, got[name], want)
 		}
 	}
-	if !strings.Contains(got["STDOUT"], "v0.0.0-old") {
+	if !strings.Contains(got["STDOUT"], "0.0.0-old") {
 		t.Errorf("STDOUT missed old version: %q", got["STDOUT"])
 	}
-	if !strings.Contains(got["STDOUT"], "v0.0.0-new") {
+	if !strings.Contains(got["STDOUT"], "0.0.0-new") {
 		t.Errorf("STDOUT missed new version: %q", got["STDOUT"])
 	}
 	if !strings.Contains(got["STDOUT"], "PASS") {
