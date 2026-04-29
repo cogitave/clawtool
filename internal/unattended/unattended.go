@@ -29,6 +29,7 @@ import (
 	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/google/uuid"
+	"github.com/pelletier/go-toml/v2"
 )
 
 // SessionState carries the live unattended-mode session. Every
@@ -144,11 +145,13 @@ type TrustEntry struct {
 	Note      string    `toml:"note,omitempty"`
 }
 
-// trustFile is the on-disk shape — kept TOML-shaped though we
-// emit/parse with a tiny hand-rolled writer so we don't pull in
-// a new dependency just for two scalar fields per row.
+// trustFile is the on-disk shape. The struct tag uses the lowercase
+// `trust` table name so go-toml round-trips [[trust]] correctly —
+// the on-disk header stays "[[trust]]" exactly as the historical
+// hand-rolled writer emitted, so existing trust files load without
+// migration.
 type trustFile struct {
-	Trust []TrustEntry
+	Trust []TrustEntry `toml:"trust"`
 }
 
 // TrustFilePath returns the canonical path: $XDG_DATA_HOME/clawtool/
@@ -228,8 +231,11 @@ func Revoke(repoPath string) (bool, error) {
 
 // loadTrust reads + parses the trust file. Missing file = empty
 // trust list (not an error — operator hasn't granted anything yet).
-// Tiny hand-rolled TOML parser: the file's grammar is two scalar
-// fields per [[trust]] table, nothing more.
+// Round-trips through go-toml so a repo path containing quotes,
+// backslashes, or a non-RFC3339 timestamp from a future schema
+// version surfaces as a parse error instead of silently truncating
+// (the prior hand-rolled reader trimmed `"` blindly and dropped
+// any line it couldn't `Cut` on `=`).
 func loadTrust() (trustFile, error) {
 	path := TrustFilePath()
 	body, err := os.ReadFile(path)
@@ -239,77 +245,34 @@ func loadTrust() (trustFile, error) {
 		}
 		return trustFile{}, fmt.Errorf("unattended: read trust file %s: %w", path, err)
 	}
-	return parseTrust(string(body)), nil
+	var tf trustFile
+	if err := toml.Unmarshal(body, &tf); err != nil {
+		return trustFile{}, fmt.Errorf("unattended: parse trust file %s: %w", path, err)
+	}
+	return tf, nil
 }
 
-func parseTrust(body string) trustFile {
-	var out trustFile
-	var cur *TrustEntry
-	for _, line := range strings.Split(body, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if line == "[[trust]]" {
-			if cur != nil {
-				out.Trust = append(out.Trust, *cur)
-			}
-			cur = &TrustEntry{}
-			continue
-		}
-		if cur == nil {
-			continue
-		}
-		key, val, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		val = strings.TrimSpace(val)
-		val = strings.Trim(val, `"`)
-		switch key {
-		case "repo_path":
-			cur.RepoPath = val
-		case "granted_at":
-			if t, err := time.Parse(time.RFC3339, val); err == nil {
-				cur.GrantedAt = t
-			}
-		case "note":
-			cur.Note = val
-		}
-	}
-	if cur != nil {
-		out.Trust = append(out.Trust, *cur)
-	}
-	return out
-}
+// trustFileHeader is the comment block we prepend to every saved
+// trust file so an operator running `cat ~/.local/share/clawtool/
+// unattended-trust.toml` sees what the file is for. go-toml's
+// Marshal doesn't emit comments, so we concat manually around the
+// marshal output.
+const trustFileHeader = "# clawtool unattended-mode trust file.\n" +
+	"# Each [[trust]] row records a per-repo grant.\n\n"
 
 func saveTrust(tf trustFile) error {
 	path := TrustFilePath()
+	body, err := toml.Marshal(tf)
+	if err != nil {
+		return fmt.Errorf("unattended: marshal trust file: %w", err)
+	}
 	// Mode 0o700 on the parent dir + 0o600 on the file — the
 	// trust list is the gate for `--unattended` mode (skips
 	// every permission prompt for the listed repos), so leaking
 	// which repos are auto-trusted is a privilege-escalation
 	// signal a local attacker would absolutely target.
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("unattended: mkdir %s: %w", filepath.Dir(path), err)
-	}
-	var b strings.Builder
-	b.WriteString("# clawtool unattended-mode trust file.\n")
-	b.WriteString("# Each [[trust]] row records a per-repo grant.\n\n")
-	for _, e := range tf.Trust {
-		b.WriteString("[[trust]]\n")
-		fmt.Fprintf(&b, "repo_path = %q\n", e.RepoPath)
-		fmt.Fprintf(&b, "granted_at = %q\n", e.GrantedAt.UTC().Format(time.RFC3339))
-		if e.Note != "" {
-			fmt.Fprintf(&b, "note = %q\n", e.Note)
-		}
-		b.WriteByte('\n')
-	}
-	// Atomic publish via temp+rename so a partial write can't be
-	// observed by a concurrent IsTrusted reader. Mode 0o600 —
-	// see saveTrust dir-mode comment.
-	return atomicfile.WriteFile(path, []byte(b.String()), 0o600)
+	out := append([]byte(trustFileHeader), body...)
+	return atomicfile.WriteFileMkdir(path, out, 0o600, 0o700)
 }
 
 // ───── session lifecycle ─────────────────────────────────────────
