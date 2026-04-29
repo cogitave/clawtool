@@ -50,6 +50,16 @@ const peerUsage = `Usage:
   clawtool peer deregister [--session <id>]
                                            DELETE /v1/peers/{id} and remove the
                                            session-keyed state file.
+  clawtool peer send <peer_id|--name N|--broadcast> "<text>"
+                                           POST /v1/peers/{id}/messages —
+                                           enqueue a notification into the
+                                           target peer's inbox. --name resolves
+                                           via display_name; --broadcast
+                                           fans out to every other peer.
+  clawtool peer inbox [--session <id>] [--peek] [--format table|json|tsv]
+                                           GET /v1/peers/{id}/messages — drain
+                                           pending messages (or peek without
+                                           consuming).
 
 This is the runtime-side primitive — claude-code's bundled hooks fire it
 automatically; for codex / gemini / opencode wire it from your runtime's
@@ -69,9 +79,160 @@ func (a *App) runPeer(argv []string) int {
 		return a.runPeerHeartbeat(argv[1:])
 	case "deregister":
 		return a.runPeerDeregister(argv[1:])
+	case "send":
+		return a.runPeerSend(argv[1:])
+	case "inbox":
+		return a.runPeerInbox(argv[1:])
 	default:
 		fmt.Fprintf(a.Stderr, "clawtool peer: unknown subcommand %q\n\n%s", argv[0], peerUsage)
 		return 2
+	}
+}
+
+func (a *App) runPeerSend(argv []string) int {
+	fs := flag.NewFlagSet("peer send", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	name := fs.String("name", "", "Resolve target by display_name (instead of bare peer_id positional).")
+	broadcast := fs.Bool("broadcast", false, "Fan out to every other peer (ignores positional peer_id).")
+	fromSession := fs.String("from-session", defaultSessionKey(), "Sender session id (resolves to from_peer).")
+	if err := fs.Parse(argv); err != nil {
+		return 2
+	}
+	rest := fs.Args()
+	if !*broadcast && *name == "" && len(rest) < 2 {
+		fmt.Fprintln(a.Stderr, "usage: clawtool peer send <peer_id|--name N|--broadcast> \"<text>\"")
+		return 2
+	}
+	var text, target string
+	if *broadcast {
+		if len(rest) < 1 {
+			fmt.Fprintln(a.Stderr, "usage: clawtool peer send --broadcast \"<text>\"")
+			return 2
+		}
+		text = strings.Join(rest, " ")
+	} else if *name != "" {
+		text = strings.Join(rest, " ")
+		id, err := resolvePeerByName(*name)
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool peer send: %v\n", err)
+			return 1
+		}
+		target = id
+	} else {
+		target = rest[0]
+		text = strings.Join(rest[1:], " ")
+	}
+	if strings.TrimSpace(text) == "" {
+		fmt.Fprintln(a.Stderr, "clawtool peer send: text is required")
+		return 2
+	}
+
+	// Best-effort: derive from_peer from the sender's saved session.
+	from, _ := readPeerIDFile(*fromSession)
+	msg := a2a.Message{Text: text, FromPeer: from}
+	if *broadcast {
+		body, _ := json.Marshal(msg)
+		var out struct {
+			DeliveredTo int `json:"delivered_to"`
+		}
+		if err := daemonRequest(http.MethodPost, "/v1/peers/broadcast", bytes.NewReader(body), &out); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool peer send: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(a.Stdout, "broadcast → %d peer(s)\n", out.DeliveredTo)
+		return 0
+	}
+	body, _ := json.Marshal(msg)
+	var saved a2a.Message
+	if err := daemonRequest(http.MethodPost, "/v1/peers/"+target+"/messages", bytes.NewReader(body), &saved); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool peer send: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(a.Stdout, saved.ID)
+	return 0
+}
+
+func (a *App) runPeerInbox(argv []string) int {
+	fs := flag.NewFlagSet("peer inbox", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	session := fs.String("session", defaultSessionKey(), "Session identifier (resolves to peer_id).")
+	peek := fs.Bool("peek", false, "Don't consume — leave messages in the inbox.")
+	format := fs.String("format", "table", "Output format: table | json | tsv.")
+	if err := fs.Parse(argv); err != nil {
+		return 2
+	}
+	if *session == "default" {
+		if id := readSessionFromStdin(a.stdin()); id != "" {
+			*session = id
+		}
+	}
+	peerID, err := readPeerIDFile(*session)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool peer inbox: %v\n", err)
+		return 1
+	}
+	url := "/v1/peers/" + peerID + "/messages"
+	if *peek {
+		url += "?peek=1"
+	}
+	var out struct {
+		PeerID   string        `json:"peer_id"`
+		Messages []a2a.Message `json:"messages"`
+		Count    int           `json:"count"`
+		Peek     bool          `json:"peek"`
+	}
+	if err := daemonRequest(http.MethodGet, url, nil, &out); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool peer inbox: %v\n", err)
+		return 1
+	}
+	switch *format {
+	case "json":
+		body, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Fprintln(a.Stdout, string(body))
+		return 0
+	case "tsv":
+		fmt.Fprintln(a.Stdout, "ID\tFROM\tTYPE\tWHEN\tTEXT")
+		for _, m := range out.Messages {
+			fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t%s\t%s\n",
+				m.ID, m.FromPeer, m.Type, m.Timestamp.Format(time.RFC3339), m.Text)
+		}
+		return 0
+	}
+	if out.Count == 0 {
+		fmt.Fprintln(a.Stdout, "(inbox empty)")
+		return 0
+	}
+	for _, m := range out.Messages {
+		fmt.Fprintf(a.Stdout, "[%s] %s → %s\n  %s\n",
+			m.Timestamp.Format(time.RFC3339), shortenPath(m.FromPeer, 12), m.Type, m.Text)
+	}
+	return 0
+}
+
+// resolvePeerByName looks up the daemon's peer list and returns
+// the peer_id whose display_name matches `name`. Errors when zero
+// or two-or-more peers match — the caller passed an ambiguous
+// label, force them to use the bare peer_id instead.
+func resolvePeerByName(name string) (string, error) {
+	var out struct {
+		Peers []a2a.Peer `json:"peers"`
+	}
+	if err := daemonRequest(http.MethodGet, "/v1/peers", nil, &out); err != nil {
+		return "", err
+	}
+	var matches []a2a.Peer
+	for _, p := range out.Peers {
+		if p.DisplayName == name {
+			matches = append(matches, p)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("no peer named %q", name)
+	case 1:
+		return matches[0].PeerID, nil
+	default:
+		return "", fmt.Errorf("ambiguous: %d peers named %q — pass the bare peer_id instead", len(matches), name)
 	}
 }
 
