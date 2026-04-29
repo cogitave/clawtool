@@ -29,8 +29,10 @@ clawtool collapses that. **One binary** runs as a long-lived daemon. **Every hos
 
 - **Canonical core tools.** Higher-quality replacements for native Bash, Read, Edit, Write, Grep, Glob, WebFetch — timeout-safe with process-group SIGKILL, structured JSON output (stdout/stderr/exit_code/duration_ms/timed_out/cwd), format-aware reads (PDF, Word, Excel, HTML, Jupyter), atomic writes, deterministic line cursors. Cross-platform parity (Linux, macOS, WSL2).
 - **Multi-agent dispatch.** A single `SendMessage` entry point routes prompts to Claude, Codex, Gemini, OpenCode, or Hermes. Async via the BIAM (Bidirectional Inter-Agent Messaging) protocol — Ed25519-signed envelopes, SQLite task store, edge-triggered `TaskNotify` fan-in. Per-instance secrets injection, per-call sandbox profiles, true async (`--async` returns immediately; `clawtool task cancel` aborts).
+- **Peer mesh (A2A Phase 1).** Live discovery + messaging across every claude-code / codex / gemini / opencode session on the host. Each runtime auto-registers via session hooks; the orchestrator TUI's Peers tab shows the live roster. `clawtool peer send <name> "..."` and `clawtool peer send --broadcast "..."` deliver inbox messages between sessions — three independent transports (CLI, raw HTTP, MCP) all backed by the same daemon registry. Wire shape mirrors Linux Foundation A2A's Agent Card.
 - **Sandbox parity with claude.ai.** Bash/Read/Edit/Write tool calls can route through a separate gVisor/docker container instead of the host process. The `clawtool sandbox-worker` binary mirrors claude.ai's `process_api` (PID 1, WebSocket :2024, bearer auth). The `clawtool egress` proxy mirrors claude.ai's allowlist gateway (HTTP/HTTPS, CONNECT tunnel, 403 with `x-deny-reason`). On-demand skill mount via `SkillList` + `SkillLoad` MCP tools mirrors `/mnt/skills/public`.
 - **Shared MCP fan-in.** A single persistent `clawtool serve --listen --mcp-http` daemon backs every host; codex / gemini / claude all dial it instead of spawning per-host stdio children. One BIAM identity, one task store, one bearer-auth'd endpoint.
+- **One orchestrator TUI.** `clawtool orch` (aliases: `dashboard`, `tui`, `orchestrator`) opens a Bubble Tea panel with three sidebar tabs — Active dispatches · Done dispatches · Peers — over the same watch socket. `--plain` / `--once` modes print stdout snapshots for chat-visible monitoring.
 - **Search-first discovery.** A 50+ tool catalog stays usable because models bind to schemas via `ToolSearch` (bleve BM25) instead of holding every JSON schema in context.
 - **Marketplace plugin.** First-class Claude Code plugin: `claude plugin install clawtool@clawtool-marketplace` registers the MCP server, drops slash commands, and loads the routing skill — no manual `claude mcp add-json` editing.
 
@@ -153,6 +155,19 @@ The project adheres to a **four-plane shipping contract** ([docs/feature-shippin
 | AgentList | Snapshot of the supervisor's agent registry. | [internal/tools/core/agents_tool.go](internal/tools/core/agents_tool.go) |
 | TaskGet · TaskWait · TaskList · TaskNotify | BIAM task introspection + edge-triggered fan-in completion. | [internal/agents/biam](internal/agents/biam) |
 
+### Peer mesh (A2A)
+
+The runtime-side primitive is `clawtool peer`: every claude-code / codex / gemini / opencode session that ships clawtool's bundled hooks auto-registers itself in the daemon's peer registry, so multiple parallel sessions can discover each other and exchange notifications without spawning extra MCP servers.
+
+| Surface | Capability | Reference |
+|---|---|---|
+| `clawtool a2a card` · `clawtool a2a peers` | Emit this instance's A2A Agent Card; list every registered peer with status / backend / circle filters. | [internal/cli/a2a.go](internal/cli/a2a.go) |
+| `clawtool peer register / heartbeat / deregister` | Runtime-side primitives bundled hooks fire on SessionStart / Stop / SessionEnd. Session-keyed peer-id state at `~/.config/clawtool/peers.d/<session>.id`. | [internal/cli/peer.go](internal/cli/peer.go) |
+| `clawtool peer send <peer_id\|--name N\|--broadcast> "<text>"` | Enqueue notification / broadcast into the target peer's inbox. | [internal/cli/peer.go](internal/cli/peer.go) |
+| `clawtool peer inbox [--peek]` | Drain (or peek) the calling session's pending messages. | [internal/cli/peer.go](internal/cli/peer.go) |
+| `clawtool hooks install <runtime>` | Print the wiring snippet for codex / gemini / opencode (claude-code is bundled). | [internal/cli/hooks.go](internal/cli/hooks.go) |
+| `GET /v1/peers` · `POST /v1/peers/register` · `POST /v1/peers/{id}/messages` · `POST /v1/peers/broadcast` | Bearer-authed REST surface; persisted at `~/.config/clawtool/peers.json` + per-peer inbox files at `peers.d/`. | [internal/server/peers_handler.go](internal/server/peers_handler.go) · [internal/a2a](internal/a2a) |
+
 ### Sandbox + worker
 
 | Surface | Capability | Reference |
@@ -201,6 +216,9 @@ The project adheres to a **four-plane shipping contract** ([docs/feature-shippin
 | `~/.config/clawtool/secrets.toml` | Mode-0600 credential store for API keys / OAuth tokens / DB passwords. |
 | `~/.config/clawtool/daemon.json` | Persistent daemon state (pid, port, started_at, token_file, log_file). |
 | `~/.config/clawtool/listener-token` | Bearer token shared between hosts and the daemon. Mode 0600. |
+| `~/.config/clawtool/peers.json` | A2A peer registry (live claude-code / codex / gemini / opencode sessions on this host). |
+| `~/.config/clawtool/peers.d/<session>.id` | Session→peer_id pointer written by `clawtool peer register`; consumed by `peer heartbeat / deregister / inbox`. |
+| `~/.config/clawtool/peers.d/<peer_uuid>.inbox.json` | Per-peer mailbox (256-message soft cap) persisted from the daemon's in-memory queue. |
 | `~/.config/clawtool/worker-token` | Bearer token shared between daemon and sandbox-worker. |
 | `~/.config/clawtool/identity.ed25519` | BIAM identity keypair (mode 0600). |
 | `~/.local/share/clawtool/biam.db` | SQLite task store (Ed25519-signed envelopes, status, history). |
@@ -243,6 +261,9 @@ After this, every Bash tool call (from any host — claude / codex / gemini) exe
 
 ## Recently shipped
 
+- **A2A Phase 1 — peer discovery + messaging** (v0.22.36) — every running claude-code / codex / gemini / opencode session registers into a shared peer registry through bundled SessionStart hooks. Three independent transports (CLI `clawtool peer send`, raw HTTP `POST /v1/peers/{id}/messages`, MCP `SendMessage`) deliver inbox messages between sessions; `clawtool a2a peers` and the orchestrator TUI's new Peers tab show the live roster. Status-fidelity hooks flip peers between `busy` (UserPromptSubmit) and `online` (Notification idle_prompt) so operators see actual activity, not just registration timestamps.
+- **Single TUI, four aliases** (v0.22.36) — `clawtool dashboard`, `tui`, `orchestrator`, `orch` all open the same Bubble Tea program. The legacy parallel dashboard implementation was retired; one window, three tabs (Active · Done · Peers), shared watch-socket reconnect policy. `--plain` / `--once` snapshot mode kept for chat-visible monitoring.
+- **Architecture audit pass** (v0.22.36) — `internal/xdg` package consolidates the `XDG_CONFIG_HOME` fallback chain across the tree (~17 inline copies), `tools/core/atomic` writeAtomic helper exposes a single temp+rename primitive, and a deadcode sweep removed ~290 LoC of speculative test seams while wiring two genuine ones (`Client.Read/Write` round-trip test, `FrameSubsCount` symmetry test). Tree's `deadcode -test ./...` now reports empty.
 - **Auto-launch onboarding** (v0.22.16) — `install.sh` now auto-runs `clawtool onboard` on a TTY install (no [Y/n] prompt to dismiss). Bypass with `CLAWTOOL_NO_ONBOARD=1`. Plus per-step telemetry across the wizard (start / host_detect / bridge_install / mcp_claim / daemon_start / identity_create / secrets_init / telemetry_consent / finish) so we can finally see *where* in the funnel people drop off.
 - **Onboarded marker + nudges** (v0.22.13) — `~/.config/clawtool/.onboarded` is a single source of truth that three surfaces consume: install.sh skips the prompt when present, the Claude Code SessionStart hook stops nagging, and the `clawtool` no-args TUI no longer pre-selects the wizard.
 - **System-notification banner** (v0.22.12+v0.22.16) — daemon-pushed notifications (release-available, daemon-degraded) latch in both the orchestrator and dashboard TUIs, fade after 30s. Severity drives the tint, Kind drives the icon. The orchestrator gained an Active/Done tab + viewport-bounded sidebar at the same time.
@@ -253,9 +274,11 @@ After this, every Bash tool call (from any host — claude / codex / gemini) exe
 
 ## Roadmap
 
+- **A2A Phase 2 — cross-host mesh** — mDNS / Tailscale tsnet for discovery beyond a single host; WebSocket transport for push notifications (Phase 1 polls the registry every 2s); token + model surfacing in `clawtool.dispatch` once the bridge stream-parser exposes them. Extends the same `peer_id` identity tuple beyond local-mesh.
+- **Persona templates absorb (claude-octopus)** — `clawtool agent template apply <code-review-team>` to scaffold curated bridges (`code-reviewer` + `test-writer` + `security-auditor`) with model + system_prompt + tool allowlist combos, so a fresh repo gets a working multi-agent setup in one command.
 - **Cross-host BIAM identity routing** — per-call `from_instance` parameter on `SendMessage` so codex / gemini / claude can mutually notify each other through the shared daemon.
 - **Onboarding state machine** — collapse `init` + `onboard` into one engine; per-feature opt-in matrix; verify-summary at the end (`send --list`, `bridge list`, `source check`, `sandbox doctor`). The v0.22.13–v0.22.18 nudge + auto-launch + telemetry-verb bundle covers the *discovery* half; the engine collapse is what's left.
-- **Sandbox-worker phase 2 follow-up** — Read/Edit/Write routing through the worker (Phase 2 covered Bash); per-conversation ephemeral workers; gVisor `runsc` runtime selection wired into the docker engine adapter.
+- **Sandbox-worker phase 2 follow-up** — wire `Client.Read` / `Client.Write` (round-trip-tested) through `tools/core` so Read/Edit/Write tool calls can route to the worker; per-conversation ephemeral workers; gVisor `runsc` runtime selection wired into the docker engine adapter.
 
 ## Contributing
 
