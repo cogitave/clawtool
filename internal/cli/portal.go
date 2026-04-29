@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/cli/listfmt"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/portal"
@@ -461,15 +462,7 @@ func readPortalSticky() string {
 }
 
 func writePortalSticky(name string) error {
-	path := portalStickyFile()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strings.TrimSpace(name)+"\n"), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFileMkdir(portalStickyFile(), []byte(strings.TrimSpace(name)+"\n"), 0o644, 0o755)
 }
 
 func clearPortalSticky() error {

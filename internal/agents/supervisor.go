@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/observability"
@@ -596,14 +597,7 @@ func (s *supervisor) stickyFile() string {
 func WriteSticky(instance string) error {
 	s := &supervisor{}
 	path := s.stickyFile()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strings.TrimSpace(instance)+"\n"), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFileMkdir(path, []byte(strings.TrimSpace(instance)+"\n"), 0o644, 0o755)
 }
 
 // ClearSticky removes the active-agent file (no-op if absent).

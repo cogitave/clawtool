@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/portal"
 	"github.com/cogitave/clawtool/internal/secrets"
@@ -448,15 +449,7 @@ func readPortalStickyShared() string {
 }
 
 func writePortalStickyShared(name string) error {
-	path := portalStickyFileShared()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strings.TrimSpace(name)+"\n"), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFileMkdir(portalStickyFileShared(), []byte(strings.TrimSpace(name)+"\n"), 0o644, 0o755)
 }
 
 func clearPortalStickyShared() error {

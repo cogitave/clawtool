@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/gofrs/flock"
 )
 
@@ -190,11 +191,10 @@ func writeIdentity(path string, id *Identity) error {
 	body := fmt.Sprintf("# clawtool BIAM identity — keep mode 0600\nhost_id=%s\ninstance_id=%s\nprivate=%s\n",
 		id.HostID, id.InstanceID, hex.EncodeToString(id.private),
 	)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
+	if err := atomicfile.WriteFile(path, []byte(body), 0o600); err != nil {
 		return fmt.Errorf("biam: write identity: %w", err)
 	}
-	return os.Rename(tmp, path)
+	return nil
 }
 
 func defaultHostID() string {

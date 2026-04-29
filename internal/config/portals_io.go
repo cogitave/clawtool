@@ -11,9 +11,8 @@ package config
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -102,17 +101,10 @@ func RemovePortalBlock(path, name string) error {
 // inlined into config when set via `clawtool source set-env`,
 // `clawtool portal add` headers, etc.
 func writeConfigAtomic(path string, cfg Config) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("mkdir parent: %w", err)
-	}
 	b, err := toml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	tmp := path + ".tmp"
 	body := append(bytes.TrimRight(b, "\n"), '\n')
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
-		return fmt.Errorf("write tmp: %w", err)
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFileMkdir(path, body, 0o600, 0o700)
 }

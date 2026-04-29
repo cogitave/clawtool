@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/google/uuid"
 )
 
@@ -313,11 +314,7 @@ func saveTrust(tf trustFile) error {
 	// Atomic publish via temp+rename so a partial write can't be
 	// observed by a concurrent IsTrusted reader. Mode 0o600 —
 	// see saveTrust dir-mode comment.
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFile(path, []byte(b.String()), 0o600)
 }
 
 // ───── session lifecycle ─────────────────────────────────────────
