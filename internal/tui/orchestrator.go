@@ -340,8 +340,13 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Severity: "warning",
 			Title: fmt.Sprintf("orchestrator v%s ↔ daemon v%s — version mismatch",
 				msg.binaryVersion, msg.daemonVersion),
-			Body:       "Frames may render incorrectly when orchestrator and daemon disagree on the watch-envelope shape.",
-			ActionHint: "pkill -f clawtool && go install ./cmd/clawtool — then restart `clawtool serve` and this orchestrator.",
+			Body: "Frames may render incorrectly when orchestrator and daemon disagree on the watch-envelope shape.",
+			// `clawtool upgrade` is the canonical path — it
+			// pulls the GoReleaser artefact and atomically
+			// replaces the running binary. Falls back to
+			// `go install` only when the operator is on a
+			// hand-built dev binary (no release artefact).
+			ActionHint: "Run `clawtool upgrade`, then `pkill -f 'clawtool (orchestrator|serve)'`, then restart serve + orchestrator. If `upgrade` fails (no release artefact / dev build), fall back to `go install ./cmd/clawtool`.",
 			TS:         time.Now(),
 		}
 		m.systemBanner = &n

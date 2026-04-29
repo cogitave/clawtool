@@ -43,7 +43,7 @@ type Card struct {
 	URL string `json:"url,omitempty"`
 
 	// Version is the agent's product version (clawtool's
-	// internal/version.Version). NOT the A2A protocol version;
+	// internal/version.Resolved()). NOT the A2A protocol version;
 	// that's protocolVersion below.
 	Version string `json:"version"`
 
@@ -143,7 +143,7 @@ type CardOptions struct {
 }
 
 // NewCard builds the Card snapshot for this clawtool instance.
-// Pure function — fields come from CardOptions + version.Version
+// Pure function — fields come from CardOptions + version.Resolved()
 // + a static skill list. Caller serializes via json.Marshal.
 func NewCard(opts CardOptions) Card {
 	name := strings.TrimSpace(opts.Name)
@@ -159,7 +159,7 @@ func NewCard(opts CardOptions) Card {
 			"coding agents. Wires Claude Code / Codex / Gemini / Opencode / " +
 			"Hermes onto one timeout-safe, structured-output surface.",
 		URL:             strings.TrimSpace(opts.URL),
-		Version:         version.Version,
+		Version:         version.Resolved(),
 		ProtocolVersion: CurrentProtocolVersion,
 		Capabilities: Capabilities{
 			// Phase 1: card-only. No live endpoint, no streaming, no push.

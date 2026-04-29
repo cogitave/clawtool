@@ -18,7 +18,9 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sort"
 	"strings"
@@ -599,14 +601,21 @@ type watchEventMsg struct {
 	conn net.Conn
 }
 
-type watchClosedMsg struct{}
+// watchClosedMsg signals the watch socket dropped or refused.
+// `reason` carries the operator-readable failure cause (dial
+// error, EOF mid-stream, decode error). Empty `reason` means
+// clean disconnect — the model should still surface "press r to
+// reconnect", but without an `error: ...` line.
+type watchClosedMsg struct {
+	reason string
+}
 
 func watchSubscribeCmd() tea.Cmd {
 	return func() tea.Msg {
 		conn, err := biam.DialWatchSocket("")
 		if err != nil {
 			// No daemon / no socket → polling-only mode.
-			return watchClosedMsg{}
+			return watchClosedMsg{reason: fmt.Sprintf("dial %s: %v", biam.DefaultWatchSocketPath(), err)}
 		}
 		dec := json.NewDecoder(bufio.NewReader(conn))
 		return readNextEnvelope(dec, conn)
@@ -629,7 +638,14 @@ func readNextEnvelope(dec *json.Decoder, conn net.Conn) tea.Msg {
 		var env biam.WatchEnvelope
 		if err := dec.Decode(&env); err != nil {
 			_ = conn.Close()
-			return watchClosedMsg{}
+			// EOF on a Unix socket means the daemon closed
+			// the connection cleanly (usually because it shut
+			// down or restarted). Anything else is a wire-
+			// format / decode failure worth surfacing.
+			if errors.Is(err, io.EOF) {
+				return watchClosedMsg{reason: "daemon closed the watch socket (EOF)"}
+			}
+			return watchClosedMsg{reason: fmt.Sprintf("decode envelope: %v", err)}
 		}
 		switch env.Kind {
 		case "task":

@@ -56,7 +56,7 @@ func (a *App) runDoctor(_ []string) int {
 	rep := &doctorReport{}
 	w := a.Stdout
 
-	fmt.Fprintf(w, "clawtool doctor — %s\n\n", version.Version)
+	fmt.Fprintf(w, "clawtool doctor — %s\n\n", version.Resolved())
 
 	a.doctorBinary(w, rep)
 	a.doctorConfig(w, rep)
@@ -78,7 +78,7 @@ func (a *App) doctorBinary(w io.Writer, rep *doctorReport) {
 	fmt.Fprintln(w, "[binary]")
 	exe, err := os.Executable()
 	if err == nil {
-		rep.ok(w, fmt.Sprintf("running from %s (version %s)", exe, version.Version))
+		rep.ok(w, fmt.Sprintf("running from %s (version %s)", exe, version.Resolved()))
 	} else {
 		rep.warn(w, "could not resolve own executable path: "+err.Error(), "")
 	}

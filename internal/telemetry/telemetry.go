@@ -15,6 +15,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,6 +26,18 @@ import (
 	"github.com/cogitave/clawtool/internal/config"
 	posthog "github.com/posthog/posthog-go"
 )
+
+// debugEnabled is flipped by `clawtool serve --debug` (or the
+// CLAWTOOL_DEBUG env var). When true, every Track / Close /
+// init step logs to stderr so the operator can see exactly which
+// events landed on the wire and which got dropped.
+var debugEnabled = strings.ToLower(strings.TrimSpace(os.Getenv("CLAWTOOL_DEBUG"))) == "1" ||
+	strings.ToLower(strings.TrimSpace(os.Getenv("CLAWTOOL_DEBUG"))) == "true"
+
+// SetDebug toggles the debug trace at runtime. Wired from
+// `clawtool serve --debug` so the operator can flip it without
+// touching env.
+func SetDebug(on bool) { debugEnabled = on }
 
 // Embedded cogitave PostHog project credentials. Public client-side
 // key — same convention as posthog-js shipping the key in browser
@@ -97,18 +110,39 @@ func New(cfg config.TelemetryConfig) *Client {
 		host = cogitavePostHogHost
 	}
 	if apiKey == "" {
+		// Both operator override and baked default missing.
+		// Pre-fix this fell through silently; operator on
+		// 2026-04-29 reported "12 hours, zero events" with
+		// no diagnostic.
+		fmt.Fprintln(os.Stderr,
+			"clawtool telemetry: enabled=true but no API key (cfg.APIKey + baked default both empty); going silent")
 		return &Client{enabled: false}
 	}
 	c, err := posthog.NewWithConfig(apiKey, posthog.Config{Endpoint: host})
 	if err != nil {
+		// Same blind spot: posthog client init failures used
+		// to land on stderr nowhere. Now we surface the actual
+		// reason so the operator can spot endpoint typos /
+		// network issues immediately.
+		fmt.Fprintf(os.Stderr,
+			"clawtool telemetry: posthog init failed (host=%s): %v — going silent\n", host, err)
 		return &Client{enabled: false}
 	}
 	id, _ := loadOrCreateAnonymousID()
+	fmt.Fprintf(os.Stderr,
+		"clawtool telemetry: enabled (host=%s, distinct_id=%s…)\n", host, id[:min(8, len(id))])
 	return &Client{
 		enabled:    true,
 		distinctID: id,
 		client:     c,
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // Track emits one event. Properties outside the allow-list are
@@ -136,13 +170,24 @@ func (c *Client) Track(event string, properties map[string]any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.client == nil {
+		if debugEnabled {
+			fmt.Fprintf(os.Stderr, "clawtool telemetry: drop event=%q (client closed)\n", event)
+		}
 		return
 	}
-	_ = c.client.Enqueue(posthog.Capture{
+	if err := c.client.Enqueue(posthog.Capture{
 		DistinctId: c.distinctID,
 		Event:      event,
 		Properties: clean,
-	})
+	}); err != nil {
+		if debugEnabled {
+			fmt.Fprintf(os.Stderr, "clawtool telemetry: enqueue %q failed: %v\n", event, err)
+		}
+		return
+	}
+	if debugEnabled {
+		fmt.Fprintf(os.Stderr, "clawtool telemetry: enqueued event=%q props=%v\n", event, clean)
+	}
 }
 
 // Close flushes pending events. Idempotent.

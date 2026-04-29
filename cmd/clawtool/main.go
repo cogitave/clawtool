@@ -17,6 +17,7 @@ import (
 
 	"github.com/cogitave/clawtool/internal/cli"
 	"github.com/cogitave/clawtool/internal/server"
+	"github.com/cogitave/clawtool/internal/telemetry"
 	"github.com/cogitave/clawtool/internal/version"
 )
 
@@ -76,11 +77,19 @@ func runServe(argv []string) int {
 		return 0
 	}
 
-	// Otherwise parse --listen / --token-file / --mcp-http flags.
-	opts, err := parseServeFlags(argv)
+	// Otherwise parse --listen / --token-file / --mcp-http / --debug flags.
+	opts, debug, err := parseServeFlags(argv)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "clawtool serve: %v\n%s", err, serveUsage)
 		return 2
+	}
+	if debug {
+		// Flips telemetry's per-event stderr trace + (future)
+		// dispatch / store / hook traces. Operator runs the
+		// daemon under `clawtool serve --debug` to see exactly
+		// which events landed on the wire vs got dropped.
+		telemetry.SetDebug(true)
+		fmt.Fprintln(os.Stderr, "clawtool: debug trace enabled (telemetry events will log to stderr)")
 	}
 
 	if opts.Listen == "" {
@@ -99,36 +108,39 @@ func runServe(argv []string) int {
 	return 0
 }
 
-func parseServeFlags(argv []string) (server.HTTPOptions, error) {
+func parseServeFlags(argv []string) (server.HTTPOptions, bool, error) {
 	opts := server.HTTPOptions{}
+	debug := false
 	for i := 0; i < len(argv); i++ {
 		v := argv[i]
 		switch v {
 		case "--listen":
 			if i+1 >= len(argv) {
-				return opts, fmt.Errorf("--listen requires a value (e.g. ':8080')")
+				return opts, debug, fmt.Errorf("--listen requires a value (e.g. ':8080')")
 			}
 			opts.Listen = argv[i+1]
 			i++
 		case "--token-file":
 			if i+1 >= len(argv) {
-				return opts, fmt.Errorf("--token-file requires a path")
+				return opts, debug, fmt.Errorf("--token-file requires a path")
 			}
 			opts.TokenFile = argv[i+1]
 			i++
 		case "--mcp-http":
 			opts.MCPHTTP = true
+		case "--debug", "-d":
+			debug = true
 		case "--help", "-h":
 			fmt.Fprint(os.Stderr, serveUsage)
-			return opts, fmt.Errorf("help requested")
+			return opts, debug, fmt.Errorf("help requested")
 		default:
-			return opts, fmt.Errorf("unknown flag %q", v)
+			return opts, debug, fmt.Errorf("unknown flag %q", v)
 		}
 	}
 	if opts.Listen != "" && opts.TokenFile == "" {
 		opts.TokenFile = defaultTokenPath()
 	}
-	return opts, nil
+	return opts, debug, nil
 }
 
 func defaultTokenPath() string {
@@ -143,8 +155,11 @@ func defaultTokenPath() string {
 }
 
 const serveUsage = `Usage:
-  clawtool serve                       Run as an MCP server over stdio (default).
-  clawtool serve --listen :8080 [--token-file <path>] [--mcp-http]
+  clawtool serve [--debug]             Run as an MCP server over stdio (default).
+                                       --debug logs every telemetry event +
+                                       drop reason to stderr. Equivalent to
+                                       CLAWTOOL_DEBUG=1.
+  clawtool serve --listen :8080 [--token-file <path>] [--mcp-http] [--debug]
                                        Run the HTTP gateway. Token file
                                        defaults to
                                        $XDG_CONFIG_HOME/clawtool/listener-token
