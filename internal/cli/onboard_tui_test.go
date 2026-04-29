@@ -186,12 +186,10 @@ func TestOnboardModel_View_ContainsHeaderAndStep(t *testing.T) {
 	if !strings.Contains(out, "help@cogitave.com") {
 		t.Errorf("View should contain support email; got: %q", out)
 	}
-	// Sidebar shows progress header + step counter.
-	if !strings.Contains(out, "PROGRESS") {
-		t.Errorf("View should contain sidebar progress header; got: %q", out)
+	// Inline step indicator: "Step X of Y · <Title>".
+	if !strings.Contains(out, "Step 1 of") {
+		t.Errorf("View should contain step indicator; got: %q", out)
 	}
-	// First step title is "Primary CLI" — appears both in
-	// sidebar list and as the right-pane title.
 	if !strings.Contains(out, "Primary CLI") {
 		t.Errorf("View should contain first step title 'Primary CLI'; got: %q", out)
 	}

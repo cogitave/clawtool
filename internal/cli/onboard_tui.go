@@ -583,168 +583,89 @@ func sectionFor(k stepKind) string {
 	return ""
 }
 
-// clawtoolLogo is the ASCII banner shown atop the wizard. Box-
-// drawing characters render as a chunky bold logo on any modern
-// terminal (Windows Terminal / iTerm / Kitty / Alacritty / WezTerm
-// all ship Unicode block fonts by default). Falls back gracefully
-// on terminals without the glyphs — they render as boxes which still
-// looks intentional.
-const clawtoolLogo = `┏━╸╻  ┏━┓╻ ╻╺┳╸┏━┓┏━┓╻  
-┃  ┃  ┣━┫┃╻┃ ┃ ┃ ┃┃ ┃┃  
-┗━╸┗━╸╹ ╹┗┻┛ ╹ ┗━┛┗━┛┗━╸`
+// onboardCardWidth is the soft cap on the wizard's content column.
+// 72 cols is the Charm idiom (lipgloss / soft-serve / glow apps all
+// clamp to ~72 effective cols inside their app margin) — long lines
+// hurt readability in TUI just like in print, so we resist
+// reflowing to a 200-col monitor.
+const onboardCardWidth = 72
 
-// View renders the alt-screen payload as a three-band layout:
+// View renders the alt-screen payload as one width-capped column,
+// horizontally + vertically centred inside the viewport so the
+// wizard reads as a polished card sitting in the middle of the
+// screen rather than text clinging to the top-left edge.
 //
-//	┌──────────────────────────────────────────────────────┐
-//	│  HEADER (logo + tagline + host pills)                │
-//	├──────────────┬───────────────────────────────────────┤
-//	│  SIDEBAR     │  MAIN                                 │
-//	│  step list   │  active step form / run log / summary │
-//	├──────────────┴───────────────────────────────────────┤
-//	│  FOOTER (keybind hints)                              │
-//	└──────────────────────────────────────────────────────┘
+// Layout (inside the centred column, ≤ 72 cols wide):
 //
-// The header + footer fill the viewport width. The middle band
-// splits into a sidebar (~24 cols) showing the wizard's full step
-// list with the current step highlighted, and a main pane with the
-// current step's form. This gives the operator persistent context
-// ("I'm step 3 of 8, here's what's coming") instead of the prior
-// stacked-vertical layout that buried the progress signal under
-// the form widget.
+//	┏━╸  clawtool   v0.22.42  ·  first-run setup wizard
+//	  from Cogitave  ·  @bahadirarda  ·  help@cogitave.com
+//	  ●claude-code  ·  ●codex  ·  ●gemini  ·  ●opencode  ·  ○hermes
+//
+//	  Step 2 of 8  ·  Primary CLI
+//	  ● ● ◉ ○ ○ ○ ○ ○
+//
+//	  ╭──────────────────────────────────────────────────────╮
+//	  │   Which CLI will you primarily use?                  │
+//	  │                                                      │
+//	  │   ▸ claude-code (✓ detected)                         │
+//	  │     codex (✓ detected)                               │
+//	  │     ...                                              │
+//	  ╰──────────────────────────────────────────────────────╯
+//
+//	  ↑/↓ select  ·  enter confirm  ·  esc abort  ·  ctrl-c quit
 func (m *onboardModel) View() string {
 	if m.width <= 0 || m.height <= 0 {
 		return "" // pre-WindowSizeMsg; nothing meaningful to render
 	}
 
-	header := m.renderHeader()
-	footer := m.renderFooter()
-
-	// Reserve space for header + footer + 2 rows of vertical
-	// padding (one above the body, one below) so the body never
-	// crowds against either edge.
-	headerH := lipgloss.Height(header)
-	footerH := lipgloss.Height(footer)
-	bodyH := m.height - headerH - footerH - 4
-	if bodyH < 8 {
-		bodyH = 8
+	w := onboardCardWidth
+	if w > m.width-4 {
+		w = m.width - 4
 	}
+	if w < 50 {
+		w = 50
+	}
+
+	header := m.renderHeader(w)
 
 	var body string
 	switch m.phase {
 	case phaseSteps:
-		body = m.renderSplitBody(bodyH)
+		body = m.renderStep(w)
 	case phaseRun:
-		body = m.renderRunBody(bodyH)
+		body = m.renderRunBody(w)
 	case phaseDone:
-		body = m.renderDoneBody(bodyH)
+		body = m.renderDoneBody(w)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left,
+	footer := m.renderFooterCol(w)
+
+	column := lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		"",
 		body,
 		"",
 		footer,
 	)
-}
 
-// sidebarWidth is the left-column width during phaseSteps. Keep it
-// tight so the form pane (right) gets the lion's share of the
-// horizontal real estate where the operator's eye actually focuses.
-const onboardSidebarWidth = 26
-
-// renderSplitBody renders the phaseSteps two-column layout: step
-// list on the left, focused form on the right.
-func (m *onboardModel) renderSplitBody(height int) string {
-	side := m.renderSidebar(height)
-	main := m.renderStep(height)
-	gap := lipgloss.NewStyle().Width(2).Render(" ")
-	row := lipgloss.JoinHorizontal(lipgloss.Top, side, gap, main)
-	return lipgloss.NewStyle().Width(m.width).Padding(0, 2).Render(row)
-}
-
-// renderRunBody renders the phaseRun layout: full-width log of
-// completed/in-flight phases with a left margin.
-func (m *onboardModel) renderRunBody(height int) string {
-	log := m.renderRunLog()
-	pane := lipgloss.NewStyle().
-		Width(m.width-8).
-		Padding(1, 2).
-		Border(lipgloss.RoundedBorder(), false, false, false, true).
-		BorderForeground(lipgloss.Color("63")).
-		Render(log)
-	return lipgloss.NewStyle().Width(m.width).Padding(0, 2).Render(pane)
-}
-
-// renderDoneBody renders the phaseDone layout: log on top, summary
-// + next steps below in a centered block.
-func (m *onboardModel) renderDoneBody(height int) string {
-	stack := lipgloss.JoinVertical(lipgloss.Left,
-		m.renderRunLog(),
-		"",
-		m.renderSummary(),
+	// Horizontally + vertically centre the column. Long content
+	// (run-log + summary in phaseDone) lets the column extend
+	// vertically; lipgloss.Place top-anchors when content height
+	// exceeds the available area.
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		column,
 	)
-	return lipgloss.NewStyle().Width(m.width).Padding(0, 2).Render(stack)
 }
 
-// renderSidebar renders the persistent step-list panel. Each entry
-// shows a state glyph (● completed / ◉ active / ○ pending) and the
-// step title. The active entry gets the accent colour so the
-// operator's eye finds it instantly.
-func (m *onboardModel) renderSidebar(height int) string {
-	cur := m.visibleStepNumber()
-	total := m.totalVisibleSteps()
-
-	var lines []string
-	lines = append(lines, m.style.sectionTitle.Render("PROGRESS"))
-	lines = append(lines, m.style.dim.Render(strings.Repeat("─", onboardSidebarWidth-4)))
-	lines = append(lines, "")
-
-	visIdx := 0
-	for _, s := range m.steps {
-		if s.skipIf != nil && s.skipIf(m.state) {
-			continue
-		}
-		visIdx++
-		var glyph, title string
-		switch {
-		case visIdx < cur:
-			glyph = m.style.tickOK.Render("●")
-			title = m.style.dim.Render(s.title)
-		case visIdx == cur:
-			glyph = m.style.headerTitle.Render("◉")
-			title = m.style.sectionTitle.Render(s.title)
-		default:
-			glyph = m.style.dim.Render("○")
-			title = m.style.dim.Render(s.title)
-		}
-		lines = append(lines, fmt.Sprintf("  %s  %s", glyph, title))
-	}
-	lines = append(lines, "")
-	lines = append(lines, m.style.dim.Render(fmt.Sprintf("  %d / %d", cur, total)))
-
-	body := strings.Join(lines, "\n")
-	return lipgloss.NewStyle().
-		Width(onboardSidebarWidth).
-		Height(height).
-		Border(lipgloss.RoundedBorder(), false, true, false, false).
-		BorderForeground(lipgloss.Color("63")).
-		PaddingLeft(2).
-		Render(body)
-}
-
-// renderHeader renders the full-width banner pinned at the top of
-// the alt-screen: ASCII logo on the left, version + attribution +
-// support email + host-detection pills on the right. Wraps in a
-// rounded border that fills the viewport width so it reads as the
-// app's "title bar" rather than a floating panel.
-func (m *onboardModel) renderHeader() string {
-	logo := m.style.headerTitle.Render(clawtoolLogo)
-
-	tagline := m.style.headerSub.Render(
-		fmt.Sprintf("v%s   ·   first-run setup wizard", versionShortForOnboard()),
-	)
-	credit := m.style.dim.Render("from Cogitave  ·  by @bahadirarda  ·  help@cogitave.com")
+// renderHeader renders the inline app banner: a 1-line monogram
+// "logo" (clawtool brand mark in box-drawing) + tagline + credit
+// + host-detection pills. Stays compact (~4 lines) so the wizard
+// body owns the operator's vertical attention budget.
+func (m *onboardModel) renderHeader(w int) string {
+	monogram := m.style.headerTitle.Render("┏━╸  clawtool")
+	version := m.style.dim.Render(fmt.Sprintf("v%s  ·  first-run setup wizard", versionShortForOnboard()))
+	credit := m.style.dim.Render("from Cogitave  ·  @bahadirarda  ·  help@cogitave.com")
 
 	families := []struct{ key, label string }{
 		{"claude", "claude-code"},
@@ -756,63 +677,145 @@ func (m *onboardModel) renderHeader() string {
 	var pills []string
 	for _, f := range families {
 		if m.state.Found[f.key] {
-			pills = append(pills, m.style.pillOK.Render("● "+f.label))
+			pills = append(pills, m.style.tickOK.Render("●")+" "+f.label)
 		} else {
-			pills = append(pills, m.style.pillMissing.Render("○ "+f.label))
+			pills = append(pills, m.style.dim.Render("○ "+f.label))
 		}
 	}
-	pillRow := strings.Join(pills, "  ")
+	sep := m.style.dim.Render("  ·  ")
+	pillRow := strings.Join(pills, sep)
 
-	rightCol := lipgloss.JoinVertical(lipgloss.Left,
-		tagline,
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		monogram+"   "+version,
 		credit,
 		"",
 		pillRow,
 	)
-	gap := lipgloss.NewStyle().Width(4).Render(" ")
-	body := lipgloss.JoinHorizontal(lipgloss.Top, logo, gap, rightCol)
-
-	w := m.width - 4
-	if w < 60 {
-		w = 60
-	}
-	return m.style.headerBox.
-		Width(w).
-		Padding(1, 3).
-		Margin(0, 2).
-		Render(body)
+	return lipgloss.NewStyle().Width(w).PaddingLeft(2).Render(body)
 }
 
-// renderStep renders the active wizard step in the right pane: the
-// step title up top, the embedded huh form's view below. The pane
-// width adapts to (viewport - sidebar - margins).
-func (m *onboardModel) renderStep(height int) string {
+// renderStep renders the active wizard step: indicator line +
+// progress dots + form wrapped in a single rounded card. The card
+// is the only bordered element in the View — per Charm style
+// discipline, one frame per pane.
+func (m *onboardModel) renderStep(w int) string {
 	if m.stepIdx >= len(m.steps) {
 		return ""
 	}
 	step := m.steps[m.stepIdx]
-	w := m.width - onboardSidebarWidth - 8
-	if w < 40 {
-		w = 40
+	cur := m.visibleStepNumber()
+	total := m.totalVisibleSteps()
+
+	indicator := m.style.dim.Render(fmt.Sprintf("Step %d of %d", cur, total)) +
+		m.style.dim.Render("  ·  ") +
+		m.style.sectionTitle.Render(step.title)
+
+	dots := make([]string, total)
+	for i := 1; i <= total; i++ {
+		switch {
+		case i < cur:
+			dots[i-1] = m.style.tickOK.Render("●")
+		case i == cur:
+			dots[i-1] = m.style.headerTitle.Render("◉")
+		default:
+			dots[i-1] = m.style.dim.Render("○")
+		}
 	}
-	title := m.style.sectionTitle.Render("▸ " + step.title)
-	rule := m.style.dim.Render(strings.Repeat("─", w-2))
-	formView := step.form.View()
+	progress := strings.Join(dots, " ")
+
+	cardW := w - 4
+	if cardW < 40 {
+		cardW = 40
+	}
+	card := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("212")).
+		Padding(1, 2).
+		Width(cardW).
+		Render(step.form.View())
+
 	body := lipgloss.JoinVertical(lipgloss.Left,
-		title,
-		rule,
+		indicator,
 		"",
-		formView,
+		progress,
+		"",
+		card,
 	)
-	return lipgloss.NewStyle().
-		Width(w).
-		Height(height).
-		PaddingLeft(2).
-		Render(body)
+	return lipgloss.NewStyle().PaddingLeft(2).Render(body)
 }
 
-// visibleStepNumber returns the 1-indexed position of the current
-// step among the visible (non-skipped) steps.
+// renderRunBody renders the run phase: indicator line + the
+// accumulated phase log inside a thin left-bordered pane. We use a
+// left-only border (not a closed box) because long-running phase
+// logs read better against a vertical accent than a closed frame.
+func (m *onboardModel) renderRunBody(w int) string {
+	indicator := m.style.sectionTitle.Render("Setting things up …")
+	cardW := w - 4
+	if cardW < 40 {
+		cardW = 40
+	}
+	pane := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder(), false, false, false, true).
+		BorderForeground(lipgloss.Color("212")).
+		PaddingLeft(2).
+		Width(cardW).
+		Render(m.renderRunLog())
+
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		indicator,
+		"",
+		pane,
+	)
+	return lipgloss.NewStyle().PaddingLeft(2).Render(body)
+}
+
+// renderDoneBody renders the post-finish view: green-bordered card
+// containing run-log + summary + next-steps. The accent flips from
+// pink (in-progress) to green (success) so the operator's eye lands
+// on the celebration.
+func (m *onboardModel) renderDoneBody(w int) string {
+	indicator := m.style.tickOK.Render("✓ All set.")
+	cardW := w - 4
+	if cardW < 40 {
+		cardW = 40
+	}
+	stack := lipgloss.JoinVertical(lipgloss.Left,
+		m.renderRunLog(),
+		"",
+		m.renderSummary(),
+	)
+	card := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("42")).
+		Padding(1, 2).
+		Width(cardW).
+		Render(stack)
+
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		indicator,
+		"",
+		card,
+	)
+	return lipgloss.NewStyle().PaddingLeft(2).Render(body)
+}
+
+// renderFooterCol renders the bottom hint line as dim text with
+// bullet separators (the bubbletea/views idiom). Width-aligned to
+// the column so it visually anchors the wizard.
+func (m *onboardModel) renderFooterCol(w int) string {
+	var hint string
+	switch m.phase {
+	case phaseSteps:
+		parts := []string{"↑/↓ select", "enter confirm", "esc abort", "ctrl-c quit"}
+		hint = m.style.dim.Render(strings.Join(parts, "  ·  "))
+	case phaseRun:
+		hint = m.style.dim.Render(fmt.Sprintf("running %d/%d  ·  ctrl-c quit",
+			m.queueIdx+1, len(m.queue)))
+	case phaseDone:
+		hint = m.style.dim.Render("press any key to exit")
+	}
+	return lipgloss.NewStyle().Width(w).PaddingLeft(2).Render(hint)
+}
 func (m *onboardModel) visibleStepNumber() int {
 	n := 0
 	for i := 0; i <= m.stepIdx && i < len(m.steps); i++ {
@@ -912,20 +915,6 @@ func (m *onboardModel) renderSummary() string {
 		fmt.Fprintf(&b, "    %s %s\n", m.style.bullet.Render("•"), item)
 	}
 	return b.String()
-}
-
-// renderFooter renders the bottom hint line: keybinds during steps,
-// "press any key to exit" when done.
-func (m *onboardModel) renderFooter() string {
-	switch m.phase {
-	case phaseSteps:
-		return m.style.dim.Render("  ↑↓ select   enter confirm   esc abort   ctrl-c quit")
-	case phaseRun:
-		return m.style.dim.Render(fmt.Sprintf("  running %d/%d   ctrl-c quit", m.queueIdx+1, len(m.queue)))
-	case phaseDone:
-		return m.style.dim.Render("  ✓ done — press any key to exit")
-	}
-	return ""
 }
 
 func (m *onboardModel) appendSection(title string) {
