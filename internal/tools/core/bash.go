@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/sandbox/worker"
+	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -223,6 +224,14 @@ func executeBash(ctx context.Context, command, cwd string, timeout time.Duration
 
 	cmd := exec.CommandContext(runCtx, "bash", "-c", command)
 	cmd.Dir = cwd
+	// Octopus pattern: scrub secret-shaped env vars before they
+	// reach the child shell. Without this, the parent's
+	// GITHUB_TOKEN / OPENAI_API_KEY / etc. silently flow into
+	// every Bash invocation and can leak via misbehaving tools,
+	// log lines, or rogue scripts. Allow-list of process basics
+	// (PATH, HOME, LANG, …) preserved; opt out via
+	// CLAWTOOL_KEEP_SECRETS=1 / CLAWTOOL_ENV_KEEP=KEY1,KEY2.
+	cmd.Env = secrets.ScrubEnv(os.Environ())
 	applyProcessGroup(cmd)
 
 	start := time.Now()

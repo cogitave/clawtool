@@ -12,11 +12,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/cogitave/clawtool/internal/sysproc"
 	"github.com/google/uuid"
 )
@@ -136,6 +138,12 @@ func SubmitBackgroundBash(parent context.Context, command, cwd string, timeoutMs
 
 	cmd := exec.CommandContext(taskCtx, "/bin/bash", "-c", command)
 	cmd.Dir = cwd
+	// Octopus pattern: scrub secret-shaped env vars before they
+	// reach the child shell. Same policy as the synchronous Bash
+	// path in bash.go — a long-running background task is even
+	// more likely to leak via a log file or rogue script, so
+	// the rule applies equally.
+	cmd.Env = secrets.ScrubEnv(os.Environ())
 	sysproc.ApplyGroupWithCtxCancel(cmd)
 
 	task := &BashTask{
