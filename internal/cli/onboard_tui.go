@@ -720,31 +720,19 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 	}
 	progress := strings.Join(dots, " ")
 
-	cardW := w - 4
-	if cardW < 40 {
-		cardW = 40
-	}
-	// Card auto-sizes to the form's natural rendered height. We
-	// don't pin Height(cardH) because that truncates huh's option
-	// list — lipgloss.Style.Height clamps content from the top so
-	// only the cursor row + final option survive when the form is
-	// taller than the clamp. Letting the card grow keeps every
-	// option visible; the body container's Height(bodyH) absorbs
-	// the slack underneath so the footer still pins to the
-	// bottom of the alt-screen.
-	card := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("212")).
-		Padding(1, 3).
-		Width(cardW).
-		Render(step.form.View())
-
+	// No outer card frame around the form — huh already renders
+	// each focused field with its own left-bordered accent block,
+	// and stacking a second rounded box around it produced a
+	// "card-in-a-card" look that compressed the usable width and
+	// felt visually noisy. Render the form directly with a left
+	// margin matching the indicator above so everything aligns
+	// on a single visual axis.
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		indicator,
 		"",
 		progress,
 		"",
-		card,
+		step.form.View(),
 	)
 	return lipgloss.NewStyle().
 		Width(w).
@@ -754,31 +742,15 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 }
 
 // renderRunBody renders the run phase: indicator line + the
-// accumulated phase log inside a stretching rounded card so the
-// operator's eye stays in the same visual zone as the wizard form
-// it just left.
+// accumulated phase log, no surrounding rounded box. The log
+// already has its own per-line rhythm (✓/✗/· glyphs + section
+// rules) which provides enough visual structure on its own.
 func (m *onboardModel) renderRunBody(w, bodyH int) string {
 	indicator := m.style.sectionTitle.Render("Setting things up …")
-	cardW := w - 4
-	if cardW < 40 {
-		cardW = 40
-	}
-	cardH := bodyH - 3
-	if cardH < 8 {
-		cardH = 8
-	}
-	pane := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("212")).
-		Padding(1, 3).
-		Width(cardW).
-		Height(cardH).
-		Render(m.renderRunLog())
-
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		indicator,
 		"",
-		pane,
+		m.renderRunLog(),
 	)
 	return lipgloss.NewStyle().
 		Width(w).
@@ -787,35 +759,15 @@ func (m *onboardModel) renderRunBody(w, bodyH int) string {
 		Render(body)
 }
 
-// renderDoneBody renders the post-finish view: a green-bordered
-// celebratory card containing only the summary checklist +
-// next-steps panel. The streaming run log is dropped here — the
-// operator just watched it scroll by during phaseRun, repeating it
-// pushes the next-steps below the viewport on smaller terminals.
-// The summary is the punchline; that's what the closing screen
-// should actually show.
+// renderDoneBody renders the post-finish view: indicator + summary
+// checklist + next-steps. No outer box — the summary's own glyphs
+// (✓ / · / ✗) carry the visual weight.
 func (m *onboardModel) renderDoneBody(w, bodyH int) string {
 	indicator := m.style.tickOK.Render("✓ All set.")
-	cardW := w - 4
-	if cardW < 40 {
-		cardW = 40
-	}
-	cardH := bodyH - 3
-	if cardH < 8 {
-		cardH = 8
-	}
-	card := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("42")).
-		Padding(1, 3).
-		Width(cardW).
-		Height(cardH).
-		Render(m.renderSummary())
-
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		indicator,
 		"",
-		card,
+		m.renderSummary(),
 	)
 	return lipgloss.NewStyle().
 		Width(w).
