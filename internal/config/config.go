@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/cogitave/clawtool/internal/atomicfile"
+	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -343,14 +344,7 @@ type ProfileConfig struct {
 // resolves we return a relative path so callers fail predictably with a
 // recognizable error rather than reading from "/".
 func DefaultPath() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "config.toml")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "config.toml"
-	}
-	return filepath.Join(home, ".config", "clawtool", "config.toml")
+	return filepath.Join(xdg.ConfigDir(), "config.toml")
 }
 
 // Default returns a Config preloaded with every known core tool enabled.

@@ -31,6 +31,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 // DefaultDispatchSocketPath sits beside DefaultWatchSocketPath in
@@ -38,13 +40,7 @@ import (
 // (daemon up = both bound; daemon down = both gone) so a CLI
 // client either uses both or neither.
 func DefaultDispatchSocketPath() string {
-	if v := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); v != "" {
-		return filepath.Join(v, "clawtool", "dispatch.sock")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".local", "state", "clawtool", "dispatch.sock")
-	}
-	return "dispatch.sock"
+	return filepath.Join(xdg.StateDir(), "dispatch.sock")
 }
 
 // DispatchRequest is the JSON-line wire request. `Action` is an

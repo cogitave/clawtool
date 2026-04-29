@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/cogitave/clawtool/internal/atomicfile"
+	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/gofrs/flock"
 )
 
@@ -77,13 +78,7 @@ func LoadOrCreateIdentity(path string) (*Identity, error) {
 
 // DefaultIdentityPath honours XDG_CONFIG_HOME, falls back to HOME.
 func DefaultIdentityPath() string {
-	if v := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); v != "" {
-		return filepath.Join(v, "clawtool", "identity.ed25519")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".config", "clawtool", "identity.ed25519")
-	}
-	return "identity.ed25519"
+	return filepath.Join(xdg.ConfigDir(), "identity.ed25519")
 }
 
 // Sign produces the signature for the canonical-JSON envelope.

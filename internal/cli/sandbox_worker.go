@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/cogitave/clawtool/internal/sandbox/worker"
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 const sandboxWorkerUsage = `Usage: clawtool sandbox-worker [flags]
@@ -117,13 +118,7 @@ func (a *App) runSandboxWorker(argv []string) int {
 }
 
 func defaultWorkerTokenPath() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "worker-token")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".config", "clawtool", "worker-token")
-	}
-	return "worker-token"
+	return filepath.Join(xdg.ConfigDir(), "worker-token")
 }
 
 func readWorkerToken(path string) (string, error) {

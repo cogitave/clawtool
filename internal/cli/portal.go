@@ -20,6 +20,7 @@ import (
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/portal"
 	"github.com/cogitave/clawtool/internal/secrets"
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 const portalUsage = `Usage:
@@ -443,14 +444,7 @@ func openInEditor(path string) error {
 // portalStickyFile resolves the path; honors XDG_CONFIG_HOME like
 // the agent sticky default does.
 func portalStickyFile() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "active_portal")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "active_portal"
-	}
-	return filepath.Join(home, ".config", "clawtool", "active_portal")
+	return filepath.Join(xdg.ConfigDir(), "active_portal")
 }
 
 func readPortalSticky() string {

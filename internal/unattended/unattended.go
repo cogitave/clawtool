@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/atomicfile"
+	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/google/uuid"
 )
 
@@ -154,13 +155,7 @@ type trustFile struct {
 // unattended-trust.toml, or ~/.local/share/clawtool/unattended-
 // trust.toml when XDG isn't set.
 func TrustFilePath() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "unattended-trust.toml")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".local", "share", "clawtool", "unattended-trust.toml")
-	}
-	return "unattended-trust.toml"
+	return filepath.Join(xdg.DataDir(), "unattended-trust.toml")
 }
 
 // IsTrusted reports whether the operator has previously granted
@@ -323,13 +318,7 @@ func saveTrust(tf trustFile) error {
 // $XDG_DATA_HOME/clawtool/sessions/<id>/, or
 // ~/.local/share/clawtool/sessions/<id>/ when XDG isn't set.
 func AuditDir(sessionID string) string {
-	if x := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "sessions", sessionID)
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".local", "share", "clawtool", "sessions", sessionID)
-	}
-	return filepath.Join("sessions", sessionID)
+	return filepath.Join(xdg.DataDir(), "sessions", sessionID)
 }
 
 // Begin creates a new SessionState with a fresh UUID and audit log

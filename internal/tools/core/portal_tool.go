@@ -22,6 +22,7 @@ import (
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/portal"
 	"github.com/cogitave/clawtool/internal/secrets"
+	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -430,14 +431,7 @@ func runPortalAskBound(ctx context.Context, name, prompt string, timeoutMs int) 
 // ── sticky helpers (shared with internal/cli/portal.go) ───────────
 
 func portalStickyFileShared() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "active_portal")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "active_portal"
-	}
-	return filepath.Join(home, ".config", "clawtool", "active_portal")
+	return filepath.Join(xdg.ConfigDir(), "active_portal")
 }
 
 func readPortalStickyShared() string {
