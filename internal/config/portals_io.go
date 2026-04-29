@@ -94,10 +94,15 @@ func RemovePortalBlock(path, name string) error {
 }
 
 // writeConfigAtomic marshals cfg and atomically writes it to path.
-// Mirrors Save() but skips the chmod-0600 step (config.toml stays
-// 0644; only secrets.toml is 0600). Idempotent.
+// Same 0o600 file mode + 0o700 parent as Save() — config.toml may
+// carry source `env` blocks with API keys, portal headers, and
+// telemetry tokens, so a world-readable downgrade is a real
+// secret-leak. Pre-fix this used 0o644 with the rationale that
+// "only secrets.toml is 0600" — incorrect: env values are
+// inlined into config when set via `clawtool source set-env`,
+// `clawtool portal add` headers, etc.
 func writeConfigAtomic(path string, cfg Config) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir parent: %w", err)
 	}
 	b, err := toml.Marshal(cfg)
@@ -106,7 +111,7 @@ func writeConfigAtomic(path string, cfg Config) error {
 	}
 	tmp := path + ".tmp"
 	body := append(bytes.TrimRight(b, "\n"), '\n')
-	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+	if err := os.WriteFile(tmp, body, 0o600); err != nil {
 		return fmt.Errorf("write tmp: %w", err)
 	}
 	return os.Rename(tmp, path)

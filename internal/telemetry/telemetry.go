@@ -113,8 +113,15 @@ func New(cfg config.TelemetryConfig) *Client {
 
 // Track emits one event. Properties outside the allow-list are
 // silently dropped. Safe to call on a nil receiver.
+//
+// The c.client nil-check happens under c.mu so a Track racing a
+// Close (which sets c.client = nil) can't dereference a nil
+// posthog.Client. Pre-fix this checked nil OUTSIDE the lock then
+// called Enqueue inside the lock — a Close that won the lock-race
+// nil'd the field, and the next Track passed the outside-check
+// only to nil-deref under the lock.
 func (c *Client) Track(event string, properties map[string]any) {
-	if c == nil || !c.enabled || c.client == nil {
+	if c == nil || !c.enabled {
 		return
 	}
 	clean := posthog.Properties{}
@@ -128,6 +135,9 @@ func (c *Client) Track(event string, properties map[string]any) {
 	clean["arch"] = runtime.GOARCH
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.client == nil {
+		return
+	}
 	_ = c.client.Enqueue(posthog.Capture{
 		DistinctId: c.distinctID,
 		Event:      event,

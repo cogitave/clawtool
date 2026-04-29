@@ -481,8 +481,12 @@ func LoadOrDefault(path string) (Config, error) {
 	return Config{}, err
 }
 
-// Save writes the config to path, creating parent directories. File mode
-// is 0600 because env values may carry secrets.
+// Save writes the config to path, creating parent directories. File
+// mode is 0600 because env values may carry secrets. Atomic via
+// temp+rename so a crash / kill / ENOSPC mid-write can't truncate
+// the durable config — Load hard-fails parse errors at config.go's
+// reader, and a half-written config.toml would brick every subsequent
+// `clawtool` invocation until the operator deletes it manually.
 func (c Config) Save(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir parent: %w", err)
@@ -491,8 +495,12 @@ func (c Config) Save(path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	if err := os.WriteFile(path, b, 0o600); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
 	}
 	return nil
 }

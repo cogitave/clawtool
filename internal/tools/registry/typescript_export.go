@@ -97,7 +97,12 @@ func renderToolStub(spec ToolSpec) string {
 	b.WriteString("\n")
 	b.WriteString("/**\n")
 	for _, line := range wrapForJSDoc(spec.Description, 78) {
-		b.WriteString(" * " + line + "\n")
+		// Defuse `*/` inside the description so a tool whose
+		// docs reference C-style comments (e.g. "matches /*..*/
+		// patterns") doesn't terminate the JSDoc block early
+		// and spill the rest of the file into raw TS.
+		safe := strings.ReplaceAll(line, "*/", "*​/")
+		b.WriteString(" * " + safe + "\n")
 	}
 	if len(spec.Keywords) > 0 {
 		b.WriteString(" *\n")
