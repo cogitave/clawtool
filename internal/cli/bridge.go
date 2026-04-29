@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/cogitave/clawtool/internal/cli/listfmt"
 	"github.com/cogitave/clawtool/internal/setup"
 	"github.com/cogitave/clawtool/internal/setup/recipes/bridges"
 
@@ -42,7 +43,12 @@ func (a *App) runBridge(argv []string) int {
 			return 1
 		}
 	case "list":
-		if err := a.BridgeList(); err != nil {
+		format, _, err := listfmt.ExtractFlag(argv[1:])
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool bridge list: %v\n", err)
+			return 2
+		}
+		if err := a.BridgeList(format); err != nil {
 			fmt.Fprintf(a.Stderr, "clawtool bridge list: %v\n", err)
 			return 1
 		}
@@ -109,7 +115,9 @@ func (a *App) BridgeAdd(family string) error {
 }
 
 // BridgeList prints all known bridge recipes with their Detect state.
-func (a *App) BridgeList() error {
+// Output format follows the operator's --format flag: table (default,
+// human-readable), tsv (pipe-friendly), json (programmatic).
+func (a *App) BridgeList(format listfmt.Format) error {
 	w := a.Stdout
 	fams := bridges.Families()
 	if len(fams) == 0 {
@@ -117,16 +125,18 @@ func (a *App) BridgeList() error {
 		return nil
 	}
 	sort.Strings(fams)
-	fmt.Fprintf(w, "%-12s %-12s %s\n", "FAMILY", "STATUS", "DESCRIPTION")
+	cols := listfmt.Cols{
+		Header: []string{"FAMILY", "STATUS", "DESCRIPTION"},
+	}
 	for _, fam := range fams {
 		r := bridges.LookupByFamily(fam)
 		if r == nil {
 			continue
 		}
 		status, _, _ := r.Detect(context.Background(), "")
-		fmt.Fprintf(w, "%-12s %-12s %s\n", fam, string(status), r.Meta().Description)
+		cols.Rows = append(cols.Rows, []string{fam, string(status), r.Meta().Description})
 	}
-	return nil
+	return listfmt.Render(w, format, cols)
 }
 
 // BridgeRemove is a placeholder. Claude Code's `claude plugin remove`
