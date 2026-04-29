@@ -14,6 +14,7 @@ import (
 
 	"github.com/cogitave/clawtool/internal/a2a"
 	"github.com/cogitave/clawtool/internal/cli/listfmt"
+	"github.com/cogitave/clawtool/internal/daemon"
 )
 
 const a2aUsage = `Usage:
@@ -124,7 +125,7 @@ func (a *App) runA2APeers(argv []string) int {
 		Peers []a2a.Peer `json:"peers"`
 		Count int        `json:"count"`
 	}
-	if err := daemonRequest(http.MethodGet, path, nil, &body); err != nil {
+	if err := daemon.HTTPRequest(http.MethodGet, path, nil, &body); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool a2a peers: %v\n", err)
 		return 1
 	}

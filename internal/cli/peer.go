@@ -20,7 +20,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -135,7 +134,7 @@ func (a *App) runPeerSend(argv []string) int {
 		var out struct {
 			DeliveredTo int `json:"delivered_to"`
 		}
-		if err := daemonRequest(http.MethodPost, "/v1/peers/broadcast", bytes.NewReader(body), &out); err != nil {
+		if err := daemon.HTTPRequest(http.MethodPost, "/v1/peers/broadcast", bytes.NewReader(body), &out); err != nil {
 			fmt.Fprintf(a.Stderr, "clawtool peer send: %v\n", err)
 			return 1
 		}
@@ -144,7 +143,7 @@ func (a *App) runPeerSend(argv []string) int {
 	}
 	body, _ := json.Marshal(msg)
 	var saved a2a.Message
-	if err := daemonRequest(http.MethodPost, "/v1/peers/"+target+"/messages", bytes.NewReader(body), &saved); err != nil {
+	if err := daemon.HTTPRequest(http.MethodPost, "/v1/peers/"+target+"/messages", bytes.NewReader(body), &saved); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool peer send: %v\n", err)
 		return 1
 	}
@@ -181,7 +180,7 @@ func (a *App) runPeerInbox(argv []string) int {
 		Count    int           `json:"count"`
 		Peek     bool          `json:"peek"`
 	}
-	if err := daemonRequest(http.MethodGet, url, nil, &out); err != nil {
+	if err := daemon.HTTPRequest(http.MethodGet, url, nil, &out); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool peer inbox: %v\n", err)
 		return 1
 	}
@@ -217,7 +216,7 @@ func resolvePeerByName(name string) (string, error) {
 	var out struct {
 		Peers []a2a.Peer `json:"peers"`
 	}
-	if err := daemonRequest(http.MethodGet, "/v1/peers", nil, &out); err != nil {
+	if err := daemon.HTTPRequest(http.MethodGet, "/v1/peers", nil, &out); err != nil {
 		return "", err
 	}
 	var matches []a2a.Peer
@@ -287,7 +286,7 @@ func (a *App) runPeerRegister(argv []string) int {
 	body, _ := json.Marshal(in)
 
 	var peer a2a.Peer
-	if err := daemonRequest(http.MethodPost, "/v1/peers/register", bytes.NewReader(body), &peer); err != nil {
+	if err := daemon.HTTPRequest(http.MethodPost, "/v1/peers/register", bytes.NewReader(body), &peer); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool peer register: %v\n", err)
 		return 1
 	}
@@ -321,7 +320,7 @@ func (a *App) runPeerHeartbeat(argv []string) int {
 	}
 	body, _ := json.Marshal(map[string]string{"status": *status})
 	var got a2a.Peer
-	if err := daemonRequest(http.MethodPost, "/v1/peers/"+peerID+"/heartbeat", bytes.NewReader(body), &got); err != nil {
+	if err := daemon.HTTPRequest(http.MethodPost, "/v1/peers/"+peerID+"/heartbeat", bytes.NewReader(body), &got); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool peer heartbeat: %v\n", err)
 		return 1
 	}
@@ -351,7 +350,7 @@ func (a *App) runPeerDeregister(argv []string) int {
 		return 1
 	}
 	var got a2a.Peer
-	if err := daemonRequest(http.MethodDelete, "/v1/peers/"+peerID, nil, &got); err != nil {
+	if err := daemon.HTTPRequest(http.MethodDelete, "/v1/peers/"+peerID, nil, &got); err != nil {
 		// Best-effort: still try to remove the local state file
 		// so the next session doesn't inherit a stale id.
 		_ = removePeerIDFile(*session)
@@ -360,66 +359,6 @@ func (a *App) runPeerDeregister(argv []string) int {
 	}
 	_ = removePeerIDFile(*session)
 	return 0
-}
-
-// daemonRequest dials the local daemon's HTTP listener with the
-// shared bearer token. Times out at 5 s — well under any hook's
-// 60 s budget so a wedged daemon doesn't stall a Stop event.
-func daemonRequest(method, path string, body *bytes.Reader, out any) error {
-	state, err := daemon.ReadState()
-	if err != nil {
-		return fmt.Errorf("read daemon state: %w", err)
-	}
-	if state == nil {
-		return errors.New("no daemon running — start it with `clawtool daemon start`")
-	}
-	tok, _ := daemon.ReadToken()
-	url := fmt.Sprintf("http://127.0.0.1:%d%s", state.Port, path)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	var reader interface {
-		Read(p []byte) (int, error)
-	}
-	if body != nil {
-		reader = body
-	}
-	var req *http.Request
-	if reader != nil {
-		req, err = http.NewRequestWithContext(ctx, method, url, body)
-	} else {
-		req, err = http.NewRequestWithContext(ctx, method, url, nil)
-	}
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	if tok != "" {
-		req.Header.Set("Authorization", "Bearer "+tok)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-	if err != nil {
-		return fmt.Errorf("dial daemon: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		var e struct {
-			Error string `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&e)
-		if e.Error == "" {
-			e.Error = resp.Status
-		}
-		return fmt.Errorf("daemon returned %d: %s", resp.StatusCode, e.Error)
-	}
-	if out != nil {
-		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-			return fmt.Errorf("decode response: %w", err)
-		}
-	}
-	return nil
 }
 
 // peerIDFile resolves the on-disk pointer for a session's saved
