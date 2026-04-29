@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -143,10 +144,10 @@ func TestAgents_NoSubcommandPrintsUsage(t *testing.T) {
 	}
 }
 
-// exists is a small helper used only by tests; returns nil when path
-// exists, an error when it doesn't.
+// exists is a small helper used only by tests; returns (true, nil)
+// when the path exists, (false, err) when it doesn't.
 func exists(path string) (bool, error) {
-	if _, err := osStat(path); err == nil {
+	if _, err := os.Stat(path); err == nil {
 		return true, nil
 	} else {
 		return false, err
