@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // LineEndings identifies the dominant line-ending convention of a file.
@@ -157,8 +156,4 @@ func resolvePath(path, cwd string) string {
 	return filepath.Join(cwd, path)
 }
 
-// dropTrailing returns s without a trailing newline-ish run. Used to keep
-// content shape predictable when echoing what was written.
-func dropTrailing(s string) string {
-	return strings.TrimRight(s, "\r\n")
-}
+

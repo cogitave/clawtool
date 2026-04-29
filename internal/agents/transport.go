@@ -201,12 +201,6 @@ func (s *streamingProcess) Close() error {
 // the parent process or to a still-open pipe. A pre-closed reader
 // signals "no extra input" cleanly.
 //
-// This is the legacy entry point — kept for callers that don't need
-// sandbox enforcement. New code should use startStreamingExecWith.
-func startStreamingExec(ctx context.Context, name string, args []string, cwd string) (io.ReadCloser, error) {
-	return startStreamingExecWith(ctx, name, args, cwd, nil)
-}
-
 // mergeEnv layers extra onto os.Environ() — keys already present in
 // the parent env stay (caller's process is authoritative). Returns a
 // fresh slice; never mutates os.Environ.
@@ -230,12 +224,13 @@ func mergeEnv(extra map[string]string) []string {
 	return out
 }
 
-// startStreamingExecWith is the sandbox-aware spawn primitive
+// startStreamingExecFull is the sandbox+env-aware spawn primitive
 // (ADR-020 §"Sandbox surface" wired into ADR-014's transport
 // layer). When profile is non-nil, the host-native engine
 // (sandbox.SelectEngine) wraps the cmd BEFORE Start so the
 // spawned process inherits the sandbox's path / network / env /
-// resource constraints.
+// resource constraints. env is merged onto os.Environ() for
+// per-instance secret resolution.
 //
 // Engine selection is implicit: SelectEngine returns bwrap on
 // Linux, sandbox-exec on macOS, docker as cross-platform
@@ -243,13 +238,6 @@ func mergeEnv(extra map[string]string) []string {
 // Wrap returns a clear error so a caller that explicitly
 // requested a sandbox doesn't silently fall through to an
 // unsandboxed run.
-func startStreamingExecWith(ctx context.Context, name string, args []string, cwd string, profile *sandbox.Profile) (io.ReadCloser, error) {
-	return startStreamingExecFull(ctx, name, args, cwd, profile, nil)
-}
-
-// startStreamingExecFull is the env-aware spawn primitive. Only
-// callers that resolved per-instance secrets need the env map; the
-// rest call the simpler startStreamingExecWith wrapper above.
 func startStreamingExecFull(ctx context.Context, name string, args []string, cwd string, profile *sandbox.Profile, env map[string]string) (io.ReadCloser, error) {
 	if _, err := exec.LookPath(name); err != nil {
 		return nil, err

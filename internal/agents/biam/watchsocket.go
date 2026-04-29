@@ -234,16 +234,6 @@ func DialWatchSocket(path string) (net.Conn, error) {
 	return c, nil
 }
 
-// DecodeWatchEvent reads one JSONL Task line from r. EOF returns
-// io.EOF without wrapping so callers can detect clean disconnect.
-func DecodeWatchEvent(dec *json.Decoder) (*Task, error) {
-	var t Task
-	if err := dec.Decode(&t); err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
 // Errors exposed for caller branching.
 var (
 	ErrNoWatchSocket = errors.New("biam watchsocket: socket not reachable")
