@@ -282,6 +282,17 @@ func (c *Client) Track(event string, properties map[string]any) {
 	if _, set := clean["$lib"]; !set {
 		clean["$lib"] = "clawtool-go"
 	}
+	// Auto-stamp $lib_version with the resolved build tag. Lights
+	// up PostHog's "filter by version" pivot in the Sessions /
+	// Live views — operator can isolate "what's flapping on the
+	// v0.22.30 cohort vs v0.22.36" without us needing to remember
+	// to thread `version` into every Track callsite. The CLI's
+	// per-command Track sites already pass an explicit `version`
+	// property; this fills the PostHog-canonical $lib_version
+	// field that sessions query by default.
+	if _, set := clean["$lib_version"]; !set {
+		clean["$lib_version"] = versionResolved()
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.client == nil {
