@@ -53,7 +53,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=build /out/clawtool-old /usr/local/bin/clawtool
 COPY --from=build /out/clawtool-new /opt/clawtool-new
 COPY test/e2e/upgrade/run.sh /usr/local/bin/run.sh
-RUN chmod +x /usr/local/bin/clawtool /opt/clawtool-new /usr/local/bin/run.sh
+COPY test/e2e/upgrade/long_running.sh /usr/local/bin/long_running.sh
+RUN chmod +x /usr/local/bin/clawtool /opt/clawtool-new \
+    /usr/local/bin/run.sh /usr/local/bin/long_running.sh
 
 WORKDIR /work
+
+# Container-wide XDG paths. The Live-container test (long_running.sh
+# entrypoint) sets these in its preamble too, but Dockerfile-level
+# ENV makes them visible to every `docker exec` child process —
+# without this, host-driven `clawtool daemon restart` invocations
+# inherit only the system default ($HOME/.config), end up writing
+# their state file to a different path than the long_running.sh
+# daemon, and silently spawn a *second* daemon while the first
+# stays alive. The shared shape is the actual production
+# invariant: an operator running `clawtool` always picks up the
+# same XDG roots on every invocation.
+ENV XDG_CONFIG_HOME=/tmp/cfg
+ENV XDG_STATE_HOME=/tmp/state
+
+# Default entrypoint: one-shot harness (run.sh) — exercises the
+# binary-swap + daemon-restart flow then exits. Override with
+# `--entrypoint /usr/local/bin/long_running.sh` (or the
+# Live-container test in upgrade_e2e_test.go) for the
+# "container stays open, host drives upgrade via docker exec"
+# scenario; that one keeps the container alive in Docker
+# Desktop's running list so the operator can inspect state.
 CMD ["/usr/local/bin/run.sh"]
+
