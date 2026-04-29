@@ -323,22 +323,18 @@ func (m *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Forward a CARD-SIZED WindowSizeMsg to the active form so
-		// huh's internal layout adapts to the inner card area
-		// (not the full alt-screen). Without this, the form's
-		// description text wraps using the full terminal width
-		// even though it gets rendered inside a narrower card —
-		// breaking the visual rhythm.
+		// Forward to the active form. We clamp WIDTH to the card's
+		// inner area so huh's description text wraps at the right
+		// column, but we leave HEIGHT generous (the full alt-screen)
+		// so huh doesn't compress its option list to a single row.
+		// The card's natural height will absorb whatever the form
+		// ends up needing.
 		if m.phase == phaseSteps && m.stepIdx < len(m.steps) {
-			cardW := m.width - 10 // border + padding(1,3) + viewport margin
-			cardH := m.height - 14
+			cardW := m.width - 12
 			if cardW < 30 {
 				cardW = 30
 			}
-			if cardH < 8 {
-				cardH = 8
-			}
-			inner := tea.WindowSizeMsg{Width: cardW, Height: cardH}
+			inner := tea.WindowSizeMsg{Width: cardW, Height: msg.Height}
 			f, cmd := m.steps[m.stepIdx].form.Update(inner)
 			if hf, ok := f.(*huh.Form); ok {
 				m.steps[m.stepIdx].form = hf
@@ -635,9 +631,10 @@ func (m *onboardModel) View() string {
 	header := m.renderHeader(contentW)
 	footer := m.renderFooterCol(contentW)
 
-	// Body fills viewport minus header + footer + 2 rows of
-	// breathing room (1 above body, 1 below).
-	bodyH := m.height - lipgloss.Height(header) - lipgloss.Height(footer) - 2
+	// Body fills viewport minus header + footer + the top
+	// padding (2 rows) + bottom padding (1 row) the outer style
+	// adds, plus 1 row breathing room either side of the body.
+	bodyH := m.height - lipgloss.Height(header) - lipgloss.Height(footer) - 5
 	if bodyH < 10 {
 		bodyH = 10
 	}
@@ -654,13 +651,15 @@ func (m *onboardModel) View() string {
 
 	// Stack: header → body (filled) → footer. No centring; the
 	// body's Height() makes it consume the slack so footer pins
-	// to the bottom.
+	// to the bottom. Top padding (2 rows) gives the wizard
+	// breathing room above the header so it doesn't hug the
+	// alt-screen top edge.
 	stack := lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		body,
 		footer,
 	)
-	return lipgloss.NewStyle().Padding(0, 1).Render(stack)
+	return lipgloss.NewStyle().Padding(2, 1, 1, 1).Render(stack)
 }
 
 // renderHeader renders the inline app banner: a 1-line monogram
