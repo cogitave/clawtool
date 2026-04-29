@@ -110,6 +110,28 @@ var allowedKeys = map[string]bool{
 	"$session_id":  true,
 	"$lib":         true,
 	"$lib_version": true,
+
+	// Session lifecycle markers — PostHog's session-bound funnel
+	// queries reconstruct boundaries by looking for these on the
+	// first / last event of a session. We fold them into the
+	// existing server.start / server.stop emissions instead of
+	// emitting separate events (one fewer round-trip per
+	// daemon lifetime).
+	"$session_start": true,
+	"$session_end":   true,
+
+	// PostHog LLM observability properties. We emit these on the
+	// `clawtool.dispatch` event when an upstream agent CLI call
+	// completes (separate commit wires the actual emission;
+	// allow-listing them here is the prerequisite). Privacy
+	// boundary: we never capture prompt / response BODIES — only
+	// the metadata listed here. Token counts come from upstream
+	// usage headers when the bridge surfaces them, otherwise 0.
+	"$ai_provider":      true,
+	"$ai_model":         true,
+	"$ai_input_tokens":  true,
+	"$ai_output_tokens": true,
+	"$ai_total_cost_usd": true,
 }
 
 // New initialises the client when telemetry is enabled. Disabled

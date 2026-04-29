@@ -83,10 +83,11 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 				outcome = "error"
 			}
 			tc.Track("server.stop", map[string]any{
-				"version":     version.Resolved(),
-				"duration_ms": time.Since(bootedAt).Milliseconds(),
-				"outcome":     outcome,
-				"transport":   "http",
+				"version":      version.Resolved(),
+				"duration_ms":  time.Since(bootedAt).Milliseconds(),
+				"outcome":      outcome,
+				"transport":    "http",
+				"$session_end": true,
 			})
 			_ = tc.Close()
 		}

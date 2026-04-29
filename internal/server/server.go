@@ -75,10 +75,11 @@ func ServeStdio(ctx context.Context) error {
 			outcome = "error"
 		}
 		tc.Track("server.stop", map[string]any{
-			"version":     version.Resolved(),
-			"duration_ms": time.Since(bootedAt).Milliseconds(),
-			"outcome":     outcome,
-			"transport":   "stdio",
+			"version":      version.Resolved(),
+			"duration_ms":  time.Since(bootedAt).Milliseconds(),
+			"outcome":      outcome,
+			"transport":    "stdio",
+			"$session_end": true,
 		})
 		_ = tc.Close()
 	}
@@ -140,8 +141,9 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		tc := telemetry.New(cfg.Telemetry)
 		telemetry.SetGlobal(tc)
 		tc.Track("server.start", map[string]any{
-			"version":   version.Resolved(),
-			"transport": transport,
+			"version":        version.Resolved(),
+			"transport":      transport,
+			"$session_start": true,
 		})
 		// Fresh-host install event — fires once per host (marker
 		// file lives at $XDG_DATA_HOME/clawtool/install-emitted).
