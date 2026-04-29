@@ -42,4 +42,3 @@ func LookupEngine(name string) Engine {
 
 // ResetEngineCache forces a re-detection on next LookupEngine call. Used by
 // tests that manipulate $PATH.
-

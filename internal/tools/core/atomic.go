@@ -152,5 +152,3 @@ func resolvePath(path, cwd string) string {
 	}
 	return filepath.Join(defaultCwd(cwd), path)
 }
-
-

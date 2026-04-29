@@ -9,14 +9,14 @@
 // TaskReply lets the dispatched agent push structured replies back
 // in chunks while it works:
 //
-//   1. Subprocess spawn injects CLAWTOOL_TASK_ID + CLAWTOOL_FROM_INSTANCE
-//      env vars (see internal/agents/biam/runner.go).
-//   2. The peer's MCP client has clawtool registered as a server (via
-//      `clawtool agent claim <family>`), so it can call
-//      mcp__clawtool__TaskReply directly.
-//   3. Each call appends one envelope to the parent task. The caller's
-//      TaskGet / TaskWait sees the chunks land in real time without
-//      ever buffering a 300 KB blob into the wire response.
+//  1. Subprocess spawn injects CLAWTOOL_TASK_ID + CLAWTOOL_FROM_INSTANCE
+//     env vars (see internal/agents/biam/runner.go).
+//  2. The peer's MCP client has clawtool registered as a server (via
+//     `clawtool agent claim <family>`), so it can call
+//     mcp__clawtool__TaskReply directly.
+//  3. Each call appends one envelope to the parent task. The caller's
+//     TaskGet / TaskWait sees the chunks land in real time without
+//     ever buffering a 300 KB blob into the wire response.
 //
 // Idempotent — duplicate idempotency_key inserts are silently
 // dropped at the store layer. Read-only signing identity is the

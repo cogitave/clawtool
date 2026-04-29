@@ -155,10 +155,10 @@ var allowedKeys = map[string]bool{
 	// boundary: we never capture prompt / response BODIES — only
 	// the metadata listed here. Token counts come from upstream
 	// usage headers when the bridge surfaces them, otherwise 0.
-	"$ai_provider":      true,
-	"$ai_model":         true,
-	"$ai_input_tokens":  true,
-	"$ai_output_tokens": true,
+	"$ai_provider":       true,
+	"$ai_model":          true,
+	"$ai_input_tokens":   true,
+	"$ai_output_tokens":  true,
 	"$ai_total_cost_usd": true,
 }
 

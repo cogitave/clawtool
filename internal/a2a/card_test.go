@@ -135,5 +135,3 @@ func TestCanonicalSkills_HaveIDsAndDescriptions(t *testing.T) {
 		}
 	}
 }
-
-

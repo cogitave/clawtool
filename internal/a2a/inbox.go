@@ -64,9 +64,9 @@ const inboxCap = 256
 // concurrent calls — mu guards both the queue and the on-disk
 // snapshot.
 type Inbox struct {
-	mu       sync.Mutex
-	peerID   string
-	queue    []Message
+	mu        sync.Mutex
+	peerID    string
+	queue     []Message
 	statePath string
 }
 

@@ -90,11 +90,11 @@ func TestRender_UnknownFormatDegradesToTable(t *testing.T) {
 
 func TestParseFormat_Normalisation(t *testing.T) {
 	cases := map[string]Format{
-		"":      FormatTable,
-		"table": FormatTable,
-		"TSV":   FormatTSV,
-		"  json  ":  FormatJSON,
-		"xml":   FormatTable, // unknown → fallback
+		"":         FormatTable,
+		"table":    FormatTable,
+		"TSV":      FormatTSV,
+		"  json  ": FormatJSON,
+		"xml":      FormatTable, // unknown → fallback
 	}
 	for in, want := range cases {
 		if got := ParseFormat(in); got != want {

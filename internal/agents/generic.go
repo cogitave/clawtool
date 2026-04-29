@@ -302,7 +302,6 @@ var (
 // SetGenericAdapterPath retargets one of the generic adapters at a
 // custom path. Test-only; production code never calls this.
 
-
 func init() {
 	Register(hermesAgentAdapter)
 	Register(openclawAdapter)

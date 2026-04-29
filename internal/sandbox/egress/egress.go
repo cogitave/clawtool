@@ -90,8 +90,8 @@ func Run(ctx context.Context, opts Options) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
-		close(quit)        // signal active tunnels
-		p.tunnels.Wait()   // join their goroutines
+		close(quit)      // signal active tunnels
+		p.tunnels.Wait() // join their goroutines
 		close(shutdownDone)
 	}()
 	fmt.Fprintf(os.Stderr,
