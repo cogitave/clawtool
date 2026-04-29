@@ -201,6 +201,18 @@ func pidAlive(pid int) bool {
 // re-check IsRunning inside the lock so a concurrent winner's
 // state is observed before we duplicate-spawn.
 func Ensure(ctx context.Context) (*State, error) {
+	return EnsureFrom(ctx, "")
+}
+
+// EnsureFrom is Ensure with an explicit binary path. Use this when
+// the caller knows where the canonical clawtool binary lives and
+// can't trust os.Executable() to resolve to the right inode —
+// e.g. `clawtool upgrade` after the install-path swap, where the
+// upgrading CLI process is running from the freshly-renamed
+// `.clawtool.old` backup that may already have been unlinked. An
+// empty exePath falls back to os.Executable() which is correct
+// for every non-upgrade caller.
+func EnsureFrom(ctx context.Context, exePath string) (*State, error) {
 	if s, err := ReadState(); err == nil && IsRunning(s) {
 		return s, nil
 	}
@@ -239,9 +251,12 @@ func Ensure(ctx context.Context) (*State, error) {
 	}
 	defer logFile.Close()
 
-	self, err := os.Executable()
-	if err != nil {
-		return nil, fmt.Errorf("resolve self: %w", err)
+	self := exePath
+	if self == "" {
+		self, err = os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("resolve self: %w", err)
+		}
 	}
 
 	cmd := exec.Command(self,

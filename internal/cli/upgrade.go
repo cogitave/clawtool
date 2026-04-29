@@ -130,8 +130,14 @@ func (a *App) runUpgrade(argv []string) int {
 	// pkill+relaunch by hand, and a forgotten restart silently
 	// invalidates every "fixed in the new release" claim. Stop()
 	// SIGTERMs the old PID; Ensure() spawns a fresh one with the
-	// new binary on the same port + token.
-	if rc := restartDaemonIfRunning(a, ux); rc != 0 {
+	// new binary on the same port + token. Pass `exe` (the install
+	// path the new binary just landed at) so the daemon spawn
+	// resolves to the post-swap inode — the upgrade CLI process
+	// itself is running from `.clawtool.old` (Linux's atomic-rename
+	// backup), and `os.Executable()` would resolve to that
+	// transient path which the post-swap cleanup may have already
+	// unlinked.
+	if rc := restartDaemonIfRunning(a, ux, exe); rc != 0 {
 		return rc
 	}
 
@@ -155,7 +161,12 @@ func (a *App) runUpgrade(argv []string) int {
 // daemon is recorded. On Stop or Ensure failure it surfaces a
 // clear hint via the upgrade UX and returns non-zero so the
 // installer surface (install.sh / CI) can detect the partial state.
-func restartDaemonIfRunning(a *App, ux *upgradeUX) int {
+//
+// `exePath` is the install path the upgrade just wrote the new
+// binary to; passed through to daemon.EnsureFrom so the new
+// daemon spawns from that inode rather than the upgrading CLI's
+// own (now-renamed-to-`.clawtool.old`) executable.
+func restartDaemonIfRunning(a *App, ux *upgradeUX, exePath string) int {
 	state, err := daemon.ReadState()
 	if err != nil {
 		ux.Section("Daemon restart")
@@ -190,7 +201,7 @@ func restartDaemonIfRunning(a *App, ux *upgradeUX) int {
 	ux.PhaseStart("Spawning new daemon onto the upgraded binary")
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	fresh, err := daemon.Ensure(ctx)
+	fresh, err := daemon.EnsureFrom(ctx, exePath)
 	if err != nil {
 		ux.PhaseFail(err.Error(), "run `clawtool serve` manually to start a fresh daemon")
 		return 1
