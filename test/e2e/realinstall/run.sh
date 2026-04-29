@@ -78,7 +78,15 @@ step "Stage 7: clawtool upgrade --check (network round-trip to GitHub)"
 UPGRADE_CHECK=$($HOME/.local/bin/clawtool upgrade --check 2>&1 || true)
 echo "$UPGRADE_CHECK" | sed 's/^/    upgrade --check| /'
 case "$UPGRADE_CHECK" in
+    # Old wire shape (kept for cross-version replay).
     *"up to date"*|*"current:"*|*"latest:"*)
+        ok "upgrade --check completed (operator-readable output)"
+        ;;
+    # Current wire shape: install.sh fetched the latest GitHub
+    # release, so the just-installed binary IS that release. The
+    # check should report "already on the latest" or surface a
+    # version delta — both are healthy.
+    *"already on the latest"*|*"-> "*)
         ok "upgrade --check completed (operator-readable output)"
         ;;
     *)

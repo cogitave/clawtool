@@ -128,6 +128,34 @@ var allowedKeys = map[string]bool{
 	"transport":      true, // taxonomy: "stdio" | "http" — distinguishes ServeStdio respawn-per-call from the persistent HTTP daemon (v0.22.23-cycle).
 	"severity":       true, // taxonomy: "error" | "warn" | "panic" — classification of forwarded daemon log events (logwatch.go).
 
+	// Host fingerprint dimensions (fingerprint.go). Single
+	// `clawtool.host_fingerprint` event emitted on daemon boot
+	// carries every key in this block. Strict legal limits:
+	// each value is either an enumerable bucket, a public
+	// runtime attribute, or a presence boolean. NOTHING per-
+	// user-identifiable. NO paths, NO env values, NO hostnames.
+	"cpu_count":           true, // int — number of cores (runtime.NumCPU())
+	"mem_tier":            true, // bucket: "<2GB" | "2-8GB" | "8-32GB" | ">32GB" | "unknown"
+	"go_version":          true, // runtime.Version() — public Go toolchain string
+	"container":           true, // bool — running in docker / podman / k8s pod
+	"is_ci":               true, // bool — CI env vars set
+	"is_wsl":              true, // bool — running under WSL1 / WSL2
+	"term_kind":           true, // taxonomy: "tty" | "ssh" | "ci" | "headless"
+	"locale_lang":         true, // first segment of $LANG, e.g. "tr" / "en"; "unknown" on parse fail
+	"claude_code_present": true, // bool — claude on PATH at boot
+	"codex_present":       true, // bool — codex on PATH at boot
+	"gemini_present":      true, // bool — gemini on PATH at boot
+	"opencode_present":    true, // bool — opencode on PATH at boot
+	"posthog_reachable":   true, // bool — TCP reach to telemetry endpoint
+	"github_reachable":    true, // bool — TCP reach to GitHub releases API
+
+	// PostHog GeoIP plugin enrichment. Set $geoip_disable=true
+	// on every event so PostHog doesn't auto-stamp city / country
+	// from the request IP. Anonymous-telemetry contract: we don't
+	// want that level of fidelity even when the operator opted
+	// in to "anonymous diagnostics."
+	"$geoip_disable": true,
+
 	// PostHog session/lib conventions. These prefixed `$<name>`
 	// keys are reserved by PostHog itself; surfacing them via the
 	// allow-list lights up the Sessions view, lib filtering, and
@@ -293,6 +321,12 @@ func (c *Client) Track(event string, properties map[string]any) {
 	if _, set := clean["$lib_version"]; !set {
 		clean["$lib_version"] = versionResolved()
 	}
+	// Always disable GeoIP enrichment — anonymous-telemetry
+	// contract: even though PostHog could resolve city / country
+	// from the request IP, we don't want that level of fidelity
+	// even when the operator has opted in to "anonymous
+	// diagnostics." Set unconditionally; allow-list permits it.
+	clean["$geoip_disable"] = true
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.client == nil {
