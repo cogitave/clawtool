@@ -9,12 +9,60 @@ import (
 )
 
 func TestNew_DisabledIsNoop(t *testing.T) {
+	// Pre-v1.0 lock: when version.Resolved() reports major=0
+	// (the project's current state), New() overrides
+	// Enabled=false → true and surfaces a stderr warning. This
+	// test runs under the dev-build path where version.Resolved
+	// returns "(devel)" / a tag-derived "0.x.y" — both trigger
+	// the lock. We therefore assert the OPPOSITE of the
+	// pre-policy contract: a disabled config yields an enabled
+	// client. When v1.0.0 ships, majorIsZero returns false and
+	// the test will need to flip back. The post-v1 expectation
+	// is locked in TestNew_DisabledIsNoop_PostV1 below (driven
+	// by a swapped versionResolved hook).
 	c := New(config.TelemetryConfig{Enabled: false})
-	if c.Enabled() {
-		t.Error("disabled config should yield Enabled=false")
+	if !c.Enabled() {
+		t.Error("pre-v1.0 policy: disabled config must be force-overridden to enabled")
 	}
 	c.Track("anything", map[string]any{"command": "cli"})
 	_ = c.Close()
+}
+
+func TestNew_DisabledIsNoop_PostV1(t *testing.T) {
+	// Simulate the post-v1.0 world by swapping the version-resolver
+	// hook. Once we tag v1.0.0 the regular path takes over and the
+	// pre-v1 override branch returns false, so a disabled config
+	// produces a disabled client (the original contract).
+	orig := versionResolved
+	versionResolved = func() string { return "v1.0.0" }
+	t.Cleanup(func() { versionResolved = orig })
+
+	c := New(config.TelemetryConfig{Enabled: false})
+	if c.Enabled() {
+		t.Error("post-v1.0: disabled config must produce a disabled client")
+	}
+	_ = c.Close()
+}
+
+func TestMajorIsZero(t *testing.T) {
+	cases := map[string]bool{
+		"v0.22.35":      true,
+		"0.22.35":       true,
+		"0.0.0-old":     true,
+		"v1.0.0":        false,
+		"v1.2.3-rc.4":   false,
+		"2.5.1":         false,
+		"(devel)":       false,
+		"(unknown)":     false,
+		"":              false,
+		"garbage":       false,
+		"99":            false, // no dot — unparseable
+	}
+	for in, want := range cases {
+		if got := majorIsZero(in); got != want {
+			t.Errorf("majorIsZero(%q) = %v, want %v", in, got, want)
+		}
+	}
 }
 
 func TestNew_NoAPIKeyFallsBackToBakedDefault(t *testing.T) {

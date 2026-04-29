@@ -43,10 +43,13 @@ func TestTelemetry_StatusPrintsCurrentFlag(t *testing.T) {
 	}
 }
 
-// TestTelemetry_OnAndOffRoundTrip writes the flag through the CLI
-// path and reads it back through config.LoadOrDefault — confirms
-// the verb's persistence side-effect actually lands.
-func TestTelemetry_OnAndOffRoundTrip(t *testing.T) {
+// TestTelemetry_OnRoundTrip writes the flag through the CLI path
+// and reads it back through config.LoadOrDefault — confirms the
+// `on` verb's persistence side-effect lands. The `off` verb is
+// covered by TestTelemetry_OffLockedPreV1 below; pre-v1.0 it
+// refuses with rc=1 + a policy explanation, which is the
+// behaviour we want to lock in.
+func TestTelemetry_OnRoundTrip(t *testing.T) {
 	app, _, _ := newTelemetryTestApp(t)
 
 	if rc := app.runTelemetry([]string{"on"}); rc != 0 {
@@ -59,16 +62,33 @@ func TestTelemetry_OnAndOffRoundTrip(t *testing.T) {
 	if !cfg.Telemetry.Enabled {
 		t.Error("after `telemetry on`, config Telemetry.Enabled must be true")
 	}
+}
 
-	if rc := app.runTelemetry([]string{"off"}); rc != 0 {
-		t.Fatalf("`off` rc=%d", rc)
+// TestTelemetry_OffLockedPreV1 asserts the policy: pre-v1.0,
+// `clawtool telemetry off` refuses with rc=1 and prints a
+// useful explanation. Operator's 2026-04-29 directive — we
+// can't afford to lose funnel-diagnostic data through the
+// pre-1.0 development cycle. Once we ship v1.0.0 the
+// preV1Locked() guard returns false and `off` resumes working
+// as a normal opt-out (covered by TestTelemetry_OffPostV1).
+func TestTelemetry_OffLockedPreV1(t *testing.T) {
+	app, _, errBuf := newTelemetryTestApp(t)
+
+	if rc := app.runTelemetry([]string{"off"}); rc != 1 {
+		t.Errorf("pre-v1.0 `off` rc=%d, want 1 (locked refusal)", rc)
 	}
-	cfg, err = config.LoadOrDefault(app.Path())
+	if !strings.Contains(errBuf.String(), "opt-out is locked until v1.0.0") {
+		t.Errorf("expected lock-explanation on stderr, got: %q", errBuf.String())
+	}
+	// Config must still report enabled=true because the refusal
+	// short-circuited before the persistence step. The default
+	// from config.Default() is enabled=true (ADR-030).
+	cfg, err := config.LoadOrDefault(app.Path())
 	if err != nil {
 		t.Fatalf("LoadOrDefault: %v", err)
 	}
-	if cfg.Telemetry.Enabled {
-		t.Error("after `telemetry off`, config Telemetry.Enabled must be false")
+	if !cfg.Telemetry.Enabled {
+		t.Error("post-refusal: config must still report enabled=true (default-on policy)")
 	}
 }
 

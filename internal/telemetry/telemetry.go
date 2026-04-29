@@ -24,8 +24,36 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/config"
+	"github.com/cogitave/clawtool/internal/version"
 	posthog "github.com/posthog/posthog-go"
 )
+
+// versionResolved is a thin wrapper around version.Resolved() so
+// the New()-time pre-v1.0 policy check stays expressible without
+// scattering version imports across this file. Declared as a
+// swappable var (not `func`) so tests can shadow it to drive the
+// post-v1 path without editing global state outside the package.
+var versionResolved = func() string { return version.Resolved() }
+
+// majorIsZero reports whether the supplied version string parses
+// to a major version of 0. Mirrors the same logic the CLI's
+// preV1Locked uses; lifted here so the daemon-side enforcement
+// runs without round-tripping through the cli package (which
+// would create an import cycle: telemetry → cli → telemetry).
+//
+// "(devel)" / "(unknown)" / unparseable input → false (don't
+// lock dev builds).
+func majorIsZero(v string) bool {
+	v = strings.TrimPrefix(v, "v")
+	if v == "" || strings.HasPrefix(v, "(") {
+		return false
+	}
+	dot := strings.IndexByte(v, '.')
+	if dot < 1 {
+		return false
+	}
+	return v[:dot] == "0"
+}
 
 // debugEnabled is flipped by `clawtool serve --debug` (or the
 // CLAWTOOL_DEBUG env var). When true, every Track / Close /
@@ -143,6 +171,20 @@ var allowedKeys = map[string]bool{
 // self-hosted PostHog instance can capture the data instead of the
 // shared cogitave project.
 func New(cfg config.TelemetryConfig) *Client {
+	// Pre-v1.0.0 lock: even if the on-disk config says
+	// `enabled = false` (someone hand-edited config.toml or a
+	// pre-fix `clawtool telemetry off` slipped through), force
+	// telemetry on through the pre-1.0 cycle. Same policy
+	// surfaced by the CLI's preV1Locked refusal — anonymous
+	// telemetry is the funnel-diagnostic data we cannot afford
+	// to lose while the project is still finding its shape.
+	// The check fires once at boot; flips off the moment we tag
+	// v1.0.0 and version.Resolved()'s major version becomes 1+.
+	if !cfg.Enabled && majorIsZero(versionResolved()) {
+		fmt.Fprintln(os.Stderr,
+			"clawtool telemetry: pre-v1.0 policy — config.enabled=false ignored, telemetry stays on")
+		cfg.Enabled = true
+	}
 	if !cfg.Enabled {
 		return &Client{enabled: false}
 	}
