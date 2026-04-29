@@ -4,7 +4,135 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.35] - 2026-04-29
+## [0.22.36] - 2026-04-29
+
+### CI
+
+- **scripts:** Single-command CI runner with all gates including container e2e (7e173e1)
+### Documentation
+
+- Surface peer mesh + audit cleanup in README (57af3f8)
+- **changelog:** Regenerate for v0.22.35 [skip ci] (44fc8f6)
+### Features
+
+- **telemetry:** Auto-stamp $lib_version on every event for PostHog version filtering (2370d8b)
+- **telemetry:** Forward classified daemon log events to PostHog (2c184e4)
+- Feat(a2a): peer-to-peer messaging — inbox primitive + status-fidelity hooks Phase 1 was discovery-only (registry + listing). This adds
+the *messaging* half so two live sessions on the same host actually
+talk to each other without going through MCP or the BIAM bridge
+layer — answering "iki instance konuşabiliyor mu?" with a yes.
+
+Daemon side (internal/a2a/inbox.go):
+* Per-peer in-memory queue, soft cap 256 (drops oldest on overflow).
+* Persisted at ~/.config/clawtool/peers.d/<peer_id>.inbox.json so
+  daemon restart loses at most the last in-flight message.
+* Wire shape mirrors repowire/protocol/messages.py — Query / Response
+  / Notification / Broadcast — so a runtime hook can surface pending
+  messages as additionalContext without inventing its own format.
+* Deregister clears the inbox (no orphan state).
+
+REST surface (internal/server/peers_handler.go):
+* POST /v1/peers/{id}/messages — enqueue (404 on unknown peer)
+* GET  /v1/peers/{id}/messages[?peek=1] — drain or peek
+* POST /v1/peers/broadcast — fan-out, skips sender by from_peer
+
+Runtime side (internal/cli/peer.go):
+* clawtool peer send <peer_id|--name N|--broadcast> "<text>"
+* clawtool peer inbox [--peek] [--format table|json|tsv]
+* --name resolves via daemon's /v1/peers list; ambiguous names fail.
+
+Status-fidelity hooks (hooks/hooks.json):
+* UserPromptSubmit → heartbeat busy   (Claude is thinking)
+* Notification    → heartbeat online  (Claude went idle)
+So `clawtool a2a peers` STATUS column reflects "actually working"
+vs "waiting at prompt", lifted from repowire's notification_handler.
+
+Tests: 6 new httptest cases (send/drain, peek-keeps, 404 unknown,
+empty-text rejection, broadcast skips sender, deregister clears
+inbox). Existing claude-bootstrap, registry, and cli suites still
+green — go test ./... clean.
+
+Verified live round-trip: alice (claude-code) → bob (codex) by
+display_name delivers; second drain empty; broadcast hits bob but
+not alice's own inbox; peek-twice shows same messages without
+consuming; UserPromptSubmit-style busy heartbeat flips status
+correctly. (4431499)
+- **a2a:** Peer discovery — registry, REST surface, runtime-side primitives (336d6b6)
+- **telemetry:** Pre-v1.0 opt-out lock — telemetry stays on through the development cycle (9c100bd)
+- **telemetry:** PostHog session boundaries + LLM observability allow-list (95bc9b7)
+- **doctor:** Repowire uninstall-plan section + close SetContext drift (f0ad75f)
+- **tools:** Octopus SetContext + GetContext — ambient editor context for the daemon (c39519e)
+- **cli:** Repowire listfmt rollout — source/sandbox/portal/hooks list grow --format (bd3e25e)
+- **cli:** Repowire listfmt — table | tsv | json output for `clawtool bridge list` (ae05078)
+- **secrets:** Octopus env-scrub — strip secret-shaped vars from Bash + bg subprocess spawn (7fb9f3c)
+- Feat(telemetry): wire $session_id + $lib so PostHog Sessions view lights up's first parking-table row (sessions) was the operator's
+2026-04-29 observation: events flow but PostHog's Sessions tab is
+empty + the live feed reads as sparse. Root cause: we never set
+the PostHog-reserved $session_id, $lib, or $lib_version
+properties — the strict allow-list dropped them silently if a
+caller did try, and Track itself never injected them.
+
+Fix:
+1. Generate a 16-byte hex sessionID on Client construction
+   (newSessionID, fresh per New() — i.e. per daemon / CLI
+   invocation, the right boundary for a CLI tool).
+2. Allow-list $session_id, $lib, $lib_version so they survive
+   the property filter when callers do supply them.
+3. Auto-inject $session_id and $lib="clawtool-go" in Track when
+   the caller didn't set them. Caller-supplied values still win
+   (e.g. a future cross-process trace propagation can override).
+
+What this lights up in PostHog: the Sessions view groups events
+emitted from the same daemon process, the live feed renders
+"session X did A then B then C in 4s" rather than a flat row of
+isolated events, and funnel queries can now filter on
+$session_id to compute "of users who ran clawtool init, how many
+ran clawtool send within the same session?"
+
+Init log now reports the session ID alongside the distinct ID
+(`enabled (host=…, distinct_id=abc12345…, session=xyz98765)`)
+so the operator can correlate a local daemon to the rows
+landing in PostHog when debugging.
+
+Tests:
+- TestAllowedKeys_PostHogSessionConventions — locks $session_id,
+  $lib, $lib_version into the allow-list against future blind
+  removals.
+- TestNewSessionID_UniquePerCall — 100-iteration uniqueness
+  smoke test (no collisions, ≥16-byte length, never empty). (0ddaeaa)
+- **star:** Clawtool star — OAuth Device Flow (no CSRF replay) (31e350e)
+- **upgrade:** Polished UX — boxed header, phased progress, release notes, next steps (ac2bfe5)
+- **upgrade:** Self-restart daemon + auto-reconnect dashboard/orchestrator (6bc2e2e)
+- **tools:** Redact secrets in BaseResult MarshalJSON + ErrorLine (96c3f0e)
+### Fixes
+
+- **upgrade:** Respawn daemon from install path, not the CLI's own executable (11295f5)
+- **tools:** Drop BaseResult.MarshalJSON shadowing every tool's structured fields (5df6675)
+- **a2a:** Thread session_id into identity tuple + read os.Stdin in peer (2cabe62)
+- **e2e:** Unblock both container tests — version-prefix + Dockerfile heredoc + Debian base-files username collision (7d20a07)
+### Refactor
+
+- **xdg:** Add ConfigDirIfHome / DataDirIfHome / CacheDirIfHome (f7f21b0)
+- **unattended:** Trust file round-trips through go-toml (b75a8cd)
+- **xdg:** Add CacheDirOrTemp + collapse setup.WriteAtomic onto atomicfile (66e2c9c)
+- **xdg:** Collapse 17 inline XDG-env-resolution callsites (b26a925)
+- **atomicfile:** Collapse 14 inline temp+rename copies into one helper (fb093b7)
+- **daemon:** Lift daemonRequest to internal/daemon as exported HTTPRequest (a32efb1)
+- **cli:** A2a peers reuses peer.go's daemonRequest helper (5e81679)
+- **core:** DefaultCwd helper for the cwd-defaulting pattern (0a547ca)
+- **xdg:** One helper for XDG_CONFIG_HOME / STATE / DATA / CACHE (4376ad9)
+- Bağla veya sil — yarım-kalmış test seam'leri (60be7fa)
+- Drop 5 dead helpers, keep 6 yarım-kalmış future seams (b883ff1)
+- Collapse 12-line + 8-line micro-files into their callers (a8608d3)
+- Drop 4 dead min() shims + rename misleading read_legacy.go (2d97211)
+- **cli:** Merge dashboard+orchestrator into one handler, share peers.d helper (9d508b1)
+- **tui:** Collapse dashboard into orchestrator + add Peers tab (786eb2a)
+### Tests
+
+- **worker:** Cover Client.Read / Client.Write transport-error path (f22c193)
+- **e2e:** Real-install Alpine fixture — install.sh + GitHub release + onboard end-to-end (568c542)
+- **e2e:** Name + label e2e containers + add live-container upgrade scenario (befe1fe)
+- **e2e:** Container test for binary-swap + daemon-restart flow (e887441)## [0.22.35] - 2026-04-29
 
 ### Documentation
 
