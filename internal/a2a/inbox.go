@@ -132,13 +132,6 @@ func (i *Inbox) Drain(peek bool) []Message {
 	return out
 }
 
-// Pending returns the queue length without copying.
-func (i *Inbox) Pending() int {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	return len(i.queue)
-}
-
 // persistInbox writes `queue` to path atomically. nil → delete.
 // Best-effort; mailbox stays in-memory authoritative if write
 // fails (process crash before the next persistence loses at

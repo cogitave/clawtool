@@ -546,29 +546,6 @@ func indexNewline(s string) int {
 	return -1
 }
 
-// readCapped consumes r up to `cap` bytes; reports truncation when
-// the upstream had more.
-func readCapped(r io.Reader, cap int) (*bytes.Buffer, bool) {
-	buf := &bytes.Buffer{}
-	tmp := make([]byte, 32*1024)
-	for {
-		n, err := r.Read(tmp)
-		if n > 0 {
-			if buf.Len()+n > cap {
-				take := cap - buf.Len()
-				if take > 0 {
-					buf.Write(tmp[:take])
-				}
-				return buf, true
-			}
-			buf.Write(tmp[:n])
-		}
-		if err != nil {
-			return buf, false
-		}
-	}
-}
-
 // readCappedBroadcast reads r line-by-line, buffers up to `cap` bytes
 // for the persisted result body, AND fans every line as a StreamFrame
 // to the WatchHub so live consumers (orchestrator, dashboard,
