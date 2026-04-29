@@ -46,17 +46,17 @@ func TestNew_DisabledIsNoop_PostV1(t *testing.T) {
 
 func TestMajorIsZero(t *testing.T) {
 	cases := map[string]bool{
-		"v0.22.35":      true,
-		"0.22.35":       true,
-		"0.0.0-old":     true,
-		"v1.0.0":        false,
-		"v1.2.3-rc.4":   false,
-		"2.5.1":         false,
-		"(devel)":       false,
-		"(unknown)":     false,
-		"":              false,
-		"garbage":       false,
-		"99":            false, // no dot — unparseable
+		"v0.22.35":    true,
+		"0.22.35":     true,
+		"0.0.0-old":   true,
+		"v1.0.0":      false,
+		"v1.2.3-rc.4": false,
+		"2.5.1":       false,
+		"(devel)":     false,
+		"(unknown)":   false,
+		"":            false,
+		"garbage":     false,
+		"99":          false, // no dot — unparseable
 	}
 	for in, want := range cases {
 		if got := majorIsZero(in); got != want {

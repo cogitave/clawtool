@@ -6,17 +6,17 @@
 // the actual release tarball from cogitave/clawtool's GitHub
 // releases. The harness:
 //
-//   1. Verifies install.sh placed the binary at the configured
-//      location and that it runs (catches musl-vs-glibc linkage
-//      regressions on Alpine).
-//   2. Starts the daemon, probes /v1/health, lists core tools.
-//   3. Renders `clawtool overview` for sanity.
-//   4. Runs `clawtool upgrade --check` (real network round-trip
-//      to GitHub for the release feed).
-//   5. Drives `clawtool onboard --yes` against mock claude /
-//      codex / gemini CLIs so the wizard's full state machine
-//      fires.
-//   6. Stops the daemon and confirms state-file cleanup.
+//  1. Verifies install.sh placed the binary at the configured
+//     location and that it runs (catches musl-vs-glibc linkage
+//     regressions on Alpine).
+//  2. Starts the daemon, probes /v1/health, lists core tools.
+//  3. Renders `clawtool overview` for sanity.
+//  4. Runs `clawtool upgrade --check` (real network round-trip
+//     to GitHub for the release feed).
+//  5. Drives `clawtool onboard --yes` against mock claude /
+//     codex / gemini CLIs so the wizard's full state machine
+//     fires.
+//  6. Stops the daemon and confirms state-file cleanup.
 //
 // Skipped unless CLAWTOOL_E2E_DOCKER=1. The container is
 // deliberately NOT auto-removed so the operator can inspect

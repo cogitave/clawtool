@@ -310,5 +310,3 @@ type obscuraServer struct {
 // hand-rolled CDP swap; v0.16.3 keeps it for forward-compat with
 // any caller that still detects it.
 var ErrSessionContextDone = errors.New("portal: browser session context cancelled")
-
-

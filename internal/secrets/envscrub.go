@@ -62,7 +62,7 @@ var alwaysKeep = map[string]bool{
 	"XDG_STATE_HOME": true, "XDG_CACHE_HOME": true,
 	"XDG_RUNTIME_DIR": true,
 	"HTTP_PROXY":      true, "HTTPS_PROXY": true, "NO_PROXY": true,
-	"http_proxy":      true, "https_proxy": true, "no_proxy": true,
+	"http_proxy": true, "https_proxy": true, "no_proxy": true,
 }
 
 // hardBlocklist is exact-match for known-sensitive vars whose

@@ -78,10 +78,14 @@ func TestBash_TimeoutPreservesOutput(t *testing.T) {
 		t.Errorf("exit_code = %d, want -1 (killed before clean exit)", res.ExitCode)
 	}
 	// The whole point: duration must be near `timeout`, not anywhere near
-	// the 5-second sleep. Allow a generous slack for slow CI but still
-	// well below 5000ms.
-	if res.DurationMs < int64(timeout.Milliseconds()) {
-		t.Errorf("duration_ms = %d, want >= %d (timeout)", res.DurationMs, timeout.Milliseconds())
+	// the 5-second sleep. Race-detector + scheduler jitter can shave a
+	// few ms off the measured duration vs. the context deadline, so
+	// allow a 50ms tolerance below `timeout` rather than asserting a
+	// strict floor (the test was previously flaky under -race when
+	// the cancel signal raced the duration tick).
+	tolerance := int64(50)
+	if res.DurationMs < int64(timeout.Milliseconds())-tolerance {
+		t.Errorf("duration_ms = %d, want >= %d (timeout - %dms tolerance)", res.DurationMs, timeout.Milliseconds(), tolerance)
 	}
 	if res.DurationMs > 2000 {
 		t.Errorf("duration_ms = %d, want <2000 — runaway child should be reaped via process group", res.DurationMs)

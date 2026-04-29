@@ -161,5 +161,3 @@ func TestSkill_URLModeRejectsNonMarkdownContentType(t *testing.T) {
 		t.Fatal("Apply should refuse a JSON content-type for a SKILL.md fetch")
 	}
 }
-
-

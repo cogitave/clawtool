@@ -153,4 +153,3 @@ func getOrBuildStore(ctx context.Context, repo string) (*index.Store, error) {
 
 // ResetSemanticSearchCache lets tests drop the cached stores. No-op
 // in production.
-

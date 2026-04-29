@@ -49,6 +49,16 @@ e2e-upgrade: ## Run the binary-swap + daemon-restart container e2e (Docker requi
 e2e-realinstall: ## Run the Alpine + install.sh + GitHub-release e2e (Docker + network required).
 	CLAWTOOL_E2E_DOCKER=1 $(GO) test -count=1 -timeout=300s ./test/e2e/realinstall/...
 
+.PHONY: ci ci-fast ci-full
+ci: ## Run every CI gate (fmt, vet, build, test, deadcode, stub-e2e). Set CLAWTOOL_E2E_DOCKER=1 for container gates.
+	@bash scripts/ci.sh
+
+ci-fast: ## Run quick CI (fmt, vet, build, test, deadcode only — skip e2e + docker).
+	@CLAWTOOL_CI_FAST=1 bash scripts/ci.sh
+
+ci-full: ## Run every CI gate including container e2e + docker smoke.
+	@CLAWTOOL_E2E_DOCKER=1 bash scripts/ci.sh
+
 .PHONY: stub-server
 stub-server: ## Build the stub MCP server used as a test fixture.
 	$(GO) build -o test/e2e/stub-server/stub-server ./test/e2e/stub-server

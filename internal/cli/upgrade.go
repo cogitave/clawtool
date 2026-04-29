@@ -230,5 +230,3 @@ func isComparableVersion(v string) bool {
 	}
 	return true
 }
-
-

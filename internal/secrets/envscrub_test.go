@@ -41,10 +41,10 @@ func TestShouldKeep_SecretValueLeak(t *testing.T) {
 	// known-shape token in its VALUE should still be stripped —
 	// this is the leak the value-regex catches.
 	cases := map[string]string{
-		"DEBUG_DUMP":  "phc_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA12345",
-		"MY_VAR":      "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-		"BENIGN":      "Bearer token=sk-AAAAAAAAAAAAAAAAAAAA1234567890",
-		"OTHER":       "sk_live_AAAAAAAAAAAAAAAAAAAA",
+		"DEBUG_DUMP": "phc_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA12345",
+		"MY_VAR":     "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"BENIGN":     "Bearer token=sk-AAAAAAAAAAAAAAAAAAAA1234567890",
+		"OTHER":      "sk_live_AAAAAAAAAAAAAAAAAAAA",
 	}
 	for k, v := range cases {
 		if shouldKeep(k, v, nil) {
@@ -152,11 +152,11 @@ func TestScrubEnv_EnvKeepEscapeHatch(t *testing.T) {
 
 func TestParseKeepList_Edges(t *testing.T) {
 	cases := map[string]map[string]bool{
-		"":                  nil,
-		"FOO":               {"FOO": true},
-		"FOO,BAR":           {"FOO": true, "BAR": true},
-		" FOO , BAR ":       {"FOO": true, "BAR": true},
-		"FOO,,BAR,":         {"FOO": true, "BAR": true},
+		"":            nil,
+		"FOO":         {"FOO": true},
+		"FOO,BAR":     {"FOO": true, "BAR": true},
+		" FOO , BAR ": {"FOO": true, "BAR": true},
+		"FOO,,BAR,":   {"FOO": true, "BAR": true},
 	}
 	for in, want := range cases {
 		got := parseKeepList(in)

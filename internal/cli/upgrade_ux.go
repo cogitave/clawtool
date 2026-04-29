@@ -35,11 +35,11 @@ import (
 // upgrade.go drives the flow.
 type upgradeUX struct {
 	w     io.Writer
-	color bool        // lipgloss styles render iff true
-	width int         // terminal width clamp; 80 when not a tty
-	style ux          // pre-built styles bound to color=on/off
-	now   time.Time   // last PhaseStart timestamp — paired with PhaseDone for elapsed
-	phase string      // last phase label — to print in PhaseDone
+	color bool      // lipgloss styles render iff true
+	width int       // terminal width clamp; 80 when not a tty
+	style ux        // pre-built styles bound to color=on/off
+	now   time.Time // last PhaseStart timestamp — paired with PhaseDone for elapsed
+	phase string    // last phase label — to print in PhaseDone
 }
 
 type ux struct {
@@ -255,5 +255,3 @@ func (u *upgradeUX) NextSteps(items []string) {
 func (u *upgradeUX) Note(text string) {
 	fmt.Fprintf(u.w, "  %s %s\n", u.style.dim.Render("·"), u.style.dim.Render(text))
 }
-
-
