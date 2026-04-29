@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.31] - 2026-04-28
+## [0.22.32] - 2026-04-29
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.31 [skip ci] (86c5fd6)
+### Features
+
+- **tui:** Orchestrator probes daemon /v1/health on connect, banners on version mismatch (0a677e1)## [0.22.31] - 2026-04-28
 
 ### Features
 
