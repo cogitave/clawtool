@@ -84,15 +84,19 @@ type stepResultMsg struct {
 // transitions to phaseDone.
 type finishedMsg struct{}
 
-// wizardStep wraps one huh.Form (single-group) plus the apply hook
-// that copies the answer into onboardState. skipIf gates conditional
-// steps (e.g. bridges question only shown when state.MissingBridges
-// is non-empty).
+// wizardStep wraps one custom widget (Select / MultiSelect /
+// Confirm) plus the apply hook that copies the widget's answer
+// into onboardState. skipIf gates conditional steps (e.g. bridges
+// question only shown when state.MissingBridges is non-empty).
+//
+// Widgets implement the stepWidget interface (Update / View /
+// Done / Keybinds). On Done the wizard's outer model invokes apply
+// to write back into onboardState, then advances to the next step.
 type wizardStep struct {
 	title  string
-	form   *huh.Form
+	widget stepWidget
 	skipIf func(*onboardState) bool
-	apply  func(*onboardState) // copies form value into state (no-op for confirm widgets bound by Value())
+	apply  func(*onboardState)
 }
 
 // onboardModel is the Bubble Tea model that drives the entire
@@ -148,25 +152,29 @@ func newOnboardModelAt(state *onboardState, deps onboardDeps, track func(string,
 	return m
 }
 
-// buildWizardSteps materialises the step list. Each step is a
-// single-group huh.Form so the wizard renders one focused question
-// per screen instead of stacking groups in a single continuous form.
+// buildWizardSteps materialises the step list. Each step wraps a
+// minimal custom widget (Select / MultiSelect / Confirm — see
+// onboard_widgets.go) instead of an embedded huh.Form. The
+// widgets render every option every frame and integrate cleanly
+// with our outer alt-screen layout (no internal viewports, no
+// height clamps to fight, no "only cursor row visible" failure
+// mode).
 func buildWizardSteps(state *onboardState) []wizardStep {
 	steps := []wizardStep{}
 
-	// Step 1: Primary CLI.
+	// Step 1: Primary CLI — single-choice select.
 	state.PrimaryCLI = primaryDefault(state.Found)
-	primaryOpts := primaryCLIOptions(state.Found)
+	primaryOpts := buildSelectOptions(primaryCLIOptionLabels(state.Found))
+	primarySel := newSelectWidget(
+		"Which CLI will you primarily use?",
+		"Pick the agent you'll spend most of your time in. clawtool routes through that one as the primary; the others connect via MCP / bridge so you can dispatch across them.",
+		primaryOpts, state.PrimaryCLI,
+	)
 	steps = append(steps, wizardStep{
-		title: "Primary CLI",
-		form: huh.NewForm(huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Which CLI will you primarily use?").
-				Description("Pick the agent you'll spend most of your time in. clawtool routes through that one as the primary; the others connect via MCP / bridge so you can dispatch across them.").
-				Options(primaryOpts...).
-				Value(&state.PrimaryCLI),
-		)),
+		title:  "Primary CLI",
+		widget: &selectAdapter{w: primarySel},
 		apply: func(s *onboardState) {
+			s.PrimaryCLI = primarySel.Value()
 			// Smart default: pre-check the primary CLI's bridge
 			// for install when it's missing and isn't claude-code.
 			if s.PrimaryCLI != "" && s.PrimaryCLI != "claude-code" {
@@ -180,114 +188,148 @@ func buildWizardSteps(state *onboardState) []wizardStep {
 		},
 	})
 
-	// Step 2: Install missing bridges (conditional).
+	// Step 2: Install missing bridges (conditional, multi-select).
 	if len(state.MissingBridges) > 0 {
-		opts := make([]huh.Option[string], 0, len(state.MissingBridges))
+		opts := make([]widgetOption, 0, len(state.MissingBridges))
 		for _, fam := range state.MissingBridges {
-			opts = append(opts, huh.NewOption(fam, fam))
+			opts = append(opts, widgetOption{Label: fam, Value: fam})
 		}
+		bridgesSel := newMultiSelectWidget(
+			"Install missing bridges",
+			"Toggle items with space; enter submits. Selected items run `clawtool bridge add <family>` after submit. Failures stay non-fatal. Your primary CLI's bridge is pre-checked.",
+			opts, state.InstallBridges,
+		)
 		steps = append(steps, wizardStep{
-			title: "Install bridges",
-			form: huh.NewForm(huh.NewGroup(
-				huh.NewMultiSelect[string]().
-					Title("Install missing bridges").
-					Description("Selected items run `clawtool bridge add <family>` after submit. Failures stay non-fatal. Your primary CLI's bridge is pre-checked.").
-					Options(opts...).
-					Value(&state.InstallBridges),
-			)),
+			title:  "Install bridges",
+			widget: &multiAdapter{w: bridgesSel},
 			skipIf: func(s *onboardState) bool { return len(s.MissingBridges) == 0 },
+			apply:  func(s *onboardState) { s.InstallBridges = bridgesSel.Values() },
 		})
 	}
 
-	// Step 3: MCP host registration (conditional).
+	// Step 3: MCP host registration (conditional, multi-select).
 	if len(state.MCPClaimable) > 0 {
-		opts := make([]huh.Option[string], 0, len(state.MCPClaimable))
+		opts := make([]widgetOption, 0, len(state.MCPClaimable))
 		for _, h := range state.MCPClaimable {
-			opts = append(opts, huh.NewOption(h, h))
+			opts = append(opts, widgetOption{Label: h, Value: h})
 		}
 		state.ClaimMCP = append([]string{}, state.MCPClaimable...)
+		mcpSel := newMultiSelectWidget(
+			"Register clawtool as an MCP server",
+			"Toggle hosts with space; enter submits. Starts a single persistent local daemon (loopback HTTP + bearer auth) and points each selected host at it. Without this, hosts can't see clawtool tools.",
+			opts, state.ClaimMCP,
+		)
 		steps = append(steps, wizardStep{
-			title: "MCP registration",
-			form: huh.NewForm(huh.NewGroup(
-				huh.NewMultiSelect[string]().
-					Title("Register clawtool as an MCP server").
-					Description("Starts a single persistent local daemon (loopback HTTP + bearer auth) and points each selected host at it. Without this, hosts can't see clawtool tools.").
-					Options(opts...).
-					Value(&state.ClaimMCP),
-			)),
+			title:  "MCP registration",
+			widget: &multiAdapter{w: mcpSel},
 			skipIf: func(s *onboardState) bool { return len(s.MCPClaimable) == 0 },
+			apply:  func(s *onboardState) { s.ClaimMCP = mcpSel.Values() },
 		})
 	}
 
 	// Step 4: Daemon.
 	state.StartDaemon = true
+	daemonConf := newConfirmWidget(
+		"Start the persistent daemon now?",
+		"`clawtool serve` is the single backend every host fans into. Default = on. Skip only if you'll start it later via `clawtool daemon start`.",
+		"Start daemon", "Skip", true,
+	)
 	steps = append(steps, wizardStep{
-		title: "Daemon",
-		form: huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title("Start the persistent daemon now?").
-				Description("`clawtool serve` is the single backend every host fans into. Default = on. Skip only if you'll start it later via `clawtool daemon start`.").
-				Affirmative("Start daemon").
-				Negative("Skip").
-				Value(&state.StartDaemon),
-		)),
+		title:  "Daemon",
+		widget: &confirmAdapter{w: daemonConf},
+		apply:  func(s *onboardState) { s.StartDaemon = daemonConf.Value() },
 	})
 
 	// Step 5: Identity.
+	identityConf := newConfirmWidget(
+		"Create BIAM identity?",
+		"Generates an Ed25519 keypair at ~/.config/clawtool/identity.ed25519 (mode 0600). Required for `clawtool send --async` and cross-host BIAM messaging.",
+		"Generate", "Skip", true,
+	)
 	steps = append(steps, wizardStep{
-		title: "Identity",
-		form: huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title("Create BIAM identity?").
-				Description("Generates an Ed25519 keypair at ~/.config/clawtool/identity.ed25519 (mode 0600). Required for `clawtool send --async` and cross-host BIAM messaging.").
-				Affirmative("Generate").
-				Negative("Skip").
-				Value(&state.CreateIdentity),
-		)),
+		title:  "Identity",
+		widget: &confirmAdapter{w: identityConf},
+		apply:  func(s *onboardState) { s.CreateIdentity = identityConf.Value() },
 	})
 
 	// Step 6: Secrets store.
 	state.InitSecrets = true
+	secretsConf := newConfirmWidget(
+		"Initialise the secrets store?",
+		"Drops an empty 0600 secrets.toml at ~/.config/clawtool/secrets.toml so `clawtool source set-secret` writes without surprising you with a new file. Idempotent.",
+		"Initialise", "Skip", true,
+	)
 	steps = append(steps, wizardStep{
-		title: "Secrets store",
-		form: huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title("Initialise the secrets store?").
-				Description("Drops an empty 0600 secrets.toml at ~/.config/clawtool/secrets.toml so `clawtool source set-secret` writes without surprising you with a new file. Idempotent.").
-				Affirmative("Initialise").
-				Negative("Skip").
-				Value(&state.InitSecrets),
-		)),
+		title:  "Secrets store",
+		widget: &confirmAdapter{w: secretsConf},
+		apply:  func(s *onboardState) { s.InitSecrets = secretsConf.Value() },
 	})
 
 	// Step 7: Telemetry.
 	state.Telemetry = true
+	telemetryConf := newConfirmWidget(
+		"Anonymous telemetry (pre-1.0 default = on)",
+		"Until v1.0.0 ships, telemetry is on by default — anonymous usage data tells us which paths get used. Emits ONLY: command/version/OS/arch/duration/exit code/error class/agent FAMILY/recipe names. NEVER: prompts, paths, file contents, secrets.",
+		"Opt in", "No thanks", true,
+	)
 	steps = append(steps, wizardStep{
-		title: "Telemetry",
-		form: huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title("Anonymous telemetry (pre-1.0 default = on)").
-				Description("Until v1.0.0 ships, telemetry is on by default — anonymous usage data tells us which paths get used. Emits ONLY: command/version/OS/arch/duration/exit code/error class/agent FAMILY/recipe names. NEVER: prompts, paths, file contents, secrets.").
-				Affirmative("Opt in").
-				Negative("No thanks").
-				Value(&state.Telemetry),
-		)),
+		title:  "Telemetry",
+		widget: &confirmAdapter{w: telemetryConf},
+		apply:  func(s *onboardState) { s.Telemetry = telemetryConf.Value() },
 	})
 
 	// Step 8: Project init.
+	initConf := newConfirmWidget(
+		"Run `clawtool init` after onboard?",
+		"Project-level wizard that injects release-please / dependabot / commitlint / brain into the repo you're sitting in. Skip if you'd rather run it later in a different repo.",
+		"Yes, set this repo up", "Skip", false,
+	)
 	steps = append(steps, wizardStep{
-		title: "Project init",
-		form: huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title("Run `clawtool init` after onboard?").
-				Description("Project-level wizard that injects release-please / dependabot / commitlint / brain into the repo you're sitting in. Skip if you'd rather run it later in a different repo.").
-				Affirmative("Yes, set this repo up").
-				Negative("Skip").
-				Value(&state.RunInit),
-		)),
+		title:  "Project init",
+		widget: &confirmAdapter{w: initConf},
+		apply:  func(s *onboardState) { s.RunInit = initConf.Value() },
 	})
 
 	return steps
+}
+
+// buildSelectOptions converts a [][2]string list of (label, value)
+// pairs to widgetOption. Helper to keep buildWizardSteps tight.
+func buildSelectOptions(pairs [][2]string) []widgetOption {
+	out := make([]widgetOption, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, widgetOption{Label: p[0], Value: p[1]})
+	}
+	return out
+}
+
+// primaryCLIOptionLabels mirrors primaryCLIOptions but returns
+// (label, value) pairs for the custom selectWidget instead of
+// huh.Option[string].
+func primaryCLIOptionLabels(found map[string]bool) [][2]string {
+	families := []string{"claude-code", "codex", "gemini", "opencode", "hermes"}
+	out := [][2]string{}
+	// Detected first.
+	for _, fam := range families {
+		key := fam
+		if fam == "claude-code" {
+			key = "claude"
+		}
+		if found[key] {
+			out = append(out, [2]string{fam + " (✓ detected)", fam})
+		}
+	}
+	for _, fam := range families {
+		key := fam
+		if fam == "claude-code" {
+			key = "claude"
+		}
+		if !found[key] {
+			out = append(out, [2]string{fam, fam})
+		}
+	}
+	out = append(out, [2]string{"none / decide later", ""})
+	return out
 }
 
 // advanceStepCursor walks the step cursor forward past any steps
@@ -305,14 +347,14 @@ func (m *onboardModel) advanceStepCursor() {
 	}
 }
 
-// Init kicks off the first step's form. Bubble Tea will pump the
-// returned cmd through Update.
+// Init kicks off the wizard. Custom widgets don't need an Init cmd
+// (they're synchronous renderers) so we just defend against the
+// edge case where the step list is empty.
 func (m *onboardModel) Init() tea.Cmd {
 	if m.stepIdx >= len(m.steps) {
-		// Edge: zero steps (shouldn't happen, but defend).
 		return m.startRunPhase()
 	}
-	return m.steps[m.stepIdx].form.Init()
+	return nil
 }
 
 // Update routes incoming msgs to the current phase: form during
@@ -323,29 +365,10 @@ func (m *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Forward to the active form with an artificially large
-		// Height (9999). huh.Form clamps its option viewport to
-		// `min(neededHeight, msg.Height)` — without this Init
-		// signal the form falls back to a tiny default and only
-		// the cursor row of its option list survives (operator
-		// sees just "none / decide later" or whichever option
-		// happens to be selected). Passing 9999 is bigger than
-		// any real need, so huh renders the form's natural full
-		// height and we keep all options visible. Width is
-		// trimmed to the body's left-padding offset so huh's
-		// description text wraps at the right column.
-		if m.phase == phaseSteps && m.stepIdx < len(m.steps) {
-			cardW := m.width - 6
-			if cardW < 30 {
-				cardW = 30
-			}
-			inner := tea.WindowSizeMsg{Width: cardW, Height: 9999}
-			f, cmd := m.steps[m.stepIdx].form.Update(inner)
-			if hf, ok := f.(*huh.Form); ok {
-				m.steps[m.stepIdx].form = hf
-			}
-			return m, cmd
-		}
+		// Custom widgets don't need WindowSize forwarding —
+		// they render every row at natural size, the surrounding
+		// card grows to fit, the body container's Height absorbs
+		// slack to push the footer to the bottom.
 		return m, nil
 
 	case tea.KeyMsg:
@@ -374,37 +397,28 @@ func (m *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updateStep forwards the msg to the active step's form and
-// transitions to the next step (or to phaseRun) when the form
-// reports completion.
+// updateStep forwards the msg to the active widget. If the widget
+// reports Done (operator pressed enter), apply the answer back to
+// onboardState, persist progress, and advance to the next step.
+// When all steps are exhausted, transition to the run phase.
 func (m *onboardModel) updateStep(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.stepIdx >= len(m.steps) {
 		return m, m.startRunPhase()
 	}
 	step := m.steps[m.stepIdx]
-	f, cmd := step.form.Update(msg)
-	if hf, ok := f.(*huh.Form); ok {
-		m.steps[m.stepIdx].form = hf
-		step.form = hf
-	}
-
-	switch step.form.State {
-	case huh.StateCompleted:
+	w, cmd := step.widget.Update(msg)
+	m.steps[m.stepIdx].widget = w
+	if w.Done() {
 		if step.apply != nil {
 			step.apply(m.state)
 		}
 		m.stepIdx++
 		m.advanceStepCursor()
-		// Persist progress so a Ctrl-C / terminal close at this
-		// point doesn't lose the operator's answers.
 		_ = saveOnboardProgress(m.stepIdx, m.state, versionShortForOnboard())
 		if m.stepIdx >= len(m.steps) {
 			return m, m.startRunPhase()
 		}
-		return m, m.steps[m.stepIdx].form.Init()
-	case huh.StateAborted:
-		m.err = huh.ErrUserAborted
-		return m, tea.Quit
+		return m, nil
 	}
 	return m, cmd
 }
@@ -733,13 +747,12 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 	}
 	progress := strings.Join(dots, " ")
 
-	// Wrap the form in a rounded-border card. The card has Width
-	// but NO Height clamp — that way the card grows to whatever
-	// huh's natural rendered height happens to be (we already
-	// told huh it has 9999 rows of viewport via WindowSizeMsg in
-	// Update, so it renders every option). The body container
-	// below DOES have Height(bodyH); slack rows pad below the
-	// card so the footer still pins to the alt-screen bottom.
+	// Wrap the widget in a rounded-border card. Width fills the
+	// available column; Height is unset so the card grows to the
+	// widget's natural rendered height (custom widgets render
+	// every option each frame, no internal viewport drama). The
+	// body container below has Height(bodyH); slack rows pad
+	// below so the footer pins to the alt-screen bottom.
 	cardW := w - 4
 	if cardW < 40 {
 		cardW = 40
@@ -749,7 +762,7 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 		BorderForeground(lipgloss.Color("212")).
 		Padding(1, 3).
 		Width(cardW).
-		Render(step.form.View())
+		Render(step.widget.View())
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		indicator,
@@ -801,13 +814,23 @@ func (m *onboardModel) renderDoneBody(w, bodyH int) string {
 }
 
 // renderFooterCol renders the bottom hint line as dim text with
-// bullet separators (the bubbletea/views idiom). Width-aligned to
-// the column so it visually anchors the wizard.
+// bullet separators. Width-aligned to the column so it visually
+// anchors the wizard. During phaseSteps the hint is widget-
+// specific (Select shows different keys than MultiSelect or
+// Confirm) so the footer asks the active widget what to advertise.
 func (m *onboardModel) renderFooterCol(w int) string {
 	var hint string
 	switch m.phase {
 	case phaseSteps:
-		parts := []string{"↑/↓ select", "enter confirm", "esc abort", "ctrl-c quit"}
+		widgetHint := ""
+		if m.stepIdx < len(m.steps) && m.steps[m.stepIdx].widget != nil {
+			widgetHint = m.steps[m.stepIdx].widget.Keybinds()
+		}
+		parts := []string{}
+		if widgetHint != "" {
+			parts = append(parts, widgetHint)
+		}
+		parts = append(parts, "ctrl-c quit")
 		hint = m.style.dim.Render(strings.Join(parts, "  ·  "))
 	case phaseRun:
 		hint = m.style.dim.Render(fmt.Sprintf("running %d/%d  ·  ctrl-c quit",
