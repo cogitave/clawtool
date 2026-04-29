@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -45,21 +44,34 @@ func (b BaseResult) ErrorLine(target string) string {
 	return fmt.Sprintf("✗ %s — %s", op, reason)
 }
 
-// MarshalJSON guarantees the JSON envelope's error_reason is
-// redacted regardless of how the field was set. Tool handlers
-// have ~60 sites that assign `out.ErrorReason = err.Error()`
-// directly (common Go idiom); routing every one through a
-// setter is high-friction and one missed call site is a
-// silent leak. Owning the wire-format step here means every
-// envelope is safe by construction. The struct's zero values
-// + omitempty semantics are preserved by re-marshalling
-// through a private alias.
-func (b BaseResult) MarshalJSON() ([]byte, error) {
-	type alias BaseResult
-	cp := alias(b)
-	cp.ErrorReason = redactSecrets(cp.ErrorReason)
-	return json.Marshal(cp)
-}
+// Pre-2026-04-30 we shipped a `MarshalJSON()` here that ran every
+// envelope through `redactSecrets(ErrorReason)` before marshal —
+// nicely safe by construction, but Go's interface promotion meant
+// the outer tool result types (which embed BaseResult and add
+// Stdout / ExitCode / Matches / …) inherited THIS MarshalJSON,
+// shadowing every sibling field. The MCP wire structuredContent
+// silently dropped to just `{duration_ms: N}` and the model lost
+// access to bash output, search hits, agent rosters, …
+//
+// Restored: outer types use Go's default struct marshal which
+// includes every embedded + sibling field. Redaction now lives in
+// two places that already covered the actual leak vectors:
+//
+//   - ErrorLine() — runs every BaseResult.ErrorReason through
+//     redactSecrets before rendering. content[].text (the channel
+//     the chat UI shows the user, and the fallback the model reads)
+//     is therefore safe.
+//   - tools/core/redact.go's wire-level secret patterns (set/env
+//     prefixes, Authorization headers, cookies) are still applied
+//     by every tool that surfaces stderr / output; that work was
+//     never tied to the BaseResult MarshalJSON path.
+//
+// The trade-off: structuredContent.error_reason exposes the raw
+// err.Error() string, which is what the v0.21 wire shape did and
+// what the existing e2e suite asserts. Worth it; the alternative
+// (every outer type implementing its own MarshalJSON) is a 60-site
+// migration with one missed site producing the same shadowing bug
+// in reverse.
 
 // SuccessLine is the canonical single-line success format used by
 // stateless tools (Edit, Write). Variadic extras are joined with
