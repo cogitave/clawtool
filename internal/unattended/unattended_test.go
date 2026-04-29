@@ -85,19 +85,29 @@ func TestTrust_PathNormalisation(t *testing.T) {
 	}
 }
 
-func TestParseTrust_RobustToWhitespace(t *testing.T) {
+func TestLoadTrust_RoundTripsViaGoToml(t *testing.T) {
+	withTempXDG(t)
 	body := `# header
 
 [[trust]]
 repo_path = "/a"
-granted_at = "2026-04-27T15:00:00Z"
+granted_at = 2026-04-27T15:00:00Z
 note = "first"
 
 [[trust]]
    repo_path = "/b"
-   granted_at = "2026-04-27T15:30:00Z"
+   granted_at = 2026-04-27T15:30:00Z
 `
-	tf := parseTrust(body)
+	if err := os.MkdirAll(filepath.Dir(TrustFilePath()), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(TrustFilePath(), []byte(body), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	tf, err := loadTrust()
+	if err != nil {
+		t.Fatalf("loadTrust: %v", err)
+	}
 	if len(tf.Trust) != 2 {
 		t.Fatalf("got %d entries, want 2", len(tf.Trust))
 	}
