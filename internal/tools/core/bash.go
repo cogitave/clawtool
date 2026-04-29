@@ -215,9 +215,7 @@ func (r bashResult) Render() string {
 // executeBash runs `bash -c command` with a hard timeout. Output captured
 // from both pipes is returned even if the process is killed by the timeout.
 func executeBash(ctx context.Context, command, cwd string, timeout time.Duration) bashResult {
-	if cwd == "" {
-		cwd = homeDir()
-	}
+	cwd = defaultCwd(cwd)
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

@@ -123,9 +123,7 @@ func SubmitBackgroundBash(parent context.Context, command, cwd string, timeoutMs
 	if strings.TrimSpace(command) == "" {
 		return "", errors.New("bash background: empty command")
 	}
-	if cwd == "" {
-		cwd = homeDir()
-	}
+	cwd = defaultCwd(cwd)
 	if timeoutMs <= 0 {
 		timeoutMs = defaultTimeoutMs
 	}

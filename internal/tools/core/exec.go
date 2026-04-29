@@ -43,3 +43,17 @@ func homeDir() string {
 	}
 	return "/"
 }
+
+// defaultCwd returns cwd, or the user's home directory when cwd is
+// the empty string. Standard "no cwd specified → operator's home"
+// convention every Bash / Read / Edit / Write / Glob / Grep tool
+// follows (atomic.go's resolvePath uses the same fallback for
+// path resolution; this is the cwd-only variant). Centralised so
+// the rule stays consistent — pre-this helper, six tools/core
+// files inlined the same three-line check independently.
+func defaultCwd(cwd string) string {
+	if cwd == "" {
+		return homeDir()
+	}
+	return cwd
+}

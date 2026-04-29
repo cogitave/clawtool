@@ -92,10 +92,7 @@ func runGrep(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	if err != nil {
 		return mcp.NewToolResultError("missing required argument: pattern"), nil
 	}
-	cwd := req.GetString("cwd", "")
-	if cwd == "" {
-		cwd = homeDir()
-	}
+	cwd := defaultCwd(req.GetString("cwd", ""))
 	path := req.GetString("path", ".")
 	glob := req.GetString("glob", "")
 	typeAlias := req.GetString("type", "")
