@@ -80,33 +80,43 @@ func validateRule(r Rule) error {
 	return nil
 }
 
+// findProjectRulesPath walks UP from the process working
+// directory looking for an existing `.clawtool/rules.toml`,
+// stopping at the filesystem root or 12 levels (whichever first).
+// Returns "" when no ancestor has the file. Used by both
+// DefaultRoots (read path) and LocalRulesPath (write path) so
+// RulesCheck and RulesAdd target the same file no matter where
+// the daemon was spawned from. Pre-fix DefaultRoots was cwd-only
+// (RulesCheck returned `configured: false`) and LocalRulesPath
+// was cwd-relative (RulesAdd silently wrote to the daemon's
+// working directory's `.clawtool/rules.toml`, often $HOME).
+func findProjectRulesPath() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	dir := cwd
+	for i := 0; i < 12; i++ {
+		candidate := filepath.Join(dir, ".clawtool", "rules.toml")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
 // DefaultRoots returns the search roots for rules.toml. Project-
-// local takes precedence over user-global, same convention skill /
-// sandbox discovery uses.
-//
-// Project-local resolution walks UP from the process working
-// directory looking for a `.clawtool/rules.toml` (stopping at the
-// filesystem root or 12 levels, whichever comes first). Pre-fix
-// this only checked the literal working directory; a daemon
-// spawned from $XDG_CONFIG_HOME / $HOME never saw the operator's
-// project rules and `mcp__clawtool__RulesCheck` returned
-// `configured: false` — the operator's complaint on 2026-04-29.
+// local (walked up from cwd) takes precedence over user-global,
+// same convention skill / sandbox discovery uses.
 func DefaultRoots() []string {
 	roots := []string{}
-	if cwd, err := os.Getwd(); err == nil {
-		dir := cwd
-		for i := 0; i < 12; i++ {
-			candidate := filepath.Join(dir, ".clawtool", "rules.toml")
-			if _, err := os.Stat(candidate); err == nil {
-				roots = append(roots, candidate)
-				break
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
+	if walked := findProjectRulesPath(); walked != "" {
+		roots = append(roots, walked)
 	}
 	// Always include the relative form too — covers the case
 	// where cwd resolution failed or the operator runs from a
@@ -137,9 +147,15 @@ func LoadDefault() ([]Rule, string, bool, error) {
 	return nil, "", false, nil
 }
 
-// LocalRulesPath returns the project-scoped rules path:
-// ./.clawtool/rules.toml.
+// LocalRulesPath returns the project-scoped rules path. Prefers
+// an existing `.clawtool/rules.toml` walked up from cwd (so
+// RulesAdd from anywhere inside the project lands in the right
+// file); falls back to creating one in the literal cwd when no
+// ancestor is found (first rule in a fresh project).
 func LocalRulesPath() string {
+	if walked := findProjectRulesPath(); walked != "" {
+		return walked
+	}
 	return filepath.Join(".clawtool", "rules.toml")
 }
 
