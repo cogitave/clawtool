@@ -14,8 +14,31 @@ import (
 	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/daemon"
 	"github.com/cogitave/clawtool/internal/telemetry"
+	"github.com/cogitave/clawtool/internal/version"
 	"github.com/cogitave/clawtool/internal/xdg"
 )
+
+// versionShortForOnboard returns version.Resolved() trimmed of the
+// `+dirty` / `-gXXXX` suffix that pollutes a dev-build header.
+// Tagged releases pass through unchanged.
+func versionShortForOnboard() string {
+	v := version.Resolved()
+	for _, sep := range []string{"+", "-"} {
+		if i := indexOfRune(v, sep); i > 0 {
+			v = v[:i]
+		}
+	}
+	return v
+}
+
+func indexOfRune(s, sep string) int {
+	for i := 0; i < len(s); i++ {
+		if string(s[i]) == sep {
+			return i
+		}
+	}
+	return -1
+}
 
 // onboardState carries everything the wizard collects before any side
 // effects happen. Persisting choices up front makes the test path
@@ -188,13 +211,18 @@ func (a *App) runOnboard(argv []string) int {
 func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 	state := detectHost(d.lookPath)
 
-	groups := []*huh.Group{
-		huh.NewGroup(
-			huh.NewNote().
-				Title("clawtool onboard").
-				Description(hostSummary(state.Found)),
-		),
-	}
+	// Visual canvas: clear the operator's terminal so the wizard
+	// lands on a clean slate (escape sequence is a no-op when
+	// stdout isn't a tty, so piped invocations stay log-greppable),
+	// then render a tight rounded-box header with the host
+	// detection summary as a single pill row. Replaces the prior
+	// multi-line `huh.NewNote` welcome group that overflowed on
+	// small terminals.
+	ux := newOnboardUX(a.Stdout)
+	ux.ClearScreen()
+	ux.Header(versionShortForOnboard(), state.Found)
+
+	groups := []*huh.Group{}
 
 	// Primary CLI — the operator's main interface. Drives smart
 	// defaults for every following question. Pre-selected to the
@@ -352,53 +380,78 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		"agent":      state.PrimaryCLI,
 	})
 
-	for _, fam := range state.InstallBridges {
-		outcome := "success"
-		if err := d.bridgeAdd(fam); err != nil {
-			outcome = "error"
-			d.stdoutLn(fmt.Sprintf("  ! bridge %s: %v", fam, err))
-		} else {
-			d.stdoutLn(fmt.Sprintf("  ✓ bridge %s installed", fam))
+	// Side-effect dispatch — every step renders through the
+	// onboardUX as a phase line so the operator sees structured
+	// progress (Section + → label + ✓ result + dim duration)
+	// instead of the prior raw stdoutLn block of mixed glyphs.
+	// Each phase outcome also feeds the closing Summary so the
+	// operator gets a tight checklist of what was wired.
+	var summary []SummaryRow
+
+	if len(state.InstallBridges) > 0 {
+		ux.Section("Bridges")
+		for _, fam := range state.InstallBridges {
+			ux.PhaseStart(fmt.Sprintf("install bridge %s", fam))
+			outcome := "success"
+			if err := d.bridgeAdd(fam); err != nil {
+				outcome = "error"
+				ux.PhaseFail(err.Error())
+				summary = append(summary, SummaryRow{Label: "bridge " + fam, Outcome: "fail", Detail: err.Error()})
+			} else {
+				ux.PhaseDone("")
+				summary = append(summary, SummaryRow{Label: "bridge " + fam, Outcome: "ok"})
+			}
+			track("clawtool.onboard", map[string]any{
+				"event_kind": "bridge_install",
+				"bridge":     fam,
+				"outcome":    outcome,
+			})
 		}
-		track("clawtool.onboard", map[string]any{
-			"event_kind": "bridge_install",
-			"bridge":     fam,
-			"outcome":    outcome,
-		})
 	}
 
-	for _, h := range state.ClaimMCP {
-		if d.claimMCPHost == nil {
-			d.stdoutLn(fmt.Sprintf("  ! MCP claim %s: not wired (test build?)", h))
+	if len(state.ClaimMCP) > 0 {
+		ux.Section("MCP host registration")
+		for _, h := range state.ClaimMCP {
+			ux.PhaseStart(fmt.Sprintf("register %s", h))
+			if d.claimMCPHost == nil {
+				ux.PhaseSkip("not wired (test build?)")
+				summary = append(summary, SummaryRow{Label: "MCP " + h, Outcome: "skip"})
+				track("clawtool.onboard", map[string]any{
+					"event_kind": "mcp_claim",
+					"agent":      h,
+					"outcome":    "skipped",
+				})
+				continue
+			}
+			outcome := "success"
+			url, err := d.claimMCPHost(h)
+			if err != nil {
+				outcome = "error"
+				ux.PhaseFail(err.Error())
+				summary = append(summary, SummaryRow{Label: "MCP " + h, Outcome: "fail", Detail: err.Error()})
+			} else {
+				ux.PhaseDone(url)
+				summary = append(summary, SummaryRow{Label: "MCP " + h, Outcome: "ok", Detail: url})
+			}
 			track("clawtool.onboard", map[string]any{
 				"event_kind": "mcp_claim",
 				"agent":      h,
-				"outcome":    "skipped",
+				"outcome":    outcome,
 			})
-			continue
 		}
-		outcome := "success"
-		url, err := d.claimMCPHost(h)
-		if err != nil {
-			outcome = "error"
-			d.stdoutLn(fmt.Sprintf("  ! MCP claim %s: %v", h, err))
-		} else {
-			d.stdoutLn(fmt.Sprintf("  ✓ %s registered → %s", h, url))
-		}
-		track("clawtool.onboard", map[string]any{
-			"event_kind": "mcp_claim",
-			"agent":      h,
-			"outcome":    outcome,
-		})
 	}
 
 	if state.StartDaemon && d.ensureDaemon != nil {
+		ux.Section("Daemon")
+		ux.PhaseStart("start persistent daemon")
 		outcome := "success"
 		if url, err := d.ensureDaemon(); err != nil {
 			outcome = "error"
-			d.stdoutLn(fmt.Sprintf("  ! daemon: %v", err))
+			ux.PhaseFail(err.Error())
+			summary = append(summary, SummaryRow{Label: "daemon", Outcome: "fail", Detail: err.Error()})
 		} else {
-			d.stdoutLn(fmt.Sprintf("  ✓ daemon up → %s", url))
+			ux.PhaseDone(url)
+			summary = append(summary, SummaryRow{Label: "daemon", Outcome: "ok", Detail: url})
 		}
 		track("clawtool.onboard", map[string]any{
 			"event_kind": "daemon_start",
@@ -407,14 +460,18 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 	}
 
 	if state.CreateIdentity {
+		ux.Section("Identity")
+		ux.PhaseStart("generate BIAM Ed25519 keypair")
 		if err := d.createIdentity(); err != nil {
+			ux.PhaseFail(err.Error())
 			track("clawtool.onboard", map[string]any{
 				"event_kind": "identity_create",
 				"outcome":    "error",
 			})
 			return fmt.Errorf("create identity: %w", err)
 		}
-		d.stdoutLn("  ✓ BIAM identity ready")
+		ux.PhaseDone("~/.config/clawtool/identity.ed25519, mode 0600")
+		summary = append(summary, SummaryRow{Label: "BIAM identity", Outcome: "ok"})
 		track("clawtool.onboard", map[string]any{
 			"event_kind": "identity_create",
 			"outcome":    "success",
@@ -422,12 +479,16 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 	}
 
 	if state.InitSecrets && d.initSecrets != nil {
+		ux.Section("Secrets store")
+		ux.PhaseStart("initialise empty secrets.toml")
 		outcome := "success"
 		if err := d.initSecrets(); err != nil {
 			outcome = "error"
-			d.stdoutLn(fmt.Sprintf("  ! secrets store: %v", err))
+			ux.PhaseFail(err.Error())
+			summary = append(summary, SummaryRow{Label: "secrets store", Outcome: "fail", Detail: err.Error()})
 		} else {
-			d.stdoutLn("  ✓ secrets store ready (~/.config/clawtool/secrets.toml, mode 0600)")
+			ux.PhaseDone("~/.config/clawtool/secrets.toml, mode 0600")
+			summary = append(summary, SummaryRow{Label: "secrets store", Outcome: "ok"})
 		}
 		track("clawtool.onboard", map[string]any{
 			"event_kind": "secrets_init",
@@ -435,14 +496,17 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		})
 	}
 
+	// Telemetry preference goes into the summary as a status row
+	// rather than its own phase — it's a recorded preference, not
+	// a side-effect that "ran."
 	if state.Telemetry {
-		d.stdoutLn("  ✓ telemetry opt-in recorded (CLAWTOOL_TELEMETRY=1)")
+		summary = append(summary, SummaryRow{Label: "telemetry", Outcome: "ok", Detail: "opted in"})
 		track("clawtool.onboard", map[string]any{
 			"event_kind": "telemetry_optin",
 			"outcome":    "success",
 		})
 	} else {
-		d.stdoutLn("  · telemetry: opted out")
+		summary = append(summary, SummaryRow{Label: "telemetry", Outcome: "skip", Detail: "opted out"})
 		track("clawtool.onboard", map[string]any{
 			"event_kind": "telemetry_optout",
 			"outcome":    "success",
@@ -457,15 +521,27 @@ func (a *App) onboard(ctx context.Context, d onboardDeps) error {
 		d.stdoutLn(fmt.Sprintf("  ! could not write onboarded marker: %v", err))
 	}
 
-	d.stdoutLn("")
+	// Closing checklist + next-steps panel. Replaces the prior
+	// stream of stdoutLn paragraphs with one tight scan-friendly
+	// block: every wired component on one screen.
+	ux.Summary(summary)
+
+	var nextSteps []string
 	if state.PrimaryCLI != "" {
-		d.stdoutLn(fmt.Sprintf("Primary interface set to %q — clawtool routes through it as your main agent; others connect via MCP / bridge for cross-dispatch.", state.PrimaryCLI))
+		nextSteps = append(nextSteps, fmt.Sprintf("Primary interface: %s", state.PrimaryCLI))
 	}
 	if state.RunInit {
-		d.stdoutLn("Run `clawtool init` now to drop project recipes (release-please / dependabot / etc.) into the current repo.")
-	} else {
-		d.stdoutLn("Done. Run `clawtool send --list` to see your callable agents.")
+		nextSteps = append(nextSteps, "clawtool init     drop project recipes (release-please / dependabot / brain) into this repo")
 	}
+	nextSteps = append(nextSteps, "clawtool send --list     see your callable agents")
+	nextSteps = append(nextSteps, "clawtool overview        live state of daemon + active dispatches")
+	ux.NextSteps(nextSteps)
+
+	// Existing test contract: the post-onboard hint must mention
+	// `clawtool send --list` so operators know where to discover
+	// callable agents. Keep emitted via stdoutLn so the test
+	// harness's recorded buffer still sees it.
+	d.stdoutLn("Done. Run `clawtool send --list` to see your callable agents.")
 
 	if d.verifySummary != nil {
 		d.verifySummary()
