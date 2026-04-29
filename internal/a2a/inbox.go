@@ -68,11 +68,17 @@ type Inbox struct {
 	statePath string
 }
 
-// inboxStateDir returns ~/.config/clawtool/peers.d. Mirrors the
-// CLI's peerStateDir() so the on-disk layout is one directory:
-// peers.d/<session>.id          — CLI's per-session id pointer
-// peers.d/<peer_uuid>.inbox.json — daemon's per-peer mailbox
-func inboxStateDir() string {
+// PeersStateDir returns the canonical ~/.config/clawtool/peers.d
+// directory used by both the daemon (per-peer inbox files written
+// by this package) and the CLI's `clawtool peer` verb (per-session
+// id pointer files). One layout, one helper — exported so callers
+// outside this package don't reinvent the path-resolution dance.
+//
+// On-disk layout:
+//
+//	peers.d/<session>.id            — CLI's session→peer_id pointer
+//	peers.d/<peer_uuid>.inbox.json  — daemon's per-peer mailbox
+func PeersStateDir() string {
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
 		return filepath.Join(dir, "clawtool", "peers.d")
 	}
@@ -83,7 +89,7 @@ func inboxStateDir() string {
 }
 
 func inboxPath(peerID string) string {
-	return filepath.Join(inboxStateDir(), peerID+".inbox.json")
+	return filepath.Join(PeersStateDir(), peerID+".inbox.json")
 }
 
 // Enqueue appends `msg` to this inbox, capping to inboxCap and

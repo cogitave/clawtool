@@ -310,9 +310,7 @@ func (a *App) dispatch(argv []string) int {
 		return a.runA2A(argv[1:])
 	case "peer":
 		return a.runPeer(argv[1:])
-	case "dashboard", "tui":
-		return a.runDashboard(argv[1:])
-	case "orchestrator", "orch":
+	case "dashboard", "tui", "orchestrator", "orch":
 		return a.runOrchestrator(argv[1:])
 	case "rules":
 		return a.runRules(argv[1:])
