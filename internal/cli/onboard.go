@@ -199,11 +199,71 @@ func (a *App) runOnboard(argv []string) int {
 		},
 		forceDefaults: yes,
 	}
+	// Interactive TTY path → Bubble Tea wizard with alt-screen
+	// buffer + stepwise progression. --yes / non-TTY (CI, pipes,
+	// docker exec without -t, the test harness) falls through to
+	// the linear onboard() implementation so its plain-text
+	// contract stays stable.
+	stdout, _ := a.Stdout.(*os.File)
+	stdin, _ := a.Stdin.(*os.File)
+	useTUI := !yes && stdout != nil && stdin != nil && isTTY(stdout) && isTTY(stdin)
+	if useTUI {
+		if err := a.onboardTUI(context.Background(), d); err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				fmt.Fprintln(a.Stdout, "clawtool onboard: aborted; nothing changed.")
+				return 0
+			}
+			fmt.Fprintf(a.Stderr, "clawtool onboard: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	if err := a.onboard(context.Background(), d); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool onboard: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+// onboardTUI wraps the Bubble Tea wizard. The model owns the entire
+// flow (steps + run-phase progress + summary); we just hand it the
+// detected host state and the dep callbacks. Side-effect callbacks
+// (bridgeAdd, claimMCPHost, ...) are the same ones the linear path
+// uses, so both implementations execute identical real work.
+func (a *App) onboardTUI(ctx context.Context, d onboardDeps) error {
+	state := detectHost(d.lookPath)
+	track := d.track
+	if track == nil {
+		track = func(string, map[string]any) {}
+	}
+	track("clawtool.onboard", map[string]any{"event_kind": "start", "command": "onboard"})
+
+	if err := runOnboardTUI(ctx, &state, d, track); err != nil {
+		return err
+	}
+
+	// Post-program output (telemetry thank-you, star CTA, verify
+	// summary) lands AFTER the alt-screen exits so the operator's
+	// regular terminal scrollback gets these lines.
+	d.stdoutLn("Done. Run `clawtool send --list` to see your callable agents.")
+	if d.verifySummary != nil {
+		d.verifySummary()
+	}
+	if state.Telemetry {
+		d.stdoutLn("")
+		d.stdoutLn("───────────────────────────────────────────────────")
+		d.stdoutLn("Telemetry stays on through v1.0.0 while clawtool is")
+		d.stdoutLn("in active development — anonymous usage data tells")
+		d.stdoutLn("us which paths actually get used so we can sharpen")
+		d.stdoutLn("them. Thank you for contributing to the build by")
+		d.stdoutLn("leaving it on; if it ever feels invasive, flip it")
+		d.stdoutLn("off any time with: clawtool telemetry off")
+		d.stdoutLn("───────────────────────────────────────────────────")
+	}
+	d.stdoutLn("")
+	d.stdoutLn("⭐ Enjoying clawtool? A GitHub star helps a lot:")
+	d.stdoutLn("   https://github.com/cogitave/clawtool")
+	return nil
 }
 
 // onboard runs the wizard. Pure-ish: every side effect routes
