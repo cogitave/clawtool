@@ -4,7 +4,17 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.33] - 2026-04-29
+## [0.22.34] - 2026-04-29
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.33 [skip ci] (6cd1418)
+### Features
+
+- **serve:** --debug flag + loud telemetry init + version.Resolved() in every emit (91f3d20)
+### Fixes
+
+- **rules:** Walk up to project root for .clawtool/rules.toml + RulesCheck wiring (c6bf1d2)## [0.22.33] - 2026-04-29
 
 ### Documentation
 
