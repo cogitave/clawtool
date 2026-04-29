@@ -126,6 +126,7 @@ var allowedKeys = map[string]bool{
 	"install_method": true, // taxonomy: "script" | "brew" | "go-install" | "release" | "docker" | "manual" | "unknown"
 	"update_outcome": true, // taxonomy: "up_to_date" | "update_available" | "check_failed"
 	"transport":      true, // taxonomy: "stdio" | "http" — distinguishes ServeStdio respawn-per-call from the persistent HTTP daemon (v0.22.23-cycle).
+	"severity":       true, // taxonomy: "error" | "warn" | "panic" — classification of forwarded daemon log events (logwatch.go).
 
 	// PostHog session/lib conventions. These prefixed `$<name>`
 	// keys are reserved by PostHog itself; surfacing them via the
