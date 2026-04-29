@@ -1063,13 +1063,6 @@ func wrapText(s string, width int) []string {
 	return out
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // _ keeps context import alive even if future refactors temporarily
 // drop the use site.
 var _ = context.Background

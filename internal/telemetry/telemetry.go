@@ -245,13 +245,6 @@ func newSessionID() string {
 	return hex.EncodeToString(buf)
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // Track emits one event. Properties outside the allow-list are
 // silently dropped. Safe to call on a nil receiver.
 //
