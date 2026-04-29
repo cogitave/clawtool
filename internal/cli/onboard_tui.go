@@ -323,10 +323,23 @@ func (m *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Forward window-size to the active form too so
-		// huh's internal layout adapts.
+		// Forward a CARD-SIZED WindowSizeMsg to the active form so
+		// huh's internal layout adapts to the inner card area
+		// (not the full alt-screen). Without this, the form's
+		// description text wraps using the full terminal width
+		// even though it gets rendered inside a narrower card —
+		// breaking the visual rhythm.
 		if m.phase == phaseSteps && m.stepIdx < len(m.steps) {
-			f, cmd := m.steps[m.stepIdx].form.Update(msg)
+			cardW := m.width - 10 // border + padding(1,3) + viewport margin
+			cardH := m.height - 14
+			if cardW < 30 {
+				cardW = 30
+			}
+			if cardH < 8 {
+				cardH = 8
+			}
+			inner := tea.WindowSizeMsg{Width: cardW, Height: cardH}
+			f, cmd := m.steps[m.stepIdx].form.Update(inner)
 			if hf, ok := f.(*huh.Form); ok {
 				m.steps[m.stepIdx].form = hf
 			}
@@ -583,79 +596,71 @@ func sectionFor(k stepKind) string {
 	return ""
 }
 
-// onboardCardWidth is the soft cap on the wizard's content column.
-// 72 cols is the Charm idiom (lipgloss / soft-serve / glow apps all
-// clamp to ~72 effective cols inside their app margin) — long lines
-// hurt readability in TUI just like in print, so we resist
-// reflowing to a 200-col monitor.
-const onboardCardWidth = 72
-
-// View renders the alt-screen payload as one width-capped column,
-// horizontally + vertically centred inside the viewport so the
-// wizard reads as a polished card sitting in the middle of the
-// screen rather than text clinging to the top-left edge.
+// View renders the alt-screen payload as a responsive three-band
+// layout that uses the full viewport: header pinned at the top,
+// footer pinned at the bottom, body fills the gap. Width adapts to
+// the terminal (no hard cap — the wizard expands on wide screens
+// and contracts on narrow ones, while a soft floor of 60 cols
+// keeps narrow terminals readable).
 //
-// Layout (inside the centred column, ≤ 72 cols wide):
+// Layout (using full viewport area):
 //
-//	┏━╸  clawtool   v0.22.42  ·  first-run setup wizard
-//	  from Cogitave  ·  @bahadirarda  ·  help@cogitave.com
-//	  ●claude-code  ·  ●codex  ·  ●gemini  ·  ●opencode  ·  ○hermes
+//	HEADER (full width, pinned top)
+//	──────────────────────────────────────
 //
-//	  Step 2 of 8  ·  Primary CLI
-//	  ● ● ◉ ○ ○ ○ ○ ○
+//	BODY (fills viewport - header - footer)
+//	  Step indicator
+//	  Progress dots
+//	  ╭─────── form card (stretches) ──────╮
+//	  │                                    │
+//	  │   form contents                    │
+//	  │                                    │
+//	  ╰────────────────────────────────────╯
 //
-//	  ╭──────────────────────────────────────────────────────╮
-//	  │   Which CLI will you primarily use?                  │
-//	  │                                                      │
-//	  │   ▸ claude-code (✓ detected)                         │
-//	  │     codex (✓ detected)                               │
-//	  │     ...                                              │
-//	  ╰──────────────────────────────────────────────────────╯
-//
-//	  ↑/↓ select  ·  enter confirm  ·  esc abort  ·  ctrl-c quit
+//	──────────────────────────────────────
+//	FOOTER (full width, pinned bottom)
 func (m *onboardModel) View() string {
 	if m.width <= 0 || m.height <= 0 {
 		return "" // pre-WindowSizeMsg; nothing meaningful to render
 	}
 
-	w := onboardCardWidth
-	if w > m.width-4 {
-		w = m.width - 4
-	}
-	if w < 50 {
-		w = 50
+	// Outer margins: 1 col either side so content doesn't hug
+	// the alt-screen edge. Top/bottom padding rolled into the
+	// header / footer styles directly.
+	contentW := m.width - 2
+	if contentW < 60 {
+		contentW = 60
 	}
 
-	header := m.renderHeader(w)
+	header := m.renderHeader(contentW)
+	footer := m.renderFooterCol(contentW)
+
+	// Body fills viewport minus header + footer + 2 rows of
+	// breathing room (1 above body, 1 below).
+	bodyH := m.height - lipgloss.Height(header) - lipgloss.Height(footer) - 2
+	if bodyH < 10 {
+		bodyH = 10
+	}
 
 	var body string
 	switch m.phase {
 	case phaseSteps:
-		body = m.renderStep(w)
+		body = m.renderStep(contentW, bodyH)
 	case phaseRun:
-		body = m.renderRunBody(w)
+		body = m.renderRunBody(contentW, bodyH)
 	case phaseDone:
-		body = m.renderDoneBody(w)
+		body = m.renderDoneBody(contentW, bodyH)
 	}
 
-	footer := m.renderFooterCol(w)
-
-	column := lipgloss.JoinVertical(lipgloss.Left,
+	// Stack: header → body (filled) → footer. No centring; the
+	// body's Height() makes it consume the slack so footer pins
+	// to the bottom.
+	stack := lipgloss.JoinVertical(lipgloss.Left,
 		header,
-		"",
 		body,
-		"",
 		footer,
 	)
-
-	// Horizontally + vertically centre the column. Long content
-	// (run-log + summary in phaseDone) lets the column extend
-	// vertically; lipgloss.Place top-anchors when content height
-	// exceeds the available area.
-	return lipgloss.Place(m.width, m.height,
-		lipgloss.Center, lipgloss.Center,
-		column,
-	)
+	return lipgloss.NewStyle().Padding(0, 1).Render(stack)
 }
 
 // renderHeader renders the inline app banner: a 1-line monogram
@@ -696,9 +701,10 @@ func (m *onboardModel) renderHeader(w int) string {
 
 // renderStep renders the active wizard step: indicator line +
 // progress dots + form wrapped in a single rounded card. The card
-// is the only bordered element in the View — per Charm style
-// discipline, one frame per pane.
-func (m *onboardModel) renderStep(w int) string {
+// stretches to fill the available body height so the wizard
+// occupies the full viewport (no scrollback feel) regardless of
+// how short the form widget itself is.
+func (m *onboardModel) renderStep(w, bodyH int) string {
 	if m.stepIdx >= len(m.steps) {
 		return ""
 	}
@@ -727,11 +733,18 @@ func (m *onboardModel) renderStep(w int) string {
 	if cardW < 40 {
 		cardW = 40
 	}
+	// Reserve rows for: indicator + blank + progress + blank +
+	// trailing blank → 4 + 1. Card fills the rest of bodyH.
+	cardH := bodyH - 6
+	if cardH < 8 {
+		cardH = 8
+	}
 	card := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("212")).
-		Padding(1, 2).
+		Padding(1, 3).
 		Width(cardW).
+		Height(cardH).
 		Render(step.form.View())
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
@@ -741,24 +754,33 @@ func (m *onboardModel) renderStep(w int) string {
 		"",
 		card,
 	)
-	return lipgloss.NewStyle().PaddingLeft(2).Render(body)
+	return lipgloss.NewStyle().
+		Width(w).
+		Height(bodyH).
+		PaddingLeft(2).
+		Render(body)
 }
 
 // renderRunBody renders the run phase: indicator line + the
-// accumulated phase log inside a thin left-bordered pane. We use a
-// left-only border (not a closed box) because long-running phase
-// logs read better against a vertical accent than a closed frame.
-func (m *onboardModel) renderRunBody(w int) string {
+// accumulated phase log inside a stretching rounded card so the
+// operator's eye stays in the same visual zone as the wizard form
+// it just left.
+func (m *onboardModel) renderRunBody(w, bodyH int) string {
 	indicator := m.style.sectionTitle.Render("Setting things up …")
 	cardW := w - 4
 	if cardW < 40 {
 		cardW = 40
 	}
+	cardH := bodyH - 3
+	if cardH < 8 {
+		cardH = 8
+	}
 	pane := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder(), false, false, false, true).
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("212")).
-		PaddingLeft(2).
+		Padding(1, 3).
 		Width(cardW).
+		Height(cardH).
 		Render(m.renderRunLog())
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
@@ -766,37 +788,48 @@ func (m *onboardModel) renderRunBody(w int) string {
 		"",
 		pane,
 	)
-	return lipgloss.NewStyle().PaddingLeft(2).Render(body)
+	return lipgloss.NewStyle().
+		Width(w).
+		Height(bodyH).
+		PaddingLeft(2).
+		Render(body)
 }
 
-// renderDoneBody renders the post-finish view: green-bordered card
-// containing run-log + summary + next-steps. The accent flips from
-// pink (in-progress) to green (success) so the operator's eye lands
-// on the celebration.
-func (m *onboardModel) renderDoneBody(w int) string {
+// renderDoneBody renders the post-finish view: a green-bordered
+// celebratory card containing only the summary checklist +
+// next-steps panel. The streaming run log is dropped here — the
+// operator just watched it scroll by during phaseRun, repeating it
+// pushes the next-steps below the viewport on smaller terminals.
+// The summary is the punchline; that's what the closing screen
+// should actually show.
+func (m *onboardModel) renderDoneBody(w, bodyH int) string {
 	indicator := m.style.tickOK.Render("✓ All set.")
 	cardW := w - 4
 	if cardW < 40 {
 		cardW = 40
 	}
-	stack := lipgloss.JoinVertical(lipgloss.Left,
-		m.renderRunLog(),
-		"",
-		m.renderSummary(),
-	)
+	cardH := bodyH - 3
+	if cardH < 8 {
+		cardH = 8
+	}
 	card := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("42")).
-		Padding(1, 2).
+		Padding(1, 3).
 		Width(cardW).
-		Render(stack)
+		Height(cardH).
+		Render(m.renderSummary())
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		indicator,
 		"",
 		card,
 	)
-	return lipgloss.NewStyle().PaddingLeft(2).Render(body)
+	return lipgloss.NewStyle().
+		Width(w).
+		Height(bodyH).
+		PaddingLeft(2).
+		Render(body)
 }
 
 // renderFooterCol renders the bottom hint line as dim text with
