@@ -82,6 +82,35 @@ func TestCacheDirOrTemp_FallsBackToTempDir(t *testing.T) {
 	}
 }
 
+func TestConfigDirIfHome_EmptyWhenNoEnvOrHome(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", "")
+	if old, ok := os.LookupEnv("USERPROFILE"); ok {
+		t.Setenv("USERPROFILE", "")
+		defer t.Setenv("USERPROFILE", old)
+	}
+	if got := ConfigDirIfHome(); got != "" {
+		t.Errorf("ConfigDirIfHome() = %q, want empty (no env, no home)", got)
+	}
+}
+
+func TestDataDirIfHome_HonoursXDG(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "/tmp/custom-data")
+	if got := DataDirIfHome(); got != "/tmp/custom-data/clawtool" {
+		t.Errorf("DataDirIfHome() = %q, want /tmp/custom-data/clawtool", got)
+	}
+}
+
+func TestCacheDirIfHome_FallsBackToHome(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("HOME", "/home/operator")
+	got := CacheDirIfHome()
+	want := filepath.Join("/home/operator", ".cache", "clawtool")
+	if got != want {
+		t.Errorf("CacheDirIfHome() = %q, want %q", got, want)
+	}
+}
+
 func TestResolve_EmptyHomeFallsBackToCwdRelative(t *testing.T) {
 	// Defensive: when both env and HOME are empty (rare — minimal
 	// containers without /etc/passwd) we should still produce a
