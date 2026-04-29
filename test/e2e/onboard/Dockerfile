@@ -39,28 +39,44 @@ COPY --from=build /out/clawtool /usr/local/bin/clawtool
 # the daemon level, not the host CLI level, so unrecognised subcmds
 # would only matter if the harness asserted on bridge-install
 # success. We accept anything and exit 0.
-RUN set -eux; \
-    for bin in claude codex gemini; do \
-        cat > "/usr/local/bin/${bin}" <<EOF ; \
+# Each mock binary is materialised by a Docker BuildKit heredoc-RUN.
+# The pre-fix shape (a single RUN that nested a shell heredoc inside
+# a `for ... do ; \` line continuation) was a Dockerfile parse
+# error: BuildKit's heredoc terminator `EOF` collided with the
+# shell's `\`-continuation, so the build never made it past
+# `unknown instruction: chmod`. Modern shape: one heredoc-RUN per
+# mock, tmpl substitution done with sed inside the script body.
+RUN <<'BUILDMOCK'
+set -eux
+mkmock() {
+    local name="$1"
+    cat > "/usr/local/bin/${name}" <<MOCK
 #!/usr/bin/env bash
-echo "\$0 \$@" >> "/tmp/${bin}.invocations"
+echo "\$0 \$@" >> "/tmp/${name}.invocations"
 case "\$1" in
-    --version|-v|version) echo "${bin} mock 0.0.1-e2e" ;;
+    --version|-v|version) echo "${name} mock 0.0.1-e2e" ;;
     *) ;;
 esac
 exit 0
-EOF
-        chmod +x "/usr/local/bin/${bin}" ; \
-    done
+MOCK
+    chmod +x "/usr/local/bin/${name}"
+}
+mkmock claude
+mkmock codex
+mkmock gemini
+BUILDMOCK
 
 COPY test/e2e/onboard/run.sh /usr/local/bin/run.sh
 RUN chmod +x /usr/local/bin/run.sh
 
-# Run as a non-root operator so the XDG paths exercise the same
-# permission surface real users hit.
-RUN useradd -m -s /bin/bash operator
-USER operator
-ENV HOME=/home/operator
-WORKDIR /home/operator
+# Run as a non-root user so the XDG paths exercise the same
+# permission surface real users hit. NOTE: we deliberately pick
+# `clawuser` rather than `operator` — the latter is reserved by
+# Debian's base-files (UID 11, System V legacy), so `useradd
+# operator` exits 9 ("username already in use") on bookworm-slim.
+RUN useradd -m -s /bin/bash clawuser
+USER clawuser
+ENV HOME=/home/clawuser
+WORKDIR /home/clawuser
 
 ENTRYPOINT ["/usr/local/bin/run.sh"]
