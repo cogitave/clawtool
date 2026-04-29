@@ -25,6 +25,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/a2a"
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/config"
@@ -124,6 +125,16 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	if cfg.AutoLint.Enabled != nil {
 		core.SetAutoLintEnabled(*cfg.AutoLint.Enabled)
 	}
+
+	// A2A peer registry (Phase 1 of ADR-024). Process-wide
+	// registry, persisted at ~/.config/clawtool/peers.json. Hosts
+	// register via POST /v1/peers/register; the daemon's CLI
+	// (`clawtool a2a peers`) and any tool that needs the live
+	// roster reads via a2a.GetGlobal(). Constructed before hooks
+	// so a hook callback that wants the registry can read it
+	// without a startup race.
+	peerReg := a2a.NewRegistry(a2a.DefaultStatePath())
+	a2a.SetGlobal(peerReg)
 
 	// Hooks subsystem (F3). Register the process-wide manager once
 	// so every callsite can emit without threading a handle through.

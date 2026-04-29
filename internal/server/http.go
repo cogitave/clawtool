@@ -101,6 +101,12 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 	mux.Handle("/v1/send_message", authed(http.HandlerFunc(handleSendMessage)))
 	mux.Handle("/v1/recipes", authed(http.HandlerFunc(handleRecipes)))
 	mux.Handle("/v1/recipe/apply", authed(http.HandlerFunc(handleRecipeApply)))
+	// /v1/peers — A2A Phase 1 peer registry. The handler dispatches on
+	// (method, path-suffix): GET /v1/peers (list), POST /v1/peers/register,
+	// POST /v1/peers/{id}/heartbeat, DELETE /v1/peers/{id}, GET /v1/peers/{id}.
+	// Single mux entry routes all subpaths via the trailing slash.
+	mux.Handle("/v1/peers", authed(http.HandlerFunc(handlePeers)))
+	mux.Handle("/v1/peers/", authed(http.HandlerFunc(handlePeers)))
 
 	// Optional MCP-over-HTTP transport. Mounts the full clawtool MCP
 	// toolset (Bash, Read, Edit, SendMessage, BridgeAdd, …) at /mcp via
@@ -119,11 +125,16 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 		writeJSON(w, http.StatusNotFound, map[string]any{
 			"error": fmt.Sprintf("unknown path %q (see GET /v1/health for the live endpoint list)", r.URL.Path),
 			"endpoints": []string{
-				"GET  /v1/health",
-				"GET  /v1/agents",
-				"POST /v1/send_message",
-				"GET  /v1/recipes [?category=<c>]",
-				"POST /v1/recipe/apply",
+				"GET    /v1/health",
+				"GET    /v1/agents",
+				"POST   /v1/send_message",
+				"GET    /v1/recipes [?category=<c>]",
+				"POST   /v1/recipe/apply",
+				"GET    /v1/peers [?status=&backend=&circle=&path=]",
+				"GET    /v1/peers/{peer_id}",
+				"POST   /v1/peers/register",
+				"POST   /v1/peers/{peer_id}/heartbeat",
+				"DELETE /v1/peers/{peer_id}",
 			},
 		})
 	})
