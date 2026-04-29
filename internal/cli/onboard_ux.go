@@ -129,8 +129,10 @@ func (u *onboardUX) ClearScreen() {
 
 // Header renders the rounded-box welcome panel: title + version
 // + a single-line pill row showing which agent CLIs are present
-// on the host. Compresses the prior multi-line `hostSummary`
-// block into a viewport-friendly two-row banner.
+// on the host. The box stretches the full terminal width
+// (clamped to u.width, max 100) so the wizard occupies the
+// viewport edge-to-edge instead of looking lost in a sea of
+// whitespace on a wide terminal.
 func (u *onboardUX) Header(version string, found map[string]bool) {
 	families := []struct{ key, label string }{
 		{"claude", "claude-code"},
@@ -160,20 +162,32 @@ func (u *onboardUX) Header(version string, found map[string]bool) {
 	sub := u.style.headerSub.Render(fmt.Sprintf("v%s   ·   first-time setup wizard", version))
 	body := title + "   " + sub + "\n" + pillRow
 	if u.color {
-		fmt.Fprintln(u.w, u.style.headerBox.Render(body))
+		// Stretch the box to (terminal width - 2 for padding).
+		// Lipgloss Width() sets the inner content width; the
+		// rounded border + 2 padding cells live outside.
+		boxed := u.style.headerBox.Width(u.width - 4).Render(body)
+		fmt.Fprintln(u.w, boxed)
 	} else {
 		fmt.Fprintf(u.w, "clawtool onboard  v%s\n%s\n%s\n",
-			version, strings.Repeat("-", 28), pillRow)
+			version, strings.Repeat("-", u.width), pillRow)
 	}
 	fmt.Fprintln(u.w)
 }
 
-// Section starts a new visually distinct block. Mirrors the
-// upgrade flow's section semantics so operators who've used
-// `clawtool upgrade` already know the cadence.
+// Section starts a new visually distinct block. Renders as a
+// full-width title bar with a thin separator rule beneath it so
+// the eye lands on each block's start. Mirrors the upgrade flow's
+// section semantics — operators who've run `clawtool upgrade`
+// already know the cadence.
 func (u *onboardUX) Section(title string) {
 	if u.color {
-		fmt.Fprintf(u.w, "\n  %s\n", u.style.sectionTitle.Render(title))
+		// Subtle separator rule across the viewport — the eye
+		// uses it to chunk the wizard into reading units.
+		rule := strings.Repeat("─", u.width-4)
+		fmt.Fprintf(u.w, "\n  %s\n  %s\n",
+			u.style.sectionTitle.Render(title),
+			u.style.dim.Render(rule),
+		)
 	} else {
 		fmt.Fprintf(u.w, "\n  %s\n  %s\n", title, strings.Repeat("-", len(title)))
 	}

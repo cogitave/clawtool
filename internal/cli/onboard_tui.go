@@ -1,0 +1,817 @@
+// internal/cli/onboard_tui.go — Bubble Tea wizard for `clawtool
+// onboard`. Replaces the prior linear huh.NewForm(groups...) flow
+// with a step-by-step wizard: each question gets its own focused
+// viewport with a "Step X of Y" indicator, the rounded-box header
+// stays pinned at the top, and the side-effect run phase renders
+// as live progress inside the same alt-screen program.
+//
+// Why:
+//
+//   - Operator wanted bounded TUI ("vim/htop feel") instead of the
+//     scroll-pollution we'd get from emitting a clear sequence and
+//     dumping output below the prompt. tea.WithAltScreen() owns a
+//     dedicated screen buffer; on exit the operator's terminal
+//     state is restored exactly as it was.
+//   - Stepwise progression makes the wizard feel structured. The
+//     prior huh.NewForm rendered all groups in one continuous form;
+//     the operator couldn't tell where they were in the sequence.
+//
+// Non-TTY / `--yes` invocations still run through the linear
+// onboard() path so CI scripts, Dockerfiles, and the test harness
+// keep their stable plain-text contract.
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// tuiPhase enumerates the top-level states of the onboard wizard.
+type tuiPhase int
+
+const (
+	phaseSteps tuiPhase = iota // walking through wizard steps
+	phaseRun                   // executing side-effects with live progress
+	phaseDone                  // showing summary + next steps
+)
+
+// stepKind discriminates the run-phase queue entries so the
+// dispatcher knows which dep callback to invoke.
+type stepKind int
+
+const (
+	stepBridge stepKind = iota
+	stepMCP
+	stepDaemon
+	stepIdentity
+	stepSecrets
+)
+
+// runStep is one entry in the run-phase queue.
+type runStep struct {
+	kind   stepKind
+	label  string // operator-visible label, e.g. "install bridge codex"
+	target string // bridge family / host name; "" for daemon/identity/secrets
+}
+
+// logEntry is one rendered line in the run-phase log.
+type logEntry struct {
+	kind     string // "section" | "start" | "done" | "fail" | "skip" | "note"
+	label    string
+	detail   string
+	duration time.Duration
+}
+
+// stepResultMsg is the tea.Msg that a queued runStep emits when its
+// async dep callback returns. Carries the queue index so the
+// dispatcher can correlate it with the originating step.
+type stepResultMsg struct {
+	idx    int
+	err    error
+	detail string // optional success suffix (e.g. claimed URL)
+	skip   bool   // true when dep was nil → render as skip, not done
+}
+
+// finishedMsg signals all run-phase steps completed; the model
+// transitions to phaseDone.
+type finishedMsg struct{}
+
+// wizardStep wraps one huh.Form (single-group) plus the apply hook
+// that copies the answer into onboardState. skipIf gates conditional
+// steps (e.g. bridges question only shown when state.MissingBridges
+// is non-empty).
+type wizardStep struct {
+	title  string
+	form   *huh.Form
+	skipIf func(*onboardState) bool
+	apply  func(*onboardState) // copies form value into state (no-op for confirm widgets bound by Value())
+}
+
+// onboardModel is the Bubble Tea model that drives the entire
+// onboard wizard from welcome through summary.
+type onboardModel struct {
+	state *onboardState
+	deps  onboardDeps
+
+	width, height int
+
+	phase    tuiPhase
+	steps    []wizardStep
+	stepIdx  int
+	queue    []runStep
+	queueIdx int
+
+	log     []logEntry
+	summary []SummaryRow
+
+	style onboardStyles
+	track func(string, map[string]any)
+
+	phaseStartAt time.Time
+	err          error
+}
+
+// newOnboardModel builds the wizard from onboardState + deps. The
+// caller resolves these the same way the linear path does (host
+// detection + dep wiring); we just consume them.
+func newOnboardModel(state *onboardState, deps onboardDeps, track func(string, map[string]any)) *onboardModel {
+	m := &onboardModel{
+		state: state,
+		deps:  deps,
+		style: buildOnboardStyles(true), // we only run when TTY is true
+		track: track,
+		width: 80,
+	}
+	m.steps = buildWizardSteps(state)
+	m.advanceStepCursor() // skip steps whose skipIf is already true
+	return m
+}
+
+// buildWizardSteps materialises the step list. Each step is a
+// single-group huh.Form so the wizard renders one focused question
+// per screen instead of stacking groups in a single continuous form.
+func buildWizardSteps(state *onboardState) []wizardStep {
+	steps := []wizardStep{}
+
+	// Step 1: Primary CLI.
+	state.PrimaryCLI = primaryDefault(state.Found)
+	primaryOpts := primaryCLIOptions(state.Found)
+	steps = append(steps, wizardStep{
+		title: "Primary CLI",
+		form: huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Which CLI will you primarily use?").
+				Description("Pick the agent you'll spend most of your time in. clawtool routes through that one as the primary; the others connect via MCP / bridge so you can dispatch across them.").
+				Options(primaryOpts...).
+				Value(&state.PrimaryCLI),
+		)),
+		apply: func(s *onboardState) {
+			// Smart default: pre-check the primary CLI's bridge
+			// for install when it's missing and isn't claude-code.
+			if s.PrimaryCLI != "" && s.PrimaryCLI != "claude-code" {
+				for _, fam := range s.MissingBridges {
+					if fam == s.PrimaryCLI {
+						s.InstallBridges = []string{fam}
+						break
+					}
+				}
+			}
+		},
+	})
+
+	// Step 2: Install missing bridges (conditional).
+	if len(state.MissingBridges) > 0 {
+		opts := make([]huh.Option[string], 0, len(state.MissingBridges))
+		for _, fam := range state.MissingBridges {
+			opts = append(opts, huh.NewOption(fam, fam))
+		}
+		steps = append(steps, wizardStep{
+			title: "Install bridges",
+			form: huh.NewForm(huh.NewGroup(
+				huh.NewMultiSelect[string]().
+					Title("Install missing bridges").
+					Description("Selected items run `clawtool bridge add <family>` after submit. Failures stay non-fatal. Your primary CLI's bridge is pre-checked.").
+					Options(opts...).
+					Value(&state.InstallBridges),
+			)),
+			skipIf: func(s *onboardState) bool { return len(s.MissingBridges) == 0 },
+		})
+	}
+
+	// Step 3: MCP host registration (conditional).
+	if len(state.MCPClaimable) > 0 {
+		opts := make([]huh.Option[string], 0, len(state.MCPClaimable))
+		for _, h := range state.MCPClaimable {
+			opts = append(opts, huh.NewOption(h, h))
+		}
+		state.ClaimMCP = append([]string{}, state.MCPClaimable...)
+		steps = append(steps, wizardStep{
+			title: "MCP registration",
+			form: huh.NewForm(huh.NewGroup(
+				huh.NewMultiSelect[string]().
+					Title("Register clawtool as an MCP server").
+					Description("Starts a single persistent local daemon (loopback HTTP + bearer auth) and points each selected host at it. Without this, hosts can't see clawtool tools.").
+					Options(opts...).
+					Value(&state.ClaimMCP),
+			)),
+			skipIf: func(s *onboardState) bool { return len(s.MCPClaimable) == 0 },
+		})
+	}
+
+	// Step 4: Daemon.
+	state.StartDaemon = true
+	steps = append(steps, wizardStep{
+		title: "Daemon",
+		form: huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title("Start the persistent daemon now?").
+				Description("`clawtool serve` is the single backend every host fans into. Default = on. Skip only if you'll start it later via `clawtool daemon start`.").
+				Affirmative("Start daemon").
+				Negative("Skip").
+				Value(&state.StartDaemon),
+		)),
+	})
+
+	// Step 5: Identity.
+	steps = append(steps, wizardStep{
+		title: "Identity",
+		form: huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title("Create BIAM identity?").
+				Description("Generates an Ed25519 keypair at ~/.config/clawtool/identity.ed25519 (mode 0600). Required for `clawtool send --async` and cross-host BIAM messaging.").
+				Affirmative("Generate").
+				Negative("Skip").
+				Value(&state.CreateIdentity),
+		)),
+	})
+
+	// Step 6: Secrets store.
+	state.InitSecrets = true
+	steps = append(steps, wizardStep{
+		title: "Secrets store",
+		form: huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title("Initialise the secrets store?").
+				Description("Drops an empty 0600 secrets.toml at ~/.config/clawtool/secrets.toml so `clawtool source set-secret` writes without surprising you with a new file. Idempotent.").
+				Affirmative("Initialise").
+				Negative("Skip").
+				Value(&state.InitSecrets),
+		)),
+	})
+
+	// Step 7: Telemetry.
+	state.Telemetry = true
+	steps = append(steps, wizardStep{
+		title: "Telemetry",
+		form: huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title("Anonymous telemetry (pre-1.0 default = on)").
+				Description("Until v1.0.0 ships, telemetry is on by default — anonymous usage data tells us which paths get used. Emits ONLY: command/version/OS/arch/duration/exit code/error class/agent FAMILY/recipe names. NEVER: prompts, paths, file contents, secrets.").
+				Affirmative("Opt in").
+				Negative("No thanks").
+				Value(&state.Telemetry),
+		)),
+	})
+
+	// Step 8: Project init.
+	steps = append(steps, wizardStep{
+		title: "Project init",
+		form: huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title("Run `clawtool init` after onboard?").
+				Description("Project-level wizard that injects release-please / dependabot / commitlint / brain into the repo you're sitting in. Skip if you'd rather run it later in a different repo.").
+				Affirmative("Yes, set this repo up").
+				Negative("Skip").
+				Value(&state.RunInit),
+		)),
+	})
+
+	return steps
+}
+
+// advanceStepCursor walks the step cursor forward past any steps
+// whose skipIf hook reports they should be hidden in the current
+// state. Used both at construction (to skip step 0 if conditional)
+// and after each step completion.
+func (m *onboardModel) advanceStepCursor() {
+	for m.stepIdx < len(m.steps) {
+		s := m.steps[m.stepIdx]
+		if s.skipIf != nil && s.skipIf(m.state) {
+			m.stepIdx++
+			continue
+		}
+		return
+	}
+}
+
+// Init kicks off the first step's form. Bubble Tea will pump the
+// returned cmd through Update.
+func (m *onboardModel) Init() tea.Cmd {
+	if m.stepIdx >= len(m.steps) {
+		// Edge: zero steps (shouldn't happen, but defend).
+		return m.startRunPhase()
+	}
+	return m.steps[m.stepIdx].form.Init()
+}
+
+// Update routes incoming msgs to the current phase: form during
+// phaseSteps, step-result handler during phaseRun, no-op during
+// phaseDone (operator presses any key to exit).
+func (m *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		// Forward window-size to the active form too so
+		// huh's internal layout adapts.
+		if m.phase == phaseSteps && m.stepIdx < len(m.steps) {
+			f, cmd := m.steps[m.stepIdx].form.Update(msg)
+			if hf, ok := f.(*huh.Form); ok {
+				m.steps[m.stepIdx].form = hf
+			}
+			return m, cmd
+		}
+		return m, nil
+
+	case tea.KeyMsg:
+		// Global quit. Esc/Ctrl-C exit cleanly.
+		if msg.String() == "ctrl+c" {
+			m.err = errors.New("interrupted")
+			return m, tea.Quit
+		}
+		if m.phase == phaseDone {
+			// Operator dismisses the summary screen with any
+			// key (enter / q / esc — all quit alt-screen).
+			return m, tea.Quit
+		}
+
+	case stepResultMsg:
+		return m.handleStepResult(msg)
+
+	case finishedMsg:
+		m.phase = phaseDone
+		return m, nil
+	}
+
+	if m.phase == phaseSteps {
+		return m.updateStep(msg)
+	}
+	return m, nil
+}
+
+// updateStep forwards the msg to the active step's form and
+// transitions to the next step (or to phaseRun) when the form
+// reports completion.
+func (m *onboardModel) updateStep(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.stepIdx >= len(m.steps) {
+		return m, m.startRunPhase()
+	}
+	step := m.steps[m.stepIdx]
+	f, cmd := step.form.Update(msg)
+	if hf, ok := f.(*huh.Form); ok {
+		m.steps[m.stepIdx].form = hf
+		step.form = hf
+	}
+
+	switch step.form.State {
+	case huh.StateCompleted:
+		if step.apply != nil {
+			step.apply(m.state)
+		}
+		m.stepIdx++
+		m.advanceStepCursor()
+		if m.stepIdx >= len(m.steps) {
+			return m, m.startRunPhase()
+		}
+		return m, m.steps[m.stepIdx].form.Init()
+	case huh.StateAborted:
+		m.err = huh.ErrUserAborted
+		return m, tea.Quit
+	}
+	return m, cmd
+}
+
+// startRunPhase builds the run queue from finalized state and emits
+// the first step's command. Returns a tea.Cmd because the caller is
+// driving the model from inside Update.
+func (m *onboardModel) startRunPhase() tea.Cmd {
+	m.track("clawtool.onboard", map[string]any{
+		"event_kind": "host_detect",
+		"agent":      m.state.PrimaryCLI,
+	})
+	m.phase = phaseRun
+	m.queue = m.buildRunQueue()
+	if len(m.queue) == 0 {
+		return func() tea.Msg { return finishedMsg{} }
+	}
+	m.queueIdx = 0
+	m.appendSection(sectionFor(m.queue[0].kind))
+	m.appendStart(m.queue[0].label)
+	m.phaseStartAt = time.Now()
+	return m.dispatchStep(0)
+}
+
+// buildRunQueue lowers the captured wizard answers into the linear
+// list of side-effect steps. Mirrors the dispatcher in onboard()
+// (the linear path) so both code paths execute the same operations
+// in the same order.
+func (m *onboardModel) buildRunQueue() []runStep {
+	q := []runStep{}
+	for _, fam := range m.state.InstallBridges {
+		q = append(q, runStep{kind: stepBridge, label: fmt.Sprintf("install bridge %s", fam), target: fam})
+	}
+	for _, h := range m.state.ClaimMCP {
+		q = append(q, runStep{kind: stepMCP, label: fmt.Sprintf("register %s", h), target: h})
+	}
+	if m.state.StartDaemon {
+		q = append(q, runStep{kind: stepDaemon, label: "start persistent daemon"})
+	}
+	if m.state.CreateIdentity {
+		q = append(q, runStep{kind: stepIdentity, label: "generate BIAM Ed25519 keypair"})
+	}
+	if m.state.InitSecrets {
+		q = append(q, runStep{kind: stepSecrets, label: "initialise empty secrets.toml"})
+	}
+	return q
+}
+
+// dispatchStep returns a tea.Cmd that runs the indexed step's dep
+// callback off the main goroutine and emits a stepResultMsg when it
+// completes.
+func (m *onboardModel) dispatchStep(idx int) tea.Cmd {
+	step := m.queue[idx]
+	deps := m.deps
+	return func() tea.Msg {
+		switch step.kind {
+		case stepBridge:
+			err := deps.bridgeAdd(step.target)
+			return stepResultMsg{idx: idx, err: err}
+		case stepMCP:
+			if deps.claimMCPHost == nil {
+				return stepResultMsg{idx: idx, skip: true, detail: "not wired (test build?)"}
+			}
+			url, err := deps.claimMCPHost(step.target)
+			return stepResultMsg{idx: idx, err: err, detail: url}
+		case stepDaemon:
+			if deps.ensureDaemon == nil {
+				return stepResultMsg{idx: idx, skip: true}
+			}
+			url, err := deps.ensureDaemon()
+			return stepResultMsg{idx: idx, err: err, detail: url}
+		case stepIdentity:
+			err := deps.createIdentity()
+			return stepResultMsg{idx: idx, err: err, detail: "~/.config/clawtool/identity.ed25519, mode 0600"}
+		case stepSecrets:
+			if deps.initSecrets == nil {
+				return stepResultMsg{idx: idx, skip: true}
+			}
+			err := deps.initSecrets()
+			return stepResultMsg{idx: idx, err: err, detail: "~/.config/clawtool/secrets.toml, mode 0600"}
+		}
+		return stepResultMsg{idx: idx, err: fmt.Errorf("unknown step kind")}
+	}
+}
+
+// handleStepResult records the most-recent step's outcome, advances
+// the queue, and either dispatches the next step or transitions to
+// phaseDone via finishedMsg.
+func (m *onboardModel) handleStepResult(msg stepResultMsg) (tea.Model, tea.Cmd) {
+	step := m.queue[msg.idx]
+	dur := time.Since(m.phaseStartAt)
+	switch {
+	case msg.skip:
+		m.appendSkip(msg.detail, dur)
+		m.summary = append(m.summary, SummaryRow{Label: summaryLabelFor(step), Outcome: "skip", Detail: msg.detail})
+		m.trackOutcome(step, "skipped")
+	case msg.err != nil:
+		m.appendFail(msg.err.Error(), dur)
+		m.summary = append(m.summary, SummaryRow{Label: summaryLabelFor(step), Outcome: "fail", Detail: msg.err.Error()})
+		m.trackOutcome(step, "error")
+	default:
+		m.appendDone(msg.detail, dur)
+		m.summary = append(m.summary, SummaryRow{Label: summaryLabelFor(step), Outcome: "ok", Detail: msg.detail})
+		m.trackOutcome(step, "success")
+	}
+
+	m.queueIdx++
+	if m.queueIdx >= len(m.queue) {
+		// Mirror the linear path's tail: telemetry preference summary
+		// row + onboarded marker + finish event.
+		if m.state.Telemetry {
+			m.summary = append(m.summary, SummaryRow{Label: "telemetry", Outcome: "ok", Detail: "opted in"})
+		} else {
+			m.summary = append(m.summary, SummaryRow{Label: "telemetry", Outcome: "skip", Detail: "opted out"})
+		}
+		_ = writeOnboardedMarker()
+		m.track("clawtool.onboard", map[string]any{"event_kind": "finish", "outcome": "success"})
+		return m, func() tea.Msg { return finishedMsg{} }
+	}
+
+	// New section header when we transition into a new step kind.
+	prevKind := m.queue[msg.idx].kind
+	nextKind := m.queue[m.queueIdx].kind
+	if prevKind != nextKind {
+		m.appendSection(sectionFor(nextKind))
+	}
+	m.appendStart(m.queue[m.queueIdx].label)
+	m.phaseStartAt = time.Now()
+	return m, m.dispatchStep(m.queueIdx)
+}
+
+// trackOutcome emits the per-step telemetry event. Mirrors the
+// linear path so both flows feed the same funnel.
+func (m *onboardModel) trackOutcome(step runStep, outcome string) {
+	props := map[string]any{"outcome": outcome}
+	switch step.kind {
+	case stepBridge:
+		props["event_kind"] = "bridge_install"
+		props["bridge"] = step.target
+	case stepMCP:
+		props["event_kind"] = "mcp_claim"
+		props["agent"] = step.target
+	case stepDaemon:
+		props["event_kind"] = "daemon_start"
+	case stepIdentity:
+		props["event_kind"] = "identity_create"
+	case stepSecrets:
+		props["event_kind"] = "secrets_init"
+	}
+	m.track("clawtool.onboard", props)
+}
+
+// summaryLabelFor lowers a runStep into the human label used in the
+// closing summary checklist.
+func summaryLabelFor(s runStep) string {
+	switch s.kind {
+	case stepBridge:
+		return "bridge " + s.target
+	case stepMCP:
+		return "MCP " + s.target
+	case stepDaemon:
+		return "daemon"
+	case stepIdentity:
+		return "BIAM identity"
+	case stepSecrets:
+		return "secrets store"
+	}
+	return s.label
+}
+
+// sectionFor maps a stepKind to its section banner title. Mirrors
+// the linear path's ux.Section() calls.
+func sectionFor(k stepKind) string {
+	switch k {
+	case stepBridge:
+		return "Bridges"
+	case stepMCP:
+		return "MCP host registration"
+	case stepDaemon:
+		return "Daemon"
+	case stepIdentity:
+		return "Identity"
+	case stepSecrets:
+		return "Secrets store"
+	}
+	return ""
+}
+
+// View renders the alt-screen payload: pinned header → step body
+// (phaseSteps) or live progress log (phaseRun) or summary
+// (phaseDone) → footer hint.
+func (m *onboardModel) View() string {
+	if m.width <= 0 {
+		return "" // pre-WindowSizeMsg; nothing meaningful to render
+	}
+	var b strings.Builder
+	b.WriteString(m.renderHeader())
+	b.WriteString("\n\n")
+
+	switch m.phase {
+	case phaseSteps:
+		b.WriteString(m.renderStep())
+	case phaseRun:
+		b.WriteString(m.renderRunLog())
+	case phaseDone:
+		b.WriteString(m.renderRunLog())
+		b.WriteString("\n")
+		b.WriteString(m.renderSummary())
+	}
+
+	b.WriteString("\n\n")
+	b.WriteString(m.renderFooter())
+	return b.String()
+}
+
+// renderHeader renders the pinned rounded-box welcome panel: title
+// + version + a single-line pill row showing detected agent CLIs.
+func (m *onboardModel) renderHeader() string {
+	families := []struct{ key, label string }{
+		{"claude", "claude-code"},
+		{"codex", "codex"},
+		{"gemini", "gemini"},
+		{"opencode", "opencode"},
+		{"hermes", "hermes"},
+	}
+	var pills []string
+	for _, f := range families {
+		if m.state.Found[f.key] {
+			pills = append(pills, m.style.pillOK.Render("✓ "+f.label))
+		} else {
+			pills = append(pills, m.style.pillMissing.Render("· "+f.label))
+		}
+	}
+	pillRow := strings.Join(pills, "  ")
+	title := m.style.headerTitle.Render("clawtool onboard")
+	sub := m.style.headerSub.Render(fmt.Sprintf("v%s   ·   first-time setup wizard", versionShortForOnboard()))
+	body := title + "   " + sub + "\n" + pillRow
+	w := m.width - 4
+	if w < 40 {
+		w = 40
+	}
+	return m.style.headerBox.Width(w).Render(body)
+}
+
+// renderStep renders the active wizard step — the step indicator,
+// title, and the embedded huh form's view.
+func (m *onboardModel) renderStep() string {
+	if m.stepIdx >= len(m.steps) {
+		return ""
+	}
+	step := m.steps[m.stepIdx]
+	indicator := m.style.dim.Render(fmt.Sprintf("Step %d of %d", m.visibleStepNumber(), m.totalVisibleSteps()))
+	title := m.style.sectionTitle.Render(step.title)
+	rule := m.style.dim.Render(strings.Repeat("─", max(20, m.width-4)))
+	return fmt.Sprintf("  %s   %s\n  %s\n\n%s", indicator, title, rule, step.form.View())
+}
+
+// visibleStepNumber returns the 1-indexed position of the current
+// step among the visible (non-skipped) steps.
+func (m *onboardModel) visibleStepNumber() int {
+	n := 0
+	for i := 0; i <= m.stepIdx && i < len(m.steps); i++ {
+		s := m.steps[i]
+		if s.skipIf != nil && s.skipIf(m.state) {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
+// totalVisibleSteps returns the count of steps the operator will
+// actually see, after evaluating skipIf for each.
+func (m *onboardModel) totalVisibleSteps() int {
+	n := 0
+	for _, s := range m.steps {
+		if s.skipIf != nil && s.skipIf(m.state) {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
+// renderRunLog renders the accumulated phase log entries.
+func (m *onboardModel) renderRunLog() string {
+	var b strings.Builder
+	for _, e := range m.log {
+		switch e.kind {
+		case "section":
+			rule := m.style.dim.Render(strings.Repeat("─", max(20, m.width-4)))
+			fmt.Fprintf(&b, "\n  %s\n  %s\n", m.style.sectionTitle.Render(e.label), rule)
+		case "start":
+			fmt.Fprintf(&b, "  %s %s\n", m.style.arrow.Render("→"), e.label)
+		case "done":
+			suffix := m.style.dim.Render(fmt.Sprintf("(%s)", e.duration.Round(time.Millisecond)))
+			if e.detail != "" {
+				suffix = m.style.dim.Render(fmt.Sprintf("(%s · %s)", e.duration.Round(time.Millisecond), e.detail))
+			}
+			fmt.Fprintf(&b, "  %s %s %s\n", m.style.tickOK.Render("✓"), e.label, suffix)
+		case "fail":
+			fmt.Fprintf(&b, "  %s %s\n", m.style.tickFail.Render("✗"), e.label)
+			if e.detail != "" {
+				fmt.Fprintf(&b, "    %s\n", m.style.tickFail.Render(e.detail))
+			}
+		case "skip":
+			suffix := ""
+			if e.detail != "" {
+				suffix = "  " + m.style.dim.Render(e.detail)
+			}
+			fmt.Fprintf(&b, "  %s %s%s\n", m.style.dim.Render("·"), e.label, suffix)
+		case "note":
+			fmt.Fprintf(&b, "  %s %s\n", m.style.dim.Render("·"), m.style.dim.Render(e.label))
+		}
+	}
+	return b.String()
+}
+
+// renderSummary renders the closing summary checklist + next-steps.
+func (m *onboardModel) renderSummary() string {
+	var b strings.Builder
+	rule := m.style.dim.Render(strings.Repeat("─", max(20, m.width-4)))
+	fmt.Fprintf(&b, "\n  %s\n  %s\n", m.style.sectionTitle.Render("Summary"), rule)
+	for _, r := range m.summary {
+		var marker string
+		switch r.Outcome {
+		case "ok":
+			marker = m.style.tickOK.Render("✓")
+		case "skip":
+			marker = m.style.dim.Render("·")
+		case "fail":
+			marker = m.style.tickFail.Render("✗")
+		default:
+			marker = " "
+		}
+		detail := ""
+		if r.Detail != "" {
+			detail = "  " + m.style.dim.Render(r.Detail)
+		}
+		fmt.Fprintf(&b, "    %s %s%s\n", marker, r.Label, detail)
+	}
+
+	// Next steps panel.
+	next := []string{}
+	if m.state.PrimaryCLI != "" {
+		next = append(next, fmt.Sprintf("Primary interface: %s", m.state.PrimaryCLI))
+	}
+	if m.state.RunInit {
+		next = append(next, "clawtool init     drop project recipes (release-please / dependabot / brain) into this repo")
+	}
+	next = append(next,
+		"clawtool send --list     see your callable agents",
+		"clawtool overview        live state of daemon + active dispatches")
+	fmt.Fprintf(&b, "\n  %s\n  %s\n", m.style.sectionTitle.Render("Next steps"), rule)
+	for _, item := range next {
+		fmt.Fprintf(&b, "    %s %s\n", m.style.bullet.Render("•"), item)
+	}
+	return b.String()
+}
+
+// renderFooter renders the bottom hint line: keybinds during steps,
+// "press any key to exit" when done.
+func (m *onboardModel) renderFooter() string {
+	switch m.phase {
+	case phaseSteps:
+		return m.style.dim.Render("  ↑↓ select   enter confirm   esc abort   ctrl-c quit")
+	case phaseRun:
+		return m.style.dim.Render(fmt.Sprintf("  running %d/%d   ctrl-c quit", m.queueIdx+1, len(m.queue)))
+	case phaseDone:
+		return m.style.dim.Render("  ✓ done — press any key to exit")
+	}
+	return ""
+}
+
+func (m *onboardModel) appendSection(title string) {
+	m.log = append(m.log, logEntry{kind: "section", label: title})
+}
+func (m *onboardModel) appendStart(label string) {
+	m.log = append(m.log, logEntry{kind: "start", label: label})
+}
+func (m *onboardModel) appendDone(detail string, dur time.Duration) {
+	// Replace the trailing "start" entry with "done" so the log
+	// reads as "✓ install bridge codex (123ms)" rather than two
+	// lines (start + done).
+	if n := len(m.log); n > 0 && m.log[n-1].kind == "start" {
+		m.log[n-1] = logEntry{kind: "done", label: m.log[n-1].label, detail: detail, duration: dur}
+		return
+	}
+	m.log = append(m.log, logEntry{kind: "done", detail: detail, duration: dur})
+}
+func (m *onboardModel) appendFail(reason string, dur time.Duration) {
+	if n := len(m.log); n > 0 && m.log[n-1].kind == "start" {
+		m.log[n-1] = logEntry{kind: "fail", label: m.log[n-1].label, detail: reason, duration: dur}
+		return
+	}
+	m.log = append(m.log, logEntry{kind: "fail", detail: reason, duration: dur})
+}
+func (m *onboardModel) appendSkip(reason string, dur time.Duration) {
+	if n := len(m.log); n > 0 && m.log[n-1].kind == "start" {
+		m.log[n-1] = logEntry{kind: "skip", label: m.log[n-1].label, detail: reason, duration: dur}
+		return
+	}
+	m.log = append(m.log, logEntry{kind: "skip", detail: reason, duration: dur})
+}
+
+// runOnboardTUI builds the model and runs it through a tea.Program
+// configured with the alt-screen buffer. Returns the model's
+// captured error (if any) so the caller can map it to the CLI exit
+// code.
+func runOnboardTUI(ctx context.Context, state *onboardState, deps onboardDeps, track func(string, map[string]any)) error {
+	m := newOnboardModel(state, deps, track)
+	prog := tea.NewProgram(m,
+		tea.WithAltScreen(),
+		tea.WithContext(ctx),
+	)
+	final, err := prog.Run()
+	if err != nil {
+		return err
+	}
+	if fm, ok := final.(*onboardModel); ok && fm.err != nil {
+		if errors.Is(fm.err, huh.ErrUserAborted) {
+			return huh.ErrUserAborted
+		}
+		return fm.err
+	}
+	return nil
+}
+
+// max because Go's stdlib didn't ship a generic max until 1.21 and
+// we keep this self-contained for the tests' minimal-build sake.
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// keep lipgloss import even if unused after future edits — the
+// model relies on it transitively through onboardStyles.
+var _ = lipgloss.NewStyle
