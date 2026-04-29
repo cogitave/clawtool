@@ -22,8 +22,6 @@ package tui
 
 import (
 	"bytes"
-	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -57,38 +55,16 @@ type peerInboxFetchedMsg struct {
 	err      error
 }
 
-// orchPeersFetchCmd polls the daemon's /v1/peers endpoint. Same
-// transport conventions as runA2APeers: read state + token from
-// disk, 5s timeout, surface decode errors.
+// orchPeersFetchCmd polls the daemon's /v1/peers endpoint via
+// daemon.HTTPRequest — same 5s/bearer/JSON conventions every
+// daemon dial uses. Errors fold into peersFetchedMsg.err so the
+// orchestrator's banner can surface them without crashing the tab.
 func orchPeersFetchCmd() tea.Cmd {
 	return func() tea.Msg {
-		state, err := daemon.ReadState()
-		if err != nil {
-			return peersFetchedMsg{err: fmt.Errorf("read daemon state: %w", err)}
-		}
-		if state == nil {
-			return peersFetchedMsg{err: fmt.Errorf("no daemon running")}
-		}
-		tok, _ := daemon.ReadToken()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-			fmt.Sprintf("http://127.0.0.1:%d/v1/peers", state.Port), nil)
-		if err != nil {
-			return peersFetchedMsg{err: err}
-		}
-		if tok != "" {
-			req.Header.Set("Authorization", "Bearer "+tok)
-		}
-		resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-		if err != nil {
-			return peersFetchedMsg{err: err}
-		}
-		defer resp.Body.Close()
 		var body struct {
 			Peers []a2a.Peer `json:"peers"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		if err := daemon.HTTPRequest(http.MethodGet, "/v1/peers", nil, &body); err != nil {
 			return peersFetchedMsg{err: err}
 		}
 		return peersFetchedMsg{peers: body.Peers}
@@ -111,30 +87,13 @@ type peersTickMsg struct{}
 // the rightful drain consumer; the orchestrator just observes.
 func orchPeerInboxCmd(peerID string) tea.Cmd {
 	return func() tea.Msg {
-		state, err := daemon.ReadState()
-		if err != nil || state == nil {
-			return peerInboxFetchedMsg{peerID: peerID, err: fmt.Errorf("daemon unreachable")}
-		}
-		tok, _ := daemon.ReadToken()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		url := fmt.Sprintf("http://127.0.0.1:%d/v1/peers/%s/messages?peek=1", state.Port, peerID)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return peerInboxFetchedMsg{peerID: peerID, err: err}
-		}
-		if tok != "" {
-			req.Header.Set("Authorization", "Bearer "+tok)
-		}
-		resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-		if err != nil {
-			return peerInboxFetchedMsg{peerID: peerID, err: err}
-		}
-		defer resp.Body.Close()
 		var body struct {
 			Messages []a2a.Message `json:"messages"`
 		}
-		_ = json.NewDecoder(resp.Body).Decode(&body)
+		path := "/v1/peers/" + peerID + "/messages?peek=1"
+		if err := daemon.HTTPRequest(http.MethodGet, path, nil, &body); err != nil {
+			return peerInboxFetchedMsg{peerID: peerID, err: err}
+		}
 		return peerInboxFetchedMsg{peerID: peerID, messages: body.Messages}
 	}
 }
