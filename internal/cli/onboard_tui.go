@@ -121,8 +121,17 @@ type onboardModel struct {
 
 // newOnboardModel builds the wizard from onboardState + deps. The
 // caller resolves these the same way the linear path does (host
-// detection + dep wiring); we just consume them.
+// detection + dep wiring); we just consume them. startStep lets a
+// resumed wizard skip ahead to the step the operator left off.
 func newOnboardModel(state *onboardState, deps onboardDeps, track func(string, map[string]any)) *onboardModel {
+	return newOnboardModelAt(state, deps, track, 0)
+}
+
+// newOnboardModelAt is the resume-aware constructor. startStep
+// clamps to the step list bounds; out-of-range values reset to
+// step 0 so a stale progress file (e.g. from a build with fewer
+// steps) doesn't push the cursor off the end.
+func newOnboardModelAt(state *onboardState, deps onboardDeps, track func(string, map[string]any), startStep int) *onboardModel {
 	m := &onboardModel{
 		state: state,
 		deps:  deps,
@@ -131,6 +140,10 @@ func newOnboardModel(state *onboardState, deps onboardDeps, track func(string, m
 		width: 80,
 	}
 	m.steps = buildWizardSteps(state)
+	if startStep < 0 || startStep >= len(m.steps) {
+		startStep = 0
+	}
+	m.stepIdx = startStep
 	m.advanceStepCursor() // skip steps whose skipIf is already true
 	return m
 }
@@ -368,6 +381,9 @@ func (m *onboardModel) updateStep(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.stepIdx++
 		m.advanceStepCursor()
+		// Persist progress so a Ctrl-C / terminal close at this
+		// point doesn't lose the operator's answers.
+		_ = saveOnboardProgress(m.stepIdx, m.state, versionShortForOnboard())
 		if m.stepIdx >= len(m.steps) {
 			return m, m.startRunPhase()
 		}
@@ -491,6 +507,10 @@ func (m *onboardModel) handleStepResult(msg stepResultMsg) (tea.Model, tea.Cmd) 
 			m.summary = append(m.summary, SummaryRow{Label: "telemetry", Outcome: "skip", Detail: "opted out"})
 		}
 		_ = writeOnboardedMarker()
+		// Wizard finished cleanly — drop the resume file so the
+		// next `clawtool onboard` hits the "already onboarded"
+		// guard, not the resume prompt.
+		_ = clearOnboardProgress()
 		m.track("clawtool.onboard", map[string]any{"event_kind": "finish", "outcome": "success"})
 		return m, func() tea.Msg { return finishedMsg{} }
 	}
@@ -784,8 +804,8 @@ func (m *onboardModel) appendSkip(reason string, dur time.Duration) {
 // configured with the alt-screen buffer. Returns the model's
 // captured error (if any) so the caller can map it to the CLI exit
 // code.
-func runOnboardTUI(ctx context.Context, state *onboardState, deps onboardDeps, track func(string, map[string]any)) error {
-	m := newOnboardModel(state, deps, track)
+func runOnboardTUI(ctx context.Context, state *onboardState, deps onboardDeps, track func(string, map[string]any), startStep int) error {
+	m := newOnboardModelAt(state, deps, track, startStep)
 	prog := tea.NewProgram(m,
 		tea.WithAltScreen(),
 		tea.WithContext(ctx),

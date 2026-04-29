@@ -130,6 +130,7 @@ type onboardDeps struct {
 // runOnboard is the dispatcher hooked into Run().
 func (a *App) runOnboard(argv []string) int {
 	yes := false
+	force := false
 	for _, arg := range argv {
 		switch arg {
 		case "--help", "-h":
@@ -137,7 +138,15 @@ func (a *App) runOnboard(argv []string) int {
 			return 0
 		case "--yes", "-y":
 			yes = true
+		case "--force", "-f":
+			force = true
 		}
+	}
+	// --force wipes the resume state + onboarded marker so the
+	// wizard starts from scratch without any prompt.
+	if force {
+		_ = clearOnboardProgress()
+		_ = os.Remove(onboardedMarkerPath())
 	}
 	d := onboardDeps{
 		lookPath: func(bin string) error { _, err := exec.LookPath(bin); return err },
@@ -238,7 +247,55 @@ func (a *App) onboardTUI(ctx context.Context, d onboardDeps) error {
 	}
 	track("clawtool.onboard", map[string]any{"event_kind": "start", "command": "onboard"})
 
-	if err := runOnboardTUI(ctx, &state, d, track); err != nil {
+	// Re-entry / resume gate. Three cases:
+	//   1. Progress file present → operator interrupted a previous
+	//      session. Ask whether to resume from where they left off
+	//      or start over.
+	//   2. .onboarded marker present, no progress file → wizard
+	//      previously ran to completion. Ask whether to re-run.
+	//   3. Neither → fresh wizard (no extra prompt).
+	startStep := 0
+	progress, perr := loadOnboardProgress()
+	if perr != nil {
+		// Couldn't parse the file — surface and start fresh.
+		// The wizard remains usable; we just lost the resume
+		// shortcut for this run.
+		fmt.Fprintf(a.Stderr, "clawtool onboard: ignoring corrupt progress file: %v\n", perr)
+		_ = clearOnboardProgress()
+	}
+	if progress != nil {
+		choice, err := promptResume(progress, a.Stdout, a.Stderr)
+		if err != nil {
+			return err
+		}
+		switch choice {
+		case "resume":
+			state = progress.State
+			startStep = progress.StepIdx
+			track("clawtool.onboard", map[string]any{"event_kind": "resume", "step_idx": startStep})
+		case "restart":
+			_ = clearOnboardProgress()
+			track("clawtool.onboard", map[string]any{"event_kind": "restart_from_progress"})
+		case "cancel":
+			d.stdoutLn("clawtool onboard: cancelled; previous progress kept.")
+			return nil
+		}
+	} else if IsOnboarded() {
+		choice, err := promptAlreadyOnboarded(a.Stdout, a.Stderr)
+		if err != nil {
+			return err
+		}
+		switch choice {
+		case "redo":
+			track("clawtool.onboard", map[string]any{"event_kind": "redo"})
+		case "cancel":
+			d.stdoutLn("clawtool onboard: already configured; nothing to do.")
+			d.stdoutLn("(re-run with `clawtool onboard --force` to wipe and start fresh.)")
+			return nil
+		}
+	}
+
+	if err := runOnboardTUI(ctx, &state, d, track, startStep); err != nil {
 		return err
 	}
 
@@ -775,14 +832,22 @@ func IsOnboarded() bool {
 }
 
 const onboardUsage = `Usage:
-  clawtool onboard         Interactive first-run wizard. Detects host CLIs,
-                           offers bridge installs, bootstraps the BIAM
-                           identity, and records telemetry consent.
-  clawtool onboard --yes   Non-interactive: skip every prompt and apply the
-                           wizard's smart defaults (install every missing
-                           bridge, claim every claimable host, start daemon,
-                           generate identity, init secrets stub). Drives
-                           Dockerfiles / CI scripts / the e2e harness. Alias: -y.
+  clawtool onboard           Interactive first-run wizard. Detects host CLIs,
+                             offers bridge installs, bootstraps the BIAM
+                             identity, and records telemetry consent. If you
+                             interrupt the wizard mid-flow (Ctrl-C, terminal
+                             close), the next invocation prompts to resume
+                             from the step you left off. If the wizard has
+                             already completed once, the next invocation
+                             prompts before re-running.
+  clawtool onboard --yes     Non-interactive: skip every prompt and apply the
+                             wizard's smart defaults (install every missing
+                             bridge, claim every claimable host, start daemon,
+                             generate identity, init secrets stub). Drives
+                             Dockerfiles / CI scripts / the e2e harness. Alias: -y.
+  clawtool onboard --force   Wipe the saved progress + the onboarded marker
+                             before launching, so the wizard starts from
+                             scratch with no resume / re-entry prompt. Alias: -f.
 
 For project-level recipes (release-please / dependabot / brain / etc.)
 use 'clawtool init --yes' separately.
