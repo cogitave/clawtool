@@ -276,6 +276,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runWorktree(argv[1:])
 	case "task":
 		return a.runTask(argv[1:])
+	case "star":
+		return a.runStar(argv[1:])
 	case "upgrade":
 		return a.runUpgrade(argv[1:])
 	case "onboard":
@@ -604,6 +606,19 @@ Usage:
                             Per-profile [sandboxes.X] in config.toml.
                             Engines: bwrap (Linux), sandbox-exec (macOS),
                             docker (anywhere fallback).
+  clawtool star [--no-oauth] [--owner <o> --repo <r>]
+                            Star cogitave/clawtool on GitHub (or a
+                            different repo with overrides). Walks you
+                            through GitHub's OAuth Device Flow: prints
+                            a short user-code, opens the verification
+                            page in your browser, polls until you
+                            authorise, then PUTs the star via the
+                            documented authenticated REST endpoint.
+                            --no-oauth opens the repo's star page so
+                            you can click Star yourself instead.
+                            Token cached in ~/.config/clawtool/secrets.toml
+                            (mode 0600); revoke any time at
+                            github.com/settings/applications.
   clawtool telemetry status / on / off
                             Show or flip the anonymous-telemetry opt-in
                             stored in config.toml. Allow-listed payload
