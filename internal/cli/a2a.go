@@ -6,8 +6,6 @@
 package cli
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,7 +14,6 @@ import (
 
 	"github.com/cogitave/clawtool/internal/a2a"
 	"github.com/cogitave/clawtool/internal/cli/listfmt"
-	"github.com/cogitave/clawtool/internal/daemon"
 )
 
 const a2aUsage = `Usage:
@@ -119,47 +116,16 @@ func (a *App) runA2APeers(argv []string) int {
 		}
 	}
 
-	state, err := daemon.ReadState()
-	if err != nil {
-		fmt.Fprintf(a.Stderr, "clawtool a2a peers: read daemon state: %v\n", err)
-		return 1
-	}
-	if state == nil {
-		fmt.Fprintln(a.Stderr, "clawtool a2a peers: no daemon running — start it with `clawtool daemon start`")
-		return 1
-	}
-	tok, _ := daemon.ReadToken()
-
-	healthURL := fmt.Sprintf("http://127.0.0.1:%d/v1/peers", state.Port)
+	path := "/v1/peers"
 	if encoded := q.Encode(); encoded != "" {
-		healthURL += "?" + encoded
+		path += "?" + encoded
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
-	if err != nil {
-		fmt.Fprintf(a.Stderr, "clawtool a2a peers: build request: %v\n", err)
-		return 1
-	}
-	if tok != "" {
-		req.Header.Set("Authorization", "Bearer "+tok)
-	}
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-	if err != nil {
-		fmt.Fprintf(a.Stderr, "clawtool a2a peers: dial daemon: %v\n", err)
-		return 1
-	}
-	defer resp.Body.Close()
 	var body struct {
 		Peers []a2a.Peer `json:"peers"`
 		Count int        `json:"count"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		fmt.Fprintf(a.Stderr, "clawtool a2a peers: decode response: %v\n", err)
-		return 1
-	}
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(a.Stderr, "clawtool a2a peers: daemon returned %s\n", resp.Status)
+	if err := daemonRequest(http.MethodGet, path, nil, &body); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool a2a peers: %v\n", err)
 		return 1
 	}
 	if body.Count == 0 {
