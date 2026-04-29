@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"sync"
 	"time"
 
@@ -20,6 +21,12 @@ import (
 type SessionKey string
 
 const sessionAnonymous SessionKey = "anonymous"
+
+// readFileForHash is a tiny indirection so tests can stub the
+// disk read. Production reads via os.ReadFile.
+var readFileForHash = func(path string) ([]byte, error) {
+	return os.ReadFile(path)
+}
 
 // ReadRecord captures what a Read tool call observed about a path
 // at a single point in time. Edit + Write consult these to
