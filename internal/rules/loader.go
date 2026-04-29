@@ -83,8 +83,35 @@ func validateRule(r Rule) error {
 // DefaultRoots returns the search roots for rules.toml. Project-
 // local takes precedence over user-global, same convention skill /
 // sandbox discovery uses.
+//
+// Project-local resolution walks UP from the process working
+// directory looking for a `.clawtool/rules.toml` (stopping at the
+// filesystem root or 12 levels, whichever comes first). Pre-fix
+// this only checked the literal working directory; a daemon
+// spawned from $XDG_CONFIG_HOME / $HOME never saw the operator's
+// project rules and `mcp__clawtool__RulesCheck` returned
+// `configured: false` — the operator's complaint on 2026-04-29.
 func DefaultRoots() []string {
-	roots := []string{filepath.Join(".clawtool", "rules.toml")}
+	roots := []string{}
+	if cwd, err := os.Getwd(); err == nil {
+		dir := cwd
+		for i := 0; i < 12; i++ {
+			candidate := filepath.Join(dir, ".clawtool", "rules.toml")
+			if _, err := os.Stat(candidate); err == nil {
+				roots = append(roots, candidate)
+				break
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	// Always include the relative form too — covers the case
+	// where cwd resolution failed or the operator runs from a
+	// non-walkable mount.
+	roots = append(roots, filepath.Join(".clawtool", "rules.toml"))
 	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
 		roots = append(roots, filepath.Join(x, "clawtool", "rules.toml"))
 	} else if home, err := os.UserHomeDir(); err == nil && home != "" {

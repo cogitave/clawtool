@@ -50,6 +50,17 @@ var (
 //
 // Output strips any leading "v" so callers can pass it straight
 // into Compare() without normalising at every call site.
+//
+// **Every external surface MUST use this** — telemetry events,
+// hook payloads, /v1/health JSON, A2A card, doctor banner,
+// orchestrator probe, MCP serverInfo. The literal `Version` var
+// holds the pre-build fallback ("0.21.7") and reads of it
+// outside this package are an anti-pattern: a goreleaser-baked
+// binary at v0.22.34 emitting the const looks like v0.21.7 to
+// every consumer (operator's PostHog filter, A2A peer, /v1/health
+// probe — all silently wrong). The bug repeated across 9 sites
+// before the operator caught it on 2026-04-29 ("12 hours, no
+// telemetry events"). Don't repeat it — call Resolved().
 func Resolved() string {
 	resolvedOnce.Do(func() {
 		resolvedVal = resolveVersion()
