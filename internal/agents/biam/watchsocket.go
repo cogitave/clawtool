@@ -22,22 +22,17 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 // DefaultWatchSocketPath honours XDG_STATE_HOME, falls back to
 // ~/.local/state. Keeps the runtime socket out of $XDG_CONFIG_HOME
 // (config = static) and $XDG_DATA_HOME (data = durable).
 func DefaultWatchSocketPath() string {
-	if v := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); v != "" {
-		return filepath.Join(v, "clawtool", "task-watch.sock")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".local", "state", "clawtool", "task-watch.sock")
-	}
-	return "task-watch.sock"
+	return filepath.Join(xdg.StateDir(), "task-watch.sock")
 }
 
 // ServeWatchSocket binds the Unix socket at `path`, accepting clients

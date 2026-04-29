@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 var (
@@ -43,13 +45,7 @@ func Global() *Client {
 // duplicated here so daemon-side code doesn't import internal/cli
 // (would create a cycle).
 func DefaultTokenPath() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "worker-token")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".config", "clawtool", "worker-token")
-	}
-	return "worker-token"
+	return filepath.Join(xdg.ConfigDir(), "worker-token")
 }
 
 // LoadToken reads the bearer token from path with the same

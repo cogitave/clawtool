@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -122,11 +123,7 @@ func DefaultRoots() []string {
 	// where cwd resolution failed or the operator runs from a
 	// non-walkable mount.
 	roots = append(roots, filepath.Join(".clawtool", "rules.toml"))
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		roots = append(roots, filepath.Join(x, "clawtool", "rules.toml"))
-	} else if home, err := os.UserHomeDir(); err == nil && home != "" {
-		roots = append(roots, filepath.Join(home, ".config", "clawtool", "rules.toml"))
-	}
+	roots = append(roots, filepath.Join(xdg.ConfigDir(), "rules.toml"))
 	return roots
 }
 
@@ -162,13 +159,7 @@ func LocalRulesPath() string {
 // UserRulesPath returns the user-scoped rules path:
 // $XDG_CONFIG_HOME/clawtool/rules.toml (or ~/.config/...).
 func UserRulesPath() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "rules.toml")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".config", "clawtool", "rules.toml")
-	}
-	return filepath.Join("clawtool", "rules.toml")
+	return filepath.Join(xdg.ConfigDir(), "rules.toml")
 }
 
 // AppendRule writes one new rule to the file at path, creating

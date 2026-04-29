@@ -27,6 +27,7 @@ import (
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/observability"
+	"github.com/cogitave/clawtool/internal/xdg"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -582,14 +583,7 @@ func (s *supervisor) stickyFile() string {
 	if s.stickyPath != "" {
 		return s.stickyPath
 	}
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", "active_agent")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "active_agent"
-	}
-	return filepath.Join(home, ".config", "clawtool", "active_agent")
+	return filepath.Join(xdg.ConfigDir(), "active_agent")
 }
 
 // WriteSticky persists the active-agent name. Used by `clawtool agent use`.

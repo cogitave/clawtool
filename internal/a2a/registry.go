@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/cogitave/clawtool/internal/atomicfile"
+	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/google/uuid"
 )
 
@@ -124,13 +125,7 @@ func NewRegistry(statePath string) *Registry {
 // convention so an operator inspecting the config dir sees
 // daemon.json + peers.json side-by-side.
 func DefaultStatePath() string {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "clawtool", "peers.json")
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		return filepath.Join(home, ".config", "clawtool", "peers.json")
-	}
-	return "peers.json"
+	return filepath.Join(xdg.ConfigDir(), "peers.json")
 }
 
 // RegisterInput is the shape callers supply to Register. Mirrors

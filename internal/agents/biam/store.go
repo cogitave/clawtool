@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/xdg"
 	_ "modernc.org/sqlite"
 )
 
@@ -104,13 +104,7 @@ func OpenStore(path string) (*Store, error) {
 
 // DefaultStorePath honours XDG_DATA_HOME, falls back to HOME.
 func DefaultStorePath() string {
-	if v := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); v != "" {
-		return filepath.Join(v, "clawtool", "biam.db")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".local", "share", "clawtool", "biam.db")
-	}
-	return "biam.db"
+	return filepath.Join(xdg.DataDir(), "biam.db")
 }
 
 // Close flushes + closes the underlying database. Idempotent.

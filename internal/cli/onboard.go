@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/huh"
@@ -15,6 +14,7 @@ import (
 	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/daemon"
 	"github.com/cogitave/clawtool/internal/telemetry"
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 // onboardState carries everything the wizard collects before any side
@@ -614,13 +614,7 @@ func primaryDefault(found map[string]bool) string {
 // Single source of truth — never branch on "config.toml exists" or
 // "daemon is up", those are partial signals.
 func onboardedMarkerPath() string {
-	if x := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); x != "" {
-		return filepath.Join(x, "clawtool", ".onboarded")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".config", "clawtool", ".onboarded")
-	}
-	return ".onboarded"
+	return filepath.Join(xdg.ConfigDir(), ".onboarded")
 }
 
 // writeOnboardedMarker creates the marker file. Idempotent. mode
