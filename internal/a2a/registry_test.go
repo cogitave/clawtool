@@ -59,6 +59,29 @@ func TestRegister_RejectsMissingFields(t *testing.T) {
 	}
 }
 
+func TestRegister_DistinctSessionsStaySeparate(t *testing.T) {
+	r := withTempRegistry(t)
+	dir := t.TempDir()
+	a, err := r.Register(RegisterInput{
+		DisplayName: "claude-1", Path: dir, Backend: "claude-code", SessionID: "sess-A",
+	})
+	if err != nil {
+		t.Fatalf("register A: %v", err)
+	}
+	b, err := r.Register(RegisterInput{
+		DisplayName: "claude-2", Path: dir, Backend: "claude-code", SessionID: "sess-B",
+	})
+	if err != nil {
+		t.Fatalf("register B: %v", err)
+	}
+	if a.PeerID == b.PeerID {
+		t.Errorf("two distinct sessions in the same cwd collapsed onto one peer_id (%s)", a.PeerID)
+	}
+	if got := r.List(ListFilter{}); len(got) != 2 {
+		t.Errorf("expected 2 peers, got %d", len(got))
+	}
+}
+
 func TestRegister_IdempotentOnIdentityTuple(t *testing.T) {
 	r := withTempRegistry(t)
 	dir := t.TempDir()
