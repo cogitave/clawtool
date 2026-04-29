@@ -175,13 +175,23 @@ func TestOnboardModel_View_ContainsHeaderAndStep(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	out := m.View()
-	if !strings.Contains(out, "clawtool onboard") {
-		t.Errorf("View should contain header title; got: %q", out)
+	// Logo + tagline: ASCII banner uses box-drawing chars; the
+	// tagline text remains plain.
+	if !strings.Contains(out, "first-run setup wizard") {
+		t.Errorf("View should contain header tagline; got: %q", out)
 	}
-	if !strings.Contains(out, "Step ") {
-		t.Errorf("View should contain step indicator; got: %q", out)
+	if !strings.Contains(out, "from Cogitave") {
+		t.Errorf("View should contain attribution; got: %q", out)
 	}
-	// First step title is "Primary CLI".
+	if !strings.Contains(out, "help@cogitave.com") {
+		t.Errorf("View should contain support email; got: %q", out)
+	}
+	// Sidebar shows progress header + step counter.
+	if !strings.Contains(out, "PROGRESS") {
+		t.Errorf("View should contain sidebar progress header; got: %q", out)
+	}
+	// First step title is "Primary CLI" — appears both in
+	// sidebar list and as the right-pane title.
 	if !strings.Contains(out, "Primary CLI") {
 		t.Errorf("View should contain first step title 'Primary CLI'; got: %q", out)
 	}
