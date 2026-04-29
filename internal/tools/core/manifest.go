@@ -124,6 +124,38 @@ func BuildManifest() *registry.Manifest {
 		},
 	})
 
+	// ─── Ambient editor context (octopus pattern) ──────────────
+	// SetContext + GetContext share an in-process map keyed by
+	// session_id. Lets an agent / IDE integration deposit "user
+	// is editing X line Y, intent Z" once and have other tools /
+	// agents read it without re-asking.
+	m.Append(registry.ToolSpec{
+		Name:        "SetContext",
+		Description: "Store ambient editor context (file path, selected lines, project root, intent) for the current session. Merges with existing state — supplying just `start_line` updates the cursor without clobbering the file path. Lifetime: process-local (daemon restart wipes).",
+		Keywords:    []string{"context", "editor", "ambient", "session", "scratchpad", "intent", "file", "selection", "cursor", "set", "store"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterSetContext(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "GetContext",
+		Description: "Read the ambient editor context previously set via SetContext. Returns the merged state for the named session or empty when nothing has been stored. Pair with SetContext when an agent / tool needs the operator's current focus without re-asking.",
+		Keywords:    []string{"context", "editor", "ambient", "session", "scratchpad", "intent", "file", "selection", "cursor", "get", "read"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			// RegisterSetContext registers BOTH SetContext and
+			// GetContext on the same MCP server. The second
+			// ToolSpec is here for surface-discovery purposes
+			// (manifest-driven listing, search index) — calling
+			// the registrar twice is safe because the underlying
+			// AddTool is idempotent on tool name.
+			RegisterSetContext(s)
+		},
+	})
+
 	// ─── Step 3a: gateable file + shell + web tools ────────────
 	// All have a `(s *server.MCPServer)` Register signature today.
 	// ToolSearch + WebSearch are deferred to Step 4 because they
