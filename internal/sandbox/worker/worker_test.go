@@ -157,6 +157,25 @@ func TestHandleStat_NonexistentReturnsExistsFalse(t *testing.T) {
 	}
 }
 
+// TestClient_ReadWriteSurfaceTransportErrors covers the Client.Read /
+// Client.Write surface against a closed port — same defensive
+// contract Bash's tryWorkerExec relies on. Mirrors
+// TestTryWorkerExec_SurfacesTransportError. Without these the Read /
+// Write client methods stayed unreachable in the tree (deadcode -test
+// flagged them) even though the worker server has handleRead /
+// handleWrite implementations ready for them.
+func TestClient_ReadWriteSurfaceTransportErrors(t *testing.T) {
+	c := NewClient("ws://127.0.0.1:1/ws", "test-token")
+	defer c.Close()
+
+	if _, err := c.Read(context.Background(), ReadRequest{Path: "x"}); err == nil {
+		t.Error("Client.Read against a closed port should fail")
+	}
+	if _, err := c.Write(context.Background(), WriteRequest{Path: "x", Content: "y"}); err == nil {
+		t.Error("Client.Write against a closed port should fail")
+	}
+}
+
 func TestHandleWrite_CreateModeRefusesExisting(t *testing.T) {
 	workdir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workdir, "exists.txt"), []byte("x"), 0o644); err != nil {
