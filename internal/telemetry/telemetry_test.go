@@ -118,6 +118,40 @@ func TestAllowedKeys_FilterStrips(t *testing.T) {
 	}
 }
 
+func TestAllowedKeys_PostHogSessionConventions(t *testing.T) {
+	// $session_id + $lib + $lib_version are PostHog-reserved
+	// property names that light up the Sessions view and
+	// session-bound funnel queries. Stripping them silently
+	// (the pre-fix behaviour) was the root cause of the
+	// "sessions tab is empty even though events are flowing"
+	// observation on 2026-04-29.
+	for _, k := range []string{"$session_id", "$lib", "$lib_version"} {
+		if !allowedKeys[k] {
+			t.Errorf("PostHog convention key %q must be allowed (Sessions view depends on it)", k)
+		}
+	}
+}
+
+func TestNewSessionID_UniquePerCall(t *testing.T) {
+	// Each call must produce a fresh ID so two concurrent
+	// daemons (or a daemon + a one-shot CLI) don't collide
+	// into the same Sessions-view row.
+	seen := map[string]bool{}
+	for i := 0; i < 100; i++ {
+		id := newSessionID()
+		if id == "" {
+			t.Fatalf("empty session ID")
+		}
+		if len(id) < 16 {
+			t.Fatalf("session ID too short: %q", id)
+		}
+		if seen[id] {
+			t.Fatalf("session ID collision: %q (iteration %d)", id, i)
+		}
+		seen[id] = true
+	}
+}
+
 func TestDetectInstallMethod_KnownTaxonomy(t *testing.T) {
 	// Isolate from the host's install-method file (install.sh
 	// writes one under ~/.config/clawtool/install-method when

@@ -52,10 +52,21 @@ const (
 
 // Client wraps a PostHog client + the per-host anonymous distinct ID.
 // Nil-safe: `(*Client)(nil).Track(...)` is a clean no-op.
+//
+// sessionID groups every event emitted from a single daemon /
+// CLI invocation under one $session_id property — PostHog's
+// Sessions view + funnel queries rely on this to reconstruct
+// "user did A then B then C in the same run" rather than treating
+// every event as an isolated row. Generated fresh on New(), so a
+// daemon restart starts a new session (which is the right
+// boundary for CLI tools — different invocations are different
+// units of work).
 type Client struct {
 	mu         sync.Mutex
 	enabled    bool
 	distinctID string
+	sessionID  string
+	startedAt  time.Time
 	client     posthog.Client
 }
 
@@ -87,6 +98,18 @@ var allowedKeys = map[string]bool{
 	"install_method": true, // taxonomy: "script" | "brew" | "go-install" | "release" | "docker" | "manual" | "unknown"
 	"update_outcome": true, // taxonomy: "up_to_date" | "update_available" | "check_failed"
 	"transport":      true, // taxonomy: "stdio" | "http" — distinguishes ServeStdio respawn-per-call from the persistent HTTP daemon (v0.22.23-cycle).
+
+	// PostHog session/lib conventions. These prefixed `$<name>`
+	// keys are reserved by PostHog itself; surfacing them via the
+	// allow-list lights up the Sessions view, lib filtering, and
+	// session-bound funnel queries that were dark before
+	// (operator's 2026-04-29 observation: sessions empty, live
+	// feed sparse). $session_id groups events emitted from one
+	// daemon / CLI run; $lib + $lib_version identify the
+	// emitter for cross-channel comparisons.
+	"$session_id":  true,
+	"$lib":         true,
+	"$lib_version": true,
 }
 
 // New initialises the client when telemetry is enabled. Disabled
@@ -129,13 +152,33 @@ func New(cfg config.TelemetryConfig) *Client {
 		return &Client{enabled: false}
 	}
 	id, _ := loadOrCreateAnonymousID()
+	sid := newSessionID()
 	fmt.Fprintf(os.Stderr,
-		"clawtool telemetry: enabled (host=%s, distinct_id=%s…)\n", host, id[:min(8, len(id))])
+		"clawtool telemetry: enabled (host=%s, distinct_id=%s…, session=%s)\n", host, id[:min(8, len(id))], sid[:min(8, len(sid))])
 	return &Client{
 		enabled:    true,
 		distinctID: id,
+		sessionID:  sid,
+		startedAt:  time.Now(),
 		client:     c,
 	}
+}
+
+// newSessionID returns a 16-byte hex token unique to this daemon /
+// CLI invocation. PostHog uses $session_id verbatim — any opaque
+// string per-process is fine; we err on the side of "long enough
+// to be globally unique without coordination" so events from
+// concurrent sessions never collide.
+func newSessionID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		// Fallback that's still unique-enough — process start
+		// time at nanosecond resolution. We never actually
+		// expect rand.Read to fail, but a stuck rand source
+		// shouldn't disable telemetry.
+		return fmt.Sprintf("ts-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf)
 }
 
 func min(a, b int) int {
@@ -167,6 +210,20 @@ func (c *Client) Track(event string, properties map[string]any) {
 	}
 	clean["os"] = runtime.GOOS
 	clean["arch"] = runtime.GOARCH
+	// PostHog conventions: $session_id groups events from one
+	// daemon / CLI invocation under a single Sessions-view row;
+	// $lib / $lib_version identify the emitter for cross-channel
+	// comparisons (cogitave/clawtool vs the dashboard vs any
+	// future SDK that lands on the same project). Caller-supplied
+	// values are respected (allow-listed above) — these only fill
+	// in when the caller didn't set them, so a per-event override
+	// stays possible.
+	if _, set := clean["$session_id"]; !set && c.sessionID != "" {
+		clean["$session_id"] = c.sessionID
+	}
+	if _, set := clean["$lib"]; !set {
+		clean["$lib"] = "clawtool-go"
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.client == nil {
