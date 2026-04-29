@@ -213,9 +213,21 @@ func (a *App) runOnboard(argv []string) int {
 	// docker exec without -t, the test harness) falls through to
 	// the linear onboard() implementation so its plain-text
 	// contract stays stable.
+	//
+	// Resolve stdout / stdin to *os.File. App.Stdin is unset by
+	// default (cli.New() only wires Stdout + Stderr), so when the
+	// embedded reader isn't an *os.File we fall back to the real
+	// os.Stdin / os.Stdout — that's what production invocations
+	// actually use, and it's the right TTY to probe.
 	stdout, _ := a.Stdout.(*os.File)
+	if stdout == nil {
+		stdout = os.Stdout
+	}
 	stdin, _ := a.Stdin.(*os.File)
-	useTUI := !yes && stdout != nil && stdin != nil && isTTY(stdout) && isTTY(stdin)
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	useTUI := !yes && isTTY(stdout) && isTTY(stdin)
 	if useTUI {
 		if err := a.onboardTUI(context.Background(), d); err != nil {
 			if errors.Is(err, huh.ErrUserAborted) {
