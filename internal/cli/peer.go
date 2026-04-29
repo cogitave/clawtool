@@ -97,8 +97,8 @@ func (a *App) runPeerRegister(argv []string) int {
 	// Code, for instance, ships {"session_id": "..."} on stdin for
 	// every hook fire — so a one-line shell hook (`clawtool peer
 	// register --backend claude-code`) gets correct keying for free.
-	if *session == "default" && a.Stdin != nil {
-		if id := readSessionFromStdin(a.Stdin); id != "" {
+	if *session == "default" {
+		if id := readSessionFromStdin(a.stdin()); id != "" {
 			*session = id
 		}
 	}
@@ -116,6 +116,7 @@ func (a *App) runPeerRegister(argv []string) int {
 		Path:        *path,
 		Backend:     *backend,
 		Circle:      *circle,
+		SessionID:   *session,
 		TmuxPane:    *pane,
 		PID:         os.Getpid(),
 	}
@@ -147,8 +148,8 @@ func (a *App) runPeerHeartbeat(argv []string) int {
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
-	if *session == "default" && a.Stdin != nil {
-		if id := readSessionFromStdin(a.Stdin); id != "" {
+	if *session == "default" {
+		if id := readSessionFromStdin(a.stdin()); id != "" {
 			*session = id
 		}
 	}
@@ -173,8 +174,8 @@ func (a *App) runPeerDeregister(argv []string) int {
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
-	if *session == "default" && a.Stdin != nil {
-		if id := readSessionFromStdin(a.Stdin); id != "" {
+	if *session == "default" {
+		if id := readSessionFromStdin(a.stdin()); id != "" {
 			*session = id
 		}
 	}

@@ -77,6 +77,7 @@ type Peer struct {
 	Circle         string            `json:"circle"`  // group name; defaults to tmux session or "default"
 	Role           PeerRole          `json:"role"`
 	Status         PeerStatus        `json:"status"`
+	SessionID      string            `json:"session_id,omitempty"` // runtime-supplied session key (claude-code: hook payload .session_id)
 	TmuxPane       string            `json:"tmux_pane,omitempty"`
 	IdentityPubkey string            `json:"identity_pubkey,omitempty"`
 	PID            int               `json:"pid,omitempty"`
@@ -135,6 +136,7 @@ type RegisterInput struct {
 	Backend        string            `json:"backend"`
 	Circle         string            `json:"circle,omitempty"`
 	Role           PeerRole          `json:"role,omitempty"`
+	SessionID      string            `json:"session_id,omitempty"`
 	TmuxPane       string            `json:"tmux_pane,omitempty"`
 	IdentityPubkey string            `json:"identity_pubkey,omitempty"`
 	PID            int               `json:"pid,omitempty"`
@@ -158,7 +160,7 @@ func (r *Registry) Register(in RegisterInput) (*Peer, error) {
 	defer r.mu.Unlock()
 
 	// Idempotency: collapse on the natural identity tuple.
-	if existing := r.findByIdentity(in.Backend, in.Path, in.TmuxPane, in.IdentityPubkey); existing != nil {
+	if existing := r.findByIdentity(in.Backend, in.Path, in.SessionID, in.TmuxPane, in.IdentityPubkey); existing != nil {
 		existing.LastSeen = time.Now().UTC()
 		existing.Status = PeerOnline
 		// Also pick up any metadata refresh — operator may
@@ -192,6 +194,7 @@ func (r *Registry) Register(in RegisterInput) (*Peer, error) {
 		Circle:         defaultIfEmpty(in.Circle, "default"),
 		Role:           defaultRoleIfEmpty(in.Role, RoleAgent),
 		Status:         PeerOnline,
+		SessionID:      in.SessionID,
 		TmuxPane:       in.TmuxPane,
 		IdentityPubkey: in.IdentityPubkey,
 		PID:            in.PID,
@@ -365,16 +368,23 @@ func (r *Registry) load() error {
 
 // findByIdentity collapses re-registration calls onto the same
 // peer row. Two peers are "the same" when their (backend,
-// path, tmux_pane, identity_pubkey) tuple matches. Empty
-// strings count as wildcards so a SessionStart hook that
+// path, session_id, tmux_pane, identity_pubkey) tuple matches.
+// Empty strings count as wildcards so a SessionStart hook that
 // doesn't know the tmux pane still finds an existing peer with
-// the same backend+path. Caller must hold r.mu.
-func (r *Registry) findByIdentity(backend, path, pane, pubkey string) *Peer {
+// the same backend+path+session. session_id is the primary
+// disambiguator for runtimes that supply it (claude-code's hook
+// payload, codex/gemini equivalents) — without it, two parallel
+// claude-code sessions in the same cwd would collapse onto one
+// row. Caller must hold r.mu.
+func (r *Registry) findByIdentity(backend, path, session, pane, pubkey string) *Peer {
 	for _, p := range r.peers {
 		if p.Backend != backend {
 			continue
 		}
 		if path != "" && p.Path != path {
+			continue
+		}
+		if session != "" && p.SessionID != session {
 			continue
 		}
 		if pane != "" && p.TmuxPane != pane {
