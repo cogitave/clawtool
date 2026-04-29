@@ -323,16 +323,29 @@ func (m *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Do NOT forward WindowSizeMsg to the active form. huh's
-		// internal layout machinery uses Height in WindowSizeMsg
-		// to clamp option-list viewports — sending a too-small
-		// height squashes the list to one row, sending the full
-		// alt-screen overflows the card and our outer Height()
-		// clamp truncates from the bottom (showing only the
-		// cursor row, e.g. "none / decide later"). Letting huh
-		// use its default natural-size rendering lets all options
-		// show; the surrounding card auto-sizes to fit and the
-		// body container's Height() absorbs slack underneath.
+		// Forward to the active form with an artificially large
+		// Height (9999). huh.Form clamps its option viewport to
+		// `min(neededHeight, msg.Height)` — without this Init
+		// signal the form falls back to a tiny default and only
+		// the cursor row of its option list survives (operator
+		// sees just "none / decide later" or whichever option
+		// happens to be selected). Passing 9999 is bigger than
+		// any real need, so huh renders the form's natural full
+		// height and we keep all options visible. Width is
+		// trimmed to the body's left-padding offset so huh's
+		// description text wraps at the right column.
+		if m.phase == phaseSteps && m.stepIdx < len(m.steps) {
+			cardW := m.width - 6
+			if cardW < 30 {
+				cardW = 30
+			}
+			inner := tea.WindowSizeMsg{Width: cardW, Height: 9999}
+			f, cmd := m.steps[m.stepIdx].form.Update(inner)
+			if hf, ok := f.(*huh.Form); ok {
+				m.steps[m.stepIdx].form = hf
+			}
+			return m, cmd
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -720,19 +733,30 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 	}
 	progress := strings.Join(dots, " ")
 
-	// No outer card frame around the form — huh already renders
-	// each focused field with its own left-bordered accent block,
-	// and stacking a second rounded box around it produced a
-	// "card-in-a-card" look that compressed the usable width and
-	// felt visually noisy. Render the form directly with a left
-	// margin matching the indicator above so everything aligns
-	// on a single visual axis.
+	// Wrap the form in a rounded-border card. The card has Width
+	// but NO Height clamp — that way the card grows to whatever
+	// huh's natural rendered height happens to be (we already
+	// told huh it has 9999 rows of viewport via WindowSizeMsg in
+	// Update, so it renders every option). The body container
+	// below DOES have Height(bodyH); slack rows pad below the
+	// card so the footer still pins to the alt-screen bottom.
+	cardW := w - 4
+	if cardW < 40 {
+		cardW = 40
+	}
+	card := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("212")).
+		Padding(1, 3).
+		Width(cardW).
+		Render(step.form.View())
+
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		indicator,
 		"",
 		progress,
 		"",
-		step.form.View(),
+		card,
 	)
 	return lipgloss.NewStyle().
 		Width(w).
