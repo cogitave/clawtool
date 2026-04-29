@@ -96,6 +96,15 @@ type OrchModel struct {
 	systemBanner   *biam.SystemNotification
 	systemBannerAt time.Time
 
+	// watchBackoff is the delay before the next watch-socket
+	// reconnect attempt. Doubles on each consecutive
+	// watchClosedMsg; resets on the first successful read.
+	// Without this an upgrade-induced daemon restart leaves the
+	// orchestrator stuck on "watch socket disconnected" until
+	// the operator quits and relaunches. See
+	// internal/tui/watch_reconnect.go for the policy.
+	watchBackoff time.Duration
+
 	theme *theme.Theme
 }
 
@@ -297,6 +306,8 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		m.refreshStreamForSelection()
+		m.watchBackoff = 0
+		m.err = nil
 		return m, orchReadCmd(msg.dec, msg.conn)
 
 	case watchFrameMsg:
@@ -328,6 +339,8 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.stream.GotoBottom()
 			}
 		}
+		m.watchBackoff = 0
+		m.err = nil
 		return m, orchReadCmd(msg.dec, msg.conn)
 
 	case orchVersionMismatchMsg:
@@ -342,11 +355,18 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				msg.binaryVersion, msg.daemonVersion),
 			Body: "Frames may render incorrectly when orchestrator and daemon disagree on the watch-envelope shape.",
 			// `clawtool upgrade` is the canonical path — it
-			// pulls the GoReleaser artefact and atomically
-			// replaces the running binary. Falls back to
-			// `go install` only when the operator is on a
-			// hand-built dev binary (no release artefact).
-			ActionHint: "Run `clawtool upgrade`, then `pkill -f 'clawtool (orchestrator|serve)'`, then restart serve + orchestrator. If `upgrade` fails (no release artefact / dev build), fall back to `go install ./cmd/clawtool`.",
+			// pulls the GoReleaser artefact, atomically
+			// replaces the running binary, AND restarts
+			// the daemon onto the new binary in one step.
+			// The watch socket reconnect logic in this
+			// orchestrator heals the connection automatically
+			// once the new daemon is up, so the operator
+			// only needs to run `clawtool upgrade` and then
+			// re-launch the orchestrator process — no manual
+			// pkill needed. Fall back to `go install` only
+			// when the operator is on a hand-built dev
+			// binary (no release artefact).
+			ActionHint: "Run `clawtool upgrade` — it now stops the running daemon and relaunches it on the new binary in one step. Then re-launch `clawtool orchestrator`. If `upgrade` fails (dev build / no release artefact), fall back to `go install ./cmd/clawtool` followed by `clawtool daemon restart`.",
 			TS:         time.Now(),
 		}
 		m.systemBanner = &n
@@ -362,11 +382,29 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		n := msg.notification
 		m.systemBanner = &n
 		m.systemBannerAt = time.Now()
+		m.watchBackoff = 0
+		m.err = nil
 		return m, orchReadCmd(msg.dec, msg.conn)
 
 	case watchClosedMsg:
-		m.err = fmt.Errorf("watch socket disconnected — press r to reconnect")
-		return m, nil
+		// Schedule a backoff'd reconnect so a daemon restart
+		// (`clawtool upgrade`, crash, OOM) heals the
+		// orchestrator automatically. Pre-fix the user had to
+		// quit + relaunch the orchestrator after every upgrade
+		// because watchClosedMsg only set m.err and waited for
+		// a manual `r` keypress.
+		m.err = fmt.Errorf("watch socket disconnected — reconnecting…")
+		m.watchBackoff = nextWatchBackoff(m.watchBackoff)
+		return m, tea.Tick(m.watchBackoff, func(time.Time) tea.Msg {
+			return watchReconnectMsg{}
+		})
+
+	case watchReconnectMsg:
+		// Backoff timer fired — re-fire the orchestrator's own
+		// subscribe command. On success the next envelope clears
+		// m.err and resets the backoff (see watchEventMsg /
+		// watchFrameMsg / watchSystemMsg branches).
+		return m, orchSubscribeCmd()
 
 	case orchTickMsg:
 		// Sweep terminal panes past grace window so the Done
