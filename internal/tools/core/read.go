@@ -99,10 +99,7 @@ func runRead(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	if err != nil {
 		return mcp.NewToolResultError("missing required argument: path"), nil
 	}
-	cwd := req.GetString("cwd", "")
-	if cwd == "" {
-		cwd = homeDir()
-	}
+	cwd := defaultCwd(req.GetString("cwd", ""))
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(cwd, path)
 	}

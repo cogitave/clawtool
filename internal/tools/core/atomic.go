@@ -150,10 +150,7 @@ func resolvePath(path, cwd string) string {
 	if filepath.IsAbs(path) {
 		return path
 	}
-	if cwd == "" {
-		cwd = homeDir()
-	}
-	return filepath.Join(cwd, path)
+	return filepath.Join(defaultCwd(cwd), path)
 }
 
 

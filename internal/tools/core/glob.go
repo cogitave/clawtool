@@ -78,10 +78,7 @@ func runGlob(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, e
 	if err != nil {
 		return mcp.NewToolResultError("missing required argument: pattern"), nil
 	}
-	cwd := req.GetString("cwd", "")
-	if cwd == "" {
-		cwd = homeDir()
-	}
+	cwd := defaultCwd(req.GetString("cwd", ""))
 	limit := int(req.GetFloat("limit", float64(globDefaultLimit)))
 	if limit <= 0 {
 		limit = globDefaultLimit
