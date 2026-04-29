@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/cogitave/clawtool/internal/agents/worktree"
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 const worktreeUsage = `Usage:
@@ -147,12 +147,5 @@ func (a *App) WorktreeGC(minAge time.Duration) error {
 // worktreeRoot mirrors worktree.defaultWorktreeRoot — kept local so we
 // don't have to export it from the package.
 func worktreeRoot() string {
-	if v := strings.TrimSpace(os.Getenv("XDG_CACHE_HOME")); v != "" {
-		return filepath.Join(v, "clawtool", "worktrees")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join(os.TempDir(), "clawtool-worktrees")
-	}
-	return filepath.Join(home, ".cache", "clawtool", "worktrees")
+	return filepath.Join(xdg.CacheDirOrTemp(), "worktrees")
 }
