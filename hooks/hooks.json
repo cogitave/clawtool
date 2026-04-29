@@ -1,5 +1,5 @@
 {
-  "description": "clawtool fresh-session bootstrap — engages on first prompt of a Claude Code session so users don't have to type 'use clawtool' every time. Walks up from cwd looking for .clawtool/ markers, surfaces continue/fresh/aware paths via additionalContext.",
+  "description": "clawtool fresh-session bootstrap + peer-discovery hooks. SessionStart loads context AND registers this Claude session into the daemon's peer registry so other terminals can discover it. Stop heartbeats (status busy→online); SessionEnd deregisters cleanly.",
   "hooks": {
     "SessionStart": [
       {
@@ -10,6 +10,35 @@
             "command": "clawtool claude-bootstrap --event session-start",
             "timeout": 2,
             "statusMessage": "Loading clawtool context"
+          },
+          {
+            "type": "command",
+            "command": "clawtool peer register --backend claude-code",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "clawtool peer heartbeat --status online",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "clawtool peer deregister",
+            "timeout": 2
           }
         ]
       }

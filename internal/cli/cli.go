@@ -308,6 +308,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runUnattended(argv[1:])
 	case "a2a":
 		return a.runA2A(argv[1:])
+	case "peer":
+		return a.runPeer(argv[1:])
 	case "dashboard", "tui":
 		return a.runDashboard(argv[1:])
 	case "orchestrator", "orch":

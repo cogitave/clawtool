@@ -20,11 +20,21 @@ const hooksUsage = `Usage:
                                            Synthesise the event and run every
                                            configured entry. Prints success/
                                            failure per entry.
+  clawtool hooks install <runtime>         Print the hook config snippet that
+                                           wires <runtime> into clawtool's peer
+                                           registry. <runtime> = claude-code |
+                                           codex | gemini | opencode.
 
 Hooks are configured in ~/.config/clawtool/config.toml under
 [hooks.events.<name>]. Each entry is a HookEntry { cmd | argv,
 timeout_ms, block_on_error }. Use 'hooks test' to verify your shell
 snippets without firing the actual lifecycle event.
+
+'hooks install' is the runtime-side wiring helper for ADR-024 peer
+discovery: it prints the snippet you drop into the runtime's config
+file so the runtime calls 'clawtool peer register / heartbeat /
+deregister' at session boundaries. claude-code is bundled — you only
+need install for codex/gemini/opencode.
 `
 
 // runHooks dispatches `clawtool hooks …`.
@@ -51,6 +61,15 @@ func (a *App) runHooks(argv []string) int {
 		}
 		if err := a.HooksShow(argv[1]); err != nil {
 			fmt.Fprintf(a.Stderr, "clawtool hooks show: %v\n", err)
+			return 1
+		}
+	case "install":
+		if len(argv) != 2 {
+			fmt.Fprint(a.Stderr, "usage: clawtool hooks install <claude-code|codex|gemini|opencode>\n")
+			return 2
+		}
+		if err := a.HooksInstall(argv[1]); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool hooks install: %v\n", err)
 			return 1
 		}
 	case "test":
@@ -124,6 +143,72 @@ func (a *App) HooksShow(event string) error {
 	}
 	return nil
 }
+
+// HooksInstall prints the runtime-specific snippet that wires
+// <runtime> into clawtool's peer registry. We deliberately *print*
+// rather than mutate config files: each runtime's config layout
+// changes between versions, and an operator can paste the snippet
+// into whichever location their version expects. claude-code's
+// bundled hooks/hooks.json already covers it via the plugin, so we
+// short-circuit there.
+func (a *App) HooksInstall(runtime string) error {
+	switch runtime {
+	case "claude-code", "claude":
+		fmt.Fprintln(a.Stdout, "claude-code hooks are bundled in this plugin's hooks/hooks.json — no manual install needed.")
+		fmt.Fprintln(a.Stdout, "After upgrading clawtool, restart your Claude Code session so it re-reads hooks.json.")
+		return nil
+	case "codex":
+		fmt.Fprint(a.Stdout, codexHookSnippet)
+		return nil
+	case "gemini":
+		fmt.Fprint(a.Stdout, geminiHookSnippet)
+		return nil
+	case "opencode":
+		fmt.Fprint(a.Stdout, opencodeHookSnippet)
+		return nil
+	default:
+		return fmt.Errorf("unknown runtime %q (expected claude-code | codex | gemini | opencode)", runtime)
+	}
+}
+
+const codexHookSnippet = `# Codex peer-discovery hooks (clawtool ADR-024 Phase 1).
+# Drop into ~/.codex/config.toml under [hooks]:
+
+[hooks]
+session_start = "clawtool peer register --backend codex"
+session_end   = "clawtool peer deregister"
+# Optional: heartbeat every turn. Codex doesn't expose a turn-end
+# event today; until it does, rely on the daemon's stale-sweep
+# (peers flip to offline after 60s without a heartbeat).
+`
+
+const geminiHookSnippet = `# Gemini-CLI peer-discovery hooks (clawtool ADR-024 Phase 1).
+# Gemini-CLI ships a hooks system in v0.4+; until then, run these
+# manually at the start/end of each session, or wrap your launcher
+# script around them:
+
+clawtool peer register --backend gemini
+# ... gemini session runs ...
+clawtool peer deregister
+
+# When Gemini-CLI's hooks land, the equivalent config lives in
+# ~/.config/gemini/hooks.toml — same shape as codex.
+`
+
+const opencodeHookSnippet = `# OpenCode peer-discovery hooks (clawtool ADR-024 Phase 1).
+# OpenCode reads ~/.config/opencode/hooks.json. Add:
+
+{
+  "hooks": {
+    "session.start": [{ "command": "clawtool peer register --backend opencode" }],
+    "session.end":   [{ "command": "clawtool peer deregister" }]
+  }
+}
+
+# OpenCode is research-only in clawtool's send/dispatch routing;
+# peer discovery still works — it just shows up in the registry as
+# "opencode" so the operator knows it's available for inspection.
+`
 
 // HooksTest synthesises the event with the given payload and runs
 // every configured entry. Prints per-entry success/failure so the

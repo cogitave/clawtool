@@ -408,10 +408,23 @@ func (r *Runner) recordResult(prompt *Envelope, kind EnvelopeKind, body string, 
 				duration = t.ClosedAt.Sub(t.CreatedAt).Milliseconds()
 			}
 		}
+		family := familyFromInstance(prompt.To.InstanceID)
+		outcome := biamOutcome(terminal)
 		tc.Track("biam.task.terminal", map[string]any{
-			"agent":       familyFromInstance(prompt.To.InstanceID),
-			"outcome":     biamOutcome(terminal),
+			"agent":       family,
+			"outcome":     outcome,
 			"duration_ms": duration,
+		})
+		// clawtool.dispatch — same data shaped for PostHog's
+		// LLM Observability view via the $ai_* convention. Tokens
+		// + model land here once the bridge layer surfaces them
+		// from the runtime's streaming response (Phase 2). Today
+		// we ship provider + duration + outcome so the dashboard
+		// gets call-volume + latency without per-instance leakage.
+		tc.Track("clawtool.dispatch", map[string]any{
+			"$ai_provider": family,
+			"duration_ms":  duration,
+			"outcome":      outcome,
 		})
 	}
 }
