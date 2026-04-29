@@ -323,24 +323,16 @@ func (m *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Forward to the active form. We clamp WIDTH to the card's
-		// inner area so huh's description text wraps at the right
-		// column, but we leave HEIGHT generous (the full alt-screen)
-		// so huh doesn't compress its option list to a single row.
-		// The card's natural height will absorb whatever the form
-		// ends up needing.
-		if m.phase == phaseSteps && m.stepIdx < len(m.steps) {
-			cardW := m.width - 12
-			if cardW < 30 {
-				cardW = 30
-			}
-			inner := tea.WindowSizeMsg{Width: cardW, Height: msg.Height}
-			f, cmd := m.steps[m.stepIdx].form.Update(inner)
-			if hf, ok := f.(*huh.Form); ok {
-				m.steps[m.stepIdx].form = hf
-			}
-			return m, cmd
-		}
+		// Do NOT forward WindowSizeMsg to the active form. huh's
+		// internal layout machinery uses Height in WindowSizeMsg
+		// to clamp option-list viewports — sending a too-small
+		// height squashes the list to one row, sending the full
+		// alt-screen overflows the card and our outer Height()
+		// clamp truncates from the bottom (showing only the
+		// cursor row, e.g. "none / decide later"). Letting huh
+		// use its default natural-size rendering lets all options
+		// show; the surrounding card auto-sizes to fit and the
+		// body container's Height() absorbs slack underneath.
 		return m, nil
 
 	case tea.KeyMsg:
@@ -732,18 +724,19 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 	if cardW < 40 {
 		cardW = 40
 	}
-	// Reserve rows for: indicator + blank + progress + blank +
-	// trailing blank → 4 + 1. Card fills the rest of bodyH.
-	cardH := bodyH - 6
-	if cardH < 8 {
-		cardH = 8
-	}
+	// Card auto-sizes to the form's natural rendered height. We
+	// don't pin Height(cardH) because that truncates huh's option
+	// list — lipgloss.Style.Height clamps content from the top so
+	// only the cursor row + final option survive when the form is
+	// taller than the clamp. Letting the card grow keeps every
+	// option visible; the body container's Height(bodyH) absorbs
+	// the slack underneath so the footer still pins to the
+	// bottom of the alt-screen.
 	card := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("212")).
 		Padding(1, 3).
 		Width(cardW).
-		Height(cardH).
 		Render(step.form.View())
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
