@@ -96,6 +96,13 @@ type Registry struct {
 	dirty        bool
 	persistEvery time.Duration // debounce — we save at most once per interval
 	lastSave     time.Time
+
+	// Inbox lane. Lazy-allocated on first SendTo / DrainInbox.
+	// Separate mutex from `mu` so a chatty sender doesn't block
+	// the registry's hot path (List, Heartbeat). The inbox layer
+	// has its own per-peer locking inside Inbox.mu.
+	boxMu   sync.Mutex
+	inboxes *inboxes
 }
 
 // NewRegistry constructs an empty registry, then attempts to load
@@ -229,16 +236,19 @@ func (r *Registry) Heartbeat(peerID string, status PeerStatus) (*Peer, error) {
 // Deregister removes a peer outright. Used by SessionEnd hooks
 // when the session is shutting down cleanly. Returns the
 // removed peer (or nil) so callers can surface a "peer X went
-// offline" event.
+// offline" event. Also drops the peer's inbox so deregistered
+// sessions don't leave persisted mailboxes behind.
 func (r *Registry) Deregister(peerID string) (*Peer, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	p, ok := r.peers[peerID]
 	if !ok {
+		r.mu.Unlock()
 		return nil, nil
 	}
 	delete(r.peers, peerID)
 	r.markDirty()
+	r.mu.Unlock()
+	r.dropInbox(peerID)
 	return p, nil
 }
 

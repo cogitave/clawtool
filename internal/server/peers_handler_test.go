@@ -259,3 +259,146 @@ func TestPeers_RequiresAuth(t *testing.T) {
 		t.Errorf("status=%d, want 401", resp.StatusCode)
 	}
 }
+
+// --- Inbox / messaging ---------------------------------------------
+
+func TestInbox_SendThenDrain(t *testing.T) {
+	mux, reg, cleanup := newPeersTestMux(t, "tok")
+	defer cleanup()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	recipient, _ := reg.Register(a2a.RegisterInput{
+		DisplayName: "B", Backend: "claude-code", Path: t.TempDir(),
+	})
+	body, _ := json.Marshal(a2a.Message{Text: "hi", FromPeer: "sender-id"})
+	resp, out := peersDo(t, srv, http.MethodPost, "/v1/peers/"+recipient.PeerID+"/messages", "tok", body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("send status=%d body=%s", resp.StatusCode, out)
+	}
+	resp, out = peersDo(t, srv, http.MethodGet, "/v1/peers/"+recipient.PeerID+"/messages", "tok", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("drain status=%d body=%s", resp.StatusCode, out)
+	}
+	var got struct {
+		Messages []a2a.Message `json:"messages"`
+		Count    int           `json:"count"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Count != 1 || got.Messages[0].Text != "hi" {
+		t.Errorf("unexpected drain: %+v", got)
+	}
+	// Second drain must be empty (we consumed it).
+	resp, out = peersDo(t, srv, http.MethodGet, "/v1/peers/"+recipient.PeerID+"/messages", "tok", nil)
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Count != 0 {
+		t.Errorf("second drain non-empty: %+v", got)
+	}
+}
+
+func TestInbox_PeekKeepsMessages(t *testing.T) {
+	mux, reg, cleanup := newPeersTestMux(t, "tok")
+	defer cleanup()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	p, _ := reg.Register(a2a.RegisterInput{DisplayName: "p", Backend: "claude-code", Path: t.TempDir()})
+	body, _ := json.Marshal(a2a.Message{Text: "still here"})
+	peersDo(t, srv, http.MethodPost, "/v1/peers/"+p.PeerID+"/messages", "tok", body)
+	// peek=1
+	resp, out := peersDo(t, srv, http.MethodGet, "/v1/peers/"+p.PeerID+"/messages?peek=1", "tok", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("peek status=%d", resp.StatusCode)
+	}
+	var got struct{ Count int }
+	json.Unmarshal(out, &got)
+	if got.Count != 1 {
+		t.Errorf("peek count=%d, want 1", got.Count)
+	}
+	// real drain still finds it
+	_, out = peersDo(t, srv, http.MethodGet, "/v1/peers/"+p.PeerID+"/messages", "tok", nil)
+	json.Unmarshal(out, &got)
+	if got.Count != 1 {
+		t.Errorf("post-peek drain count=%d, want 1", got.Count)
+	}
+}
+
+func TestInbox_404UnknownRecipient(t *testing.T) {
+	mux, _, cleanup := newPeersTestMux(t, "tok")
+	defer cleanup()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	body, _ := json.Marshal(a2a.Message{Text: "ghost"})
+	resp, _ := peersDo(t, srv, http.MethodPost, "/v1/peers/nope/messages", "tok", body)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status=%d, want 404", resp.StatusCode)
+	}
+}
+
+func TestInbox_RejectsEmptyText(t *testing.T) {
+	mux, reg, cleanup := newPeersTestMux(t, "tok")
+	defer cleanup()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	p, _ := reg.Register(a2a.RegisterInput{DisplayName: "x", Backend: "claude-code", Path: t.TempDir()})
+	body, _ := json.Marshal(a2a.Message{Text: "   "})
+	resp, _ := peersDo(t, srv, http.MethodPost, "/v1/peers/"+p.PeerID+"/messages", "tok", body)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("empty text status=%d, want 400", resp.StatusCode)
+	}
+}
+
+func TestInbox_BroadcastSkipsSender(t *testing.T) {
+	mux, reg, cleanup := newPeersTestMux(t, "tok")
+	defer cleanup()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	a, _ := reg.Register(a2a.RegisterInput{DisplayName: "a", Backend: "claude-code", Path: t.TempDir()})
+	b, _ := reg.Register(a2a.RegisterInput{DisplayName: "b", Backend: "claude-code", Path: t.TempDir()})
+	c, _ := reg.Register(a2a.RegisterInput{DisplayName: "c", Backend: "codex", Path: t.TempDir()})
+
+	body, _ := json.Marshal(a2a.Message{Text: "all hands", FromPeer: a.PeerID})
+	resp, out := peersDo(t, srv, http.MethodPost, "/v1/peers/broadcast", "tok", body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("broadcast status=%d body=%s", resp.StatusCode, out)
+	}
+	var bx struct {
+		DeliveredTo int `json:"delivered_to"`
+	}
+	json.Unmarshal(out, &bx)
+	if bx.DeliveredTo != 2 {
+		t.Errorf("delivered_to=%d, want 2 (b + c, NOT a)", bx.DeliveredTo)
+	}
+	// Sender's own inbox stays empty.
+	if reg.DrainInbox(a.PeerID, true /* peek */); reg.DrainInbox(a.PeerID, true) != nil && len(reg.DrainInbox(a.PeerID, true)) != 0 {
+		t.Errorf("sender's inbox should not receive its own broadcast")
+	}
+	// Both other peers got it.
+	if got := reg.DrainInbox(b.PeerID, false); len(got) != 1 || got[0].Text != "all hands" {
+		t.Errorf("b inbox = %+v", got)
+	}
+	if got := reg.DrainInbox(c.PeerID, false); len(got) != 1 || got[0].Text != "all hands" {
+		t.Errorf("c inbox = %+v", got)
+	}
+}
+
+func TestInbox_DeregisterClearsInbox(t *testing.T) {
+	mux, reg, cleanup := newPeersTestMux(t, "tok")
+	defer cleanup()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	p, _ := reg.Register(a2a.RegisterInput{DisplayName: "p", Backend: "claude-code", Path: t.TempDir()})
+	body, _ := json.Marshal(a2a.Message{Text: "doomed"})
+	peersDo(t, srv, http.MethodPost, "/v1/peers/"+p.PeerID+"/messages", "tok", body)
+	if got := reg.DrainInbox(p.PeerID, true); len(got) != 1 {
+		t.Fatalf("pre-deregister peek count=%d, want 1", len(got))
+	}
+	peersDo(t, srv, http.MethodDelete, "/v1/peers/"+p.PeerID, "tok", nil)
+	if got := reg.DrainInbox(p.PeerID, true); len(got) != 0 {
+		t.Errorf("inbox not cleared on deregister: %+v", got)
+	}
+}

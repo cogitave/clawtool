@@ -57,9 +57,20 @@ func handlePeers(w http.ResponseWriter, r *http.Request) {
 	case tail == "register" && r.Method == http.MethodPost:
 		registerPeer(w, r, reg)
 
+	case tail == "broadcast" && r.Method == http.MethodPost:
+		broadcastMessage(w, r, reg)
+
 	case strings.HasSuffix(tail, "/heartbeat") && r.Method == http.MethodPost:
 		peerID := strings.TrimSuffix(tail, "/heartbeat")
 		heartbeatPeer(w, r, reg, peerID)
+
+	case strings.HasSuffix(tail, "/messages") && r.Method == http.MethodPost:
+		peerID := strings.TrimSuffix(tail, "/messages")
+		sendMessage(w, r, reg, peerID)
+
+	case strings.HasSuffix(tail, "/messages") && r.Method == http.MethodGet:
+		peerID := strings.TrimSuffix(tail, "/messages")
+		drainMessages(w, r, reg, peerID)
 
 	case tail != "" && !strings.Contains(tail, "/") && r.Method == http.MethodDelete:
 		deregisterPeer(w, r, reg, tail)
@@ -74,11 +85,80 @@ func handlePeers(w http.ResponseWriter, r *http.Request) {
 				"GET    /v1/peers",
 				"GET    /v1/peers/{peer_id}",
 				"POST   /v1/peers/register",
+				"POST   /v1/peers/broadcast",
 				"POST   /v1/peers/{peer_id}/heartbeat",
+				"POST   /v1/peers/{peer_id}/messages",
+				"GET    /v1/peers/{peer_id}/messages[?peek=1]",
 				"DELETE /v1/peers/{peer_id}",
 			},
 		})
 	}
+}
+
+// sendMessage enqueues a Message into peerID's inbox. Body is the
+// a2a.Message shape with `text` + optional `from_peer` /
+// `correlation_id` / `type`. peer_id / id / timestamp are
+// server-assigned. Unknown peerID → 404.
+func sendMessage(w http.ResponseWriter, r *http.Request, reg *a2a.Registry, peerID string) {
+	if reg.Get(peerID) == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{
+			"error":  "no peer with that id",
+			"got_id": peerID,
+		})
+		return
+	}
+	var in a2a.Message
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body: " + err.Error()})
+		return
+	}
+	if strings.TrimSpace(in.Text) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text is required"})
+		return
+	}
+	if in.Type == "" {
+		in.Type = a2a.MsgNotification
+	}
+	in.ToPeer = peerID
+	saved := reg.SendTo(peerID, in)
+	writeJSON(w, http.StatusOK, saved)
+}
+
+// drainMessages returns + clears peerID's inbox. ?peek=1 leaves
+// messages in place — used by UserPromptSubmit hooks that want
+// to surface unread messages without losing them on prompt
+// cancellation. Unknown peerID is NOT 404 here: a peer may be
+// polling its own inbox before any sender has hit it; an empty
+// drain is a valid steady state.
+func drainMessages(w http.ResponseWriter, r *http.Request, reg *a2a.Registry, peerID string) {
+	peek := r.URL.Query().Get("peek") != ""
+	msgs := reg.DrainInbox(peerID, peek)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"peer_id":  peerID,
+		"messages": msgs,
+		"count":    len(msgs),
+		"peek":     peek,
+	})
+}
+
+// broadcastMessage fans `text` out to every registered peer except
+// the sender. Body shape: { from_peer, text }. Peers' inboxes are
+// updated in registry order.
+func broadcastMessage(w http.ResponseWriter, r *http.Request, reg *a2a.Registry) {
+	var in a2a.Message
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body: " + err.Error()})
+		return
+	}
+	if strings.TrimSpace(in.Text) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text is required"})
+		return
+	}
+	in.Type = a2a.MsgBroadcast
+	count := reg.Broadcast(in)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"delivered_to": count,
+	})
 }
 
 func listPeers(w http.ResponseWriter, r *http.Request, reg *a2a.Registry) {
