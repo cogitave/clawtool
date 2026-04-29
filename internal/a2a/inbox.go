@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/google/uuid"
 )
@@ -141,18 +142,11 @@ func persistInbox(path string, queue []Message) error {
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
 	body, err := json.MarshalIndent(queue, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFileMkdir(path, body, 0o600, 0o700)
 }
 
 // loadInbox reads a persisted queue or returns empty when the

@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cogitave/clawtool/internal/atomicfile"
 )
 
 // UpdateCheckURL is the GitHub Releases API endpoint we hit. The
@@ -117,19 +119,11 @@ func readCache() (cachedUpdate, bool) {
 // logged via the returned error and the caller should ignore them
 // (the next invocation will just hit GitHub again).
 func writeCache(c cachedUpdate) error {
-	path := updateCachePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := path + ".new"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFileMkdir(updateCachePath(), b, 0o644, 0o755)
 }
 
 // updateHTTPClient is package-level so tests can swap it. Real

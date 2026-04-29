@@ -17,6 +17,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/cogitave/clawtool/internal/atomicfile"
 )
 
 func init() {
@@ -382,16 +384,12 @@ func (a *claudeCodeAdapter) writeMarker(tools []string) error {
 
 // ── helpers ────────────────────────────────────────────────────────────
 
-// atomicWriteJSON mirrors internal/tools/core/atomic.go's writeAtomic
-// but locally so this package doesn't import core. Same temp+rename
-// pattern: writers never observe a half-written settings file.
+// atomicWriteJSON delegates to the canonical atomicfile.WriteFile.
+// Kept as a thin shim so the call sites read clearly ("we are writing
+// JSON settings"), but every claude-code settings write is now in
+// the same temp+rename code path the rest of clawtool uses.
 func atomicWriteJSON(path string, content []byte) error {
-	dir := filepath.Dir(path)
-	tmp := filepath.Join(dir, ".clawtool-agent-"+filepath.Base(path)+".tmp")
-	if err := os.WriteFile(tmp, content, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFile(path, content, 0o600)
 }
 
 func stringSet(xs []string) map[string]bool {

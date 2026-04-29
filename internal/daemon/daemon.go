@@ -35,6 +35,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/xdg"
 )
 
@@ -122,18 +123,11 @@ func ReadState() (*State, error) {
 
 // writeState persists s atomically (temp+rename, mode 0600).
 func writeState(s *State) error {
-	if err := os.MkdirAll(filepath.Dir(StatePath()), 0o700); err != nil {
-		return err
-	}
 	body, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := StatePath() + ".tmp"
-	if err := os.WriteFile(tmp, append(body, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, StatePath())
+	return atomicfile.WriteFileMkdir(StatePath(), append(body, '\n'), 0o600, 0o700)
 }
 
 // IsRunning returns true when the recorded PID is alive AND the

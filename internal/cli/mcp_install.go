@@ -16,6 +16,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/config"
 )
 
@@ -141,16 +142,9 @@ func launchCommandFor(absProjectDir string, proj mcpProject) ([]string, error) {
 // temp+rename, but takes a whole Config (not a TOML fragment).
 // Avoids round-tripping through MarshalForAppend.
 func writeFullConfigAtomic(path string, cfg config.Config) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("mkdir parent: %w", err)
-	}
 	body, err := toml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFileMkdir(path, body, 0o644, 0o755)
 }

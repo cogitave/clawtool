@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -66,22 +67,12 @@ func (c *RepoConfig) Save(repoRoot string) error {
 	if strings.TrimSpace(c.Clawtool.Version) == "" {
 		return errors.New("RepoConfig.Clawtool.Version must be set before Save")
 	}
-	if err := os.MkdirAll(repoRoot, 0o755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", repoRoot, err)
-	}
 	b, err := toml.Marshal(c)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
 	path := filepath.Join(repoRoot, RepoConfigName)
-	tmp := path + ".new"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
-	}
-	return nil
+	return atomicfile.WriteFileMkdir(path, b, 0o644, 0o755)
 }
 
 // HasRecipe reports whether a recipe with the given name has been

@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -488,21 +489,11 @@ func LoadOrDefault(path string) (Config, error) {
 // reader, and a half-written config.toml would brick every subsequent
 // `clawtool` invocation until the operator deletes it manually.
 func (c Config) Save(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("mkdir parent: %w", err)
-	}
 	b, err := toml.Marshal(c)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return fmt.Errorf("write %s: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
-	}
-	return nil
+	return atomicfile.WriteFileMkdir(path, b, 0o600, 0o700)
 }
 
 // Resolution holds the result of resolving an enable/disable check.

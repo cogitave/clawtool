@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/pelletier/go-toml/v2"
 )
@@ -60,21 +61,11 @@ func LoadOrEmpty(path string) (*Store, error) {
 // with mode 0700 if necessary). Atomic via temp+rename so a crash never
 // leaves a half-written secrets file.
 func (s *Store) Save(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("mkdir parent: %w", err)
-	}
 	b, err := toml.Marshal(s)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	tmp := path + ".new"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return fmt.Errorf("write %s: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
-	}
-	return nil
+	return atomicfile.WriteFileMkdir(path, b, 0o600, 0o700)
 }
 
 // Set assigns a value to (scope, key). Scope "" maps to "global".

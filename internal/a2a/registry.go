@@ -35,6 +35,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/google/uuid"
 )
 
@@ -329,18 +330,11 @@ func (r *Registry) Save() error {
 	statePath := r.statePath
 	r.mu.Unlock()
 
-	if err := os.MkdirAll(filepath.Dir(statePath), 0o700); err != nil {
-		return err
-	}
 	body, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := statePath + ".tmp"
-	if err := os.WriteFile(tmp, append(body, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, statePath)
+	return atomicfile.WriteFileMkdir(statePath, append(body, '\n'), 0o600, 0o700)
 }
 
 // load reads peers.json into the registry. Missing file is not
