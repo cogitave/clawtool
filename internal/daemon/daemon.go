@@ -31,7 +31,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -382,20 +381,6 @@ func FormatStatus(s *State) string {
 		fmt.Sprintf("  log-file:   %s", s.LogFile),
 		fmt.Sprintf("  started:    %s", s.StartedAt.Format(time.RFC3339)),
 	}, "\n")
-}
-
-// PortFromEnv lets tests override the port pick (used in adapter
-// integration tests where we don't actually want to spawn).
-func PortFromEnv() (int, bool) {
-	v := os.Getenv("CLAWTOOL_DAEMON_PORT")
-	if v == "" {
-		return 0, false
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return 0, false
-	}
-	return n, true
 }
 
 // initTokenFile writes a fresh 32-byte hex bearer token to path with

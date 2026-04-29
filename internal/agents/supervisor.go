@@ -148,14 +148,6 @@ func sharedDispatchState() (*roundRobinState, *dispatchLimiter) {
 	return sharedRR, sharedLimiter
 }
 
-// ResetDispatchStateForTest re-creates the shared rrState + limiter.
-// Test-only escape hatch — production code should not call this.
-func ResetDispatchStateForTest() {
-	sharedDispatchOnce = sync.Once{}
-	sharedRR = nil
-	sharedLimiter = nil
-}
-
 // buildLimiterFromConfig reads config.Dispatch.Limits at supervisor
 // construction. A bad rate string falls back to a disabled limiter so
 // the dispatch path never panics; the parse error is logged once to
@@ -184,15 +176,6 @@ func (s *supervisor) SubmitAsync(ctx context.Context, instance, prompt string, o
 		return "", errors.New("biam: async runner not configured (server boot did not init BIAM)")
 	}
 	return s.biam.Submit(ctx, instance, prompt, opts)
-}
-
-// NewSupervisorWithObserver wires the default supervisor and attaches
-// the given observer. Used by tests to inject in-memory exporters
-// without touching the global.
-func NewSupervisorWithObserver(obs *observability.Observer) Supervisor {
-	s := NewSupervisor().(*supervisor)
-	s.observer = obs
-	return s
 }
 
 func defaultLoadConfig() (config.Config, error) {

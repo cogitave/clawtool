@@ -126,7 +126,7 @@ var globalLintRunner lint.Runner = lint.New()
 
 // SetLintRunner replaces the package-level Runner — used by tests to
 // inject deterministic findings.
-func SetLintRunner(r lint.Runner) { globalLintRunner = r }
+
 
 // lintEnabled reads the package-level autoLintEnabled flag set by the
 // server boot. Default = true (matches lint.IsEnabled(nil)).

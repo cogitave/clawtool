@@ -301,13 +301,7 @@ var (
 
 // SetGenericAdapterPath retargets one of the generic adapters at a
 // custom path. Test-only; production code never calls this.
-func SetGenericAdapterPath(name, path string) {
-	for _, ad := range Registry {
-		if g, ok := ad.(*genericAdapter); ok && g.name == name {
-			g.pathOverride = path
-		}
-	}
-}
+
 
 func init() {
 	Register(hermesAgentAdapter)
