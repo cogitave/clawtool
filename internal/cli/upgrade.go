@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"time"
 
+	"github.com/cogitave/clawtool/internal/daemon"
 	"github.com/cogitave/clawtool/internal/version"
 	"github.com/creativeprojects/go-selfupdate"
 )
@@ -97,6 +99,50 @@ func (a *App) runUpgrade(argv []string) int {
 		return 1
 	}
 	fmt.Fprintf(a.Stdout, "✓ upgraded to %s\n", latest.Version())
+
+	// Auto-restart the daemon if one is running. Without this step
+	// `clawtool upgrade` swaps the binary on disk but the running
+	// daemon stays on the old code in memory — the operator has to
+	// pkill+relaunch by hand, and a forgotten restart silently
+	// invalidates every "fixed in the new release" claim. Stop()
+	// SIGTERMs the old PID; Ensure() spawns a fresh one with the
+	// new binary on the same port + token.
+	if rc := restartDaemonIfRunning(a); rc != 0 {
+		return rc
+	}
+	return 0
+}
+
+// restartDaemonIfRunning is the post-upgrade step that swaps the
+// running daemon onto the new binary. Idempotent: no-ops when no
+// daemon is recorded. On Stop or Ensure failure it writes a clear
+// hint instead of a stack trace and returns non-zero so the
+// installer surface (install.sh / CI) can detect the partial state.
+func restartDaemonIfRunning(a *App) int {
+	state, err := daemon.ReadState()
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool upgrade: read daemon state: %v (binary upgraded; run `clawtool serve` manually)\n", err)
+		return 1
+	}
+	if state == nil || !daemon.IsRunning(state) {
+		// Nothing to do — common case for fresh installs or when
+		// the operator runs upgrade before ever launching a daemon.
+		return 0
+	}
+	fmt.Fprintf(a.Stdout, "  → stopping running daemon (pid %d)…\n", state.PID)
+	if err := daemon.Stop(); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool upgrade: stop daemon: %v (binary upgraded; run `clawtool serve` manually)\n", err)
+		return 1
+	}
+	fmt.Fprintln(a.Stdout, "  → launching new daemon…")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	fresh, err := daemon.Ensure(ctx)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool upgrade: relaunch daemon: %v (run `clawtool serve` manually)\n", err)
+		return 1
+	}
+	fmt.Fprintf(a.Stdout, "✓ daemon restarted on new binary: pid %d, %s\n", fresh.PID, fresh.URL())
 	return 0
 }
 

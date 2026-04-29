@@ -66,6 +66,13 @@ type Model struct {
 	// surfaces share visual idiom.
 	systemBanner   *biam.SystemNotification
 	systemBannerAt time.Time
+
+	// watchBackoff is the delay before the next watch-socket
+	// reconnect attempt. Doubles on each consecutive
+	// watchClosedMsg, resets to zero on the first successful
+	// envelope (watchEventMsg / watchSystemMsg). See
+	// internal/tui/watch_reconnect.go for the policy.
+	watchBackoff time.Duration
 }
 
 func New(store *biam.Store, sup agents.Supervisor) Model {
@@ -153,6 +160,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		n := msg.notification
 		m.systemBanner = &n
 		m.systemBannerAt = time.Now()
+		m.watchBackoff = 0
 		return m, watchReadCmd(msg.dec, msg.conn)
 
 	case watchEventMsg:
@@ -173,13 +181,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tasks = append([]biam.Task{msg.task}, m.tasks...)
 		}
 		m.lastRefresh = time.Now()
+		m.watchBackoff = 0
 		return m, watchReadCmd(msg.dec, msg.conn)
 
 	case watchClosedMsg:
-		// Socket disconnected — fall back to polling. Schedule
-		// a reconnect attempt on the next tick so a daemon
-		// restart heals the dashboard automatically.
-		return m, nil
+		// Socket disconnected. Schedule a reconnect with
+		// exponential backoff so a daemon restart (manual,
+		// crash, or `clawtool upgrade`) heals the dashboard
+		// automatically — without this the dashboard stays
+		// stuck on the polling fallback until the operator
+		// quits + relaunches.
+		m.watchBackoff = nextWatchBackoff(m.watchBackoff)
+		return m, tea.Tick(m.watchBackoff, func(time.Time) tea.Msg {
+			return watchReconnectMsg{}
+		})
+
+	case watchReconnectMsg:
+		// Backoff timer fired — re-fire the same subscribe path
+		// the model used at startup. Success returns a
+		// watchEventMsg / watchSystemMsg that resets the
+		// backoff; failure loops back through watchClosedMsg.
+		return m, watchSubscribeCmd()
 	}
 
 	return m, nil
