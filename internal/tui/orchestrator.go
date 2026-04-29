@@ -39,6 +39,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/cogitave/clawtool/internal/a2a"
 	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/daemon"
 	"github.com/cogitave/clawtool/internal/tui/theme"
@@ -54,15 +55,16 @@ const (
 	sidebarWidth        = 28
 )
 
-// orchTab enumerates the two sidebar sections. Active tasks (pending
-// + active) render in the Active tab; terminal tasks (done / failed /
-// cancelled / expired) accumulate in the Done tab. Tab is keyboard-
-// switched (`tab` / `1` / `2`).
+// orchTab enumerates the three sidebar sections. Active + Done show
+// BIAM dispatches; Peers shows the a2a registry of every running
+// claude-code / codex / gemini / opencode session this host knows
+// about. Tab is keyboard-switched (`tab` / `1` / `2` / `3`).
 type orchTab int
 
 const (
 	orchTabActive orchTab = iota
 	orchTabDone
+	orchTabPeers
 )
 
 // orchTask is the per-task state the orchestrator maintains.
@@ -105,6 +107,17 @@ type OrchModel struct {
 	// internal/tui/watch_reconnect.go for the policy.
 	watchBackoff time.Duration
 
+	// Peers tab state. peers is the snapshot from the last
+	// /v1/peers poll; peersCursor selects the focused row;
+	// peerInbox is the peeked inbox for the selected peer
+	// (refreshed on demand via 'i'). peerInboxErr surfaces
+	// fetch failures separately so the empty-inbox case stays
+	// distinct from a daemon-down case.
+	peers        []a2a.Peer
+	peersCursor  int
+	peerInbox    []a2a.Message
+	peerInboxErr error
+
 	theme *theme.Theme
 }
 
@@ -126,6 +139,8 @@ func (m OrchModel) Init() tea.Cmd {
 		orchSubscribeCmd(),
 		orchTickCmd(),
 		orchVersionProbeCmd(),
+		orchPeersFetchCmd(),
+		orchPeersTickCmd(),
 	)
 }
 
@@ -212,8 +227,9 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.follow = !m.follow
 			return m, nil
 		case "tab":
-			m.tab = (m.tab + 1) % 2
+			m.tab = (m.tab + 1) % 3
 			m.cursor = 0
+			m.peersCursor = 0
 			m.refreshStreamForSelection()
 			return m, nil
 		case "1":
@@ -226,13 +242,37 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			m.refreshStreamForSelection()
 			return m, nil
+		case "3":
+			m.tab = orchTabPeers
+			m.peersCursor = 0
+			return m, nil
+		case "i":
+			// Inbox peek: only meaningful on the Peers tab.
+			// Silent no-op elsewhere — keeps the keymap honest
+			// without surfacing a "this key does nothing" toast.
+			if m.tab == orchTabPeers && len(m.peers) > 0 && m.peersCursor < len(m.peers) {
+				return m, orchPeerInboxCmd(m.peers[m.peersCursor].PeerID)
+			}
+			return m, nil
 		case "up", "k":
+			if m.tab == orchTabPeers {
+				if m.peersCursor > 0 {
+					m.peersCursor--
+				}
+				return m, nil
+			}
 			if m.cursor > 0 {
 				m.cursor--
 				m.refreshStreamForSelection()
 			}
 			return m, nil
 		case "down", "j":
+			if m.tab == orchTabPeers {
+				if m.peersCursor < len(m.peers)-1 {
+					m.peersCursor++
+				}
+				return m, nil
+			}
 			if m.cursor < len(m.visibleIDs())-1 {
 				m.cursor++
 				m.refreshStreamForSelection()
@@ -254,6 +294,25 @@ func (m OrchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.follow = true
 			return m, nil
 		}
+
+	case peersFetchedMsg:
+		if msg.err == nil {
+			m.peers = msg.peers
+			if m.peersCursor >= len(m.peers) {
+				m.peersCursor = 0
+			}
+		}
+		// Schedule the next poll regardless — transient failures
+		// (daemon restart) shouldn't kill the polling loop.
+		return m, orchPeersTickCmd()
+
+	case peersTickMsg:
+		return m, orchPeersFetchCmd()
+
+	case peerInboxFetchedMsg:
+		m.peerInbox = msg.messages
+		m.peerInboxErr = msg.err
+		return m, nil
 
 	case watchEventMsg:
 		// Task snapshot — upsert. Both Active and Done tabs
@@ -678,8 +737,9 @@ func (m *OrchModel) renderHeader() string {
 func (m *OrchModel) renderFooter() string {
 	t := m.theme
 	keys := []struct{ k, d string }{
-		{"tab/1/2", "switch tab"},
+		{"tab/1/2/3", "switch tab"},
 		{"↑↓", "select"},
+		{"i", "peer inbox"},
 		{"pgup/pgdn", "scroll"},
 		{"f", "follow"},
 		{"r", "reconnect"},
@@ -732,22 +792,31 @@ func (m *OrchModel) renderSidebar() string {
 		maxVisible = 1
 	}
 
-	// Tab strip: highlight the focused tab, dim the other one.
+	// Tab strip: highlight the focused tab, dim the other two.
 	activeLabel := fmt.Sprintf("Active (%d)", m.activeCount())
 	doneLabel := fmt.Sprintf("Done (%d)", m.doneCount())
-	var leftTab, rightTab string
-	if m.tab == orchTabActive {
-		leftTab = t.PaneTitle.Render(activeLabel)
-		rightTab = t.Dim.Render(doneLabel)
-	} else {
-		leftTab = t.Dim.Render(activeLabel)
-		rightTab = t.PaneTitle.Render(doneLabel)
+	peersLabel := fmt.Sprintf("Peers (%d)", len(m.peers))
+	pick := func(label string, on bool) string {
+		if on {
+			return t.PaneTitle.Render(label)
+		}
+		return t.Dim.Render(label)
 	}
-	tabStrip := leftTab + "  " + rightTab
+	tabStrip := pick(activeLabel, m.tab == orchTabActive) + "  " +
+		pick(doneLabel, m.tab == orchTabDone) + "  " +
+		pick(peersLabel, m.tab == orchTabPeers)
 
 	var b strings.Builder
 	b.WriteString(tabStrip)
 	b.WriteByte('\n')
+
+	// Peers tab uses its own renderer: rows are peer cards, not
+	// task cards, and the cursor lives in m.peersCursor.
+	if m.tab == orchTabPeers {
+		b.WriteString(m.renderPeersSidebar(maxVisible))
+		style := t.PaneBorder.Width(sidebarWidth).Height(height)
+		return style.Render(b.String())
+	}
 
 	ids := m.visibleIDs()
 	if len(ids) == 0 {
@@ -828,6 +897,21 @@ func (m *OrchModel) renderSidebarRow(o *orchTask, selected bool) string {
 
 func (m *OrchModel) renderDetail() string {
 	t := m.theme
+	if m.tab == orchTabPeers {
+		// Peers tab gets its own detail rendering — peer card +
+		// peeked inbox. Stays inside the same pane border + height
+		// budget the BIAM detail uses, so the layout doesn't jump.
+		height := m.height - 7
+		if height < 6 {
+			height = 6
+		}
+		detailWidth := m.width - sidebarWidth - 2
+		if detailWidth < 20 {
+			detailWidth = 20
+		}
+		style := t.PaneBorder.Width(detailWidth).Height(height)
+		return style.Render(m.renderPeerDetail())
+	}
 	height := m.height - 7
 	if height < 6 {
 		height = 6

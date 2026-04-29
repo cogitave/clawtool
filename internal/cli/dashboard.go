@@ -1,14 +1,21 @@
 // Package cli — `clawtool dashboard` (alias `clawtool tui`).
 // Two modes:
 //
-//	default      Bubble Tea TUI in alt-screen (interactive)
+//	default      Bubble Tea orchestrator TUI in alt-screen (interactive)
 //	--plain      one-shot or repeat-print to stdout (Monitor-pair / chat-visible)
 //
 // The plain mode exists for the case where the operator wants
-// the dashboard's content visible inside Claude Code's chat (via
-// the native Monitor tool) — the TUI's alt-screen rendering
-// doesn't survive that path. Plain mode is just `task list +
-// agent list` printed with a clean header on a 1 s cadence.
+// runtime state visible inside Claude Code's chat (via the native
+// Monitor tool) — the TUI's alt-screen rendering doesn't survive
+// that path. Plain mode prints task list + agent list with a
+// clean header on a 1 s cadence.
+//
+// Why these aliases all point at the orchestrator: pre-v0.22 we
+// shipped two distinct Bubble Tea programs (a simpler dashboard
+// and the richer orchestrator). They drifted, both maintained
+// independently, and operators never knew which to launch. The
+// orchestrator is the production teammate panel; `dashboard` /
+// `tui` / `orch` are now three names for the same window.
 package cli
 
 import (
@@ -26,22 +33,19 @@ import (
 )
 
 const dashboardUsage = `Usage:
-  clawtool dashboard                Launch the runtime TUI (Bubble Tea, alt-screen).
+  clawtool dashboard                Launch the orchestrator TUI (Bubble Tea, alt-screen).
   clawtool dashboard --plain        Print snapshots to stdout instead (no TUI).
                                      Pair with Monitor tool to surface in chat.
   clawtool dashboard --once         One-shot snapshot to stdout, then exit (implies --plain).
-  clawtool tui                      Alias of the default mode.
+  clawtool tui                      Alias.
+  clawtool orch                     Alias.
 
-Three panes (TUI mode) / sections (plain mode):
+Plain-mode sections:
   1. Dispatches  — BIAM tasks (active first, then recent)
   2. Agents      — supervisor's agent registry
   3. Stats       — totals / done / failed / active
 
-TUI keybindings:
-  q / esc        quit
-  r              force refresh
-  tab            cycle focused pane
-  ↑ / ↓ / k / j  navigate within the focused pane
+TUI keybindings: see ` + "`clawtool orchestrator --help`" + `.
 `
 
 func (a *App) runDashboard(argv []string) int {
@@ -58,6 +62,17 @@ func (a *App) runDashboard(argv []string) int {
 			once = true
 		}
 	}
+	if !plain {
+		// TUI mode — single canonical implementation lives in
+		// internal/tui/orchestrator.go. The legacy `tui.Run`
+		// program was deleted in this cut; both `dashboard` and
+		// `tui` aliases now route here.
+		if err := tui.RunOrchestrator(); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool dashboard: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	store, err := openBiamStore()
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool dashboard: BIAM store unavailable: %v\n", err)
@@ -66,15 +81,7 @@ func (a *App) runDashboard(argv []string) int {
 		defer store.Close()
 	}
 	sup := agents.NewSupervisor()
-
-	if plain {
-		return runDashboardPlain(a, store, sup, once)
-	}
-	if err := tui.Run(store, sup); err != nil {
-		fmt.Fprintf(a.Stderr, "clawtool dashboard: %v\n", err)
-		return 1
-	}
-	return 0
+	return runDashboardPlain(a, store, sup, once)
 }
 
 // runDashboardPlain prints a snapshot of BIAM tasks + agent

@@ -36,52 +36,10 @@ func TestNextWatchBackoff_ProgressionAndCap(t *testing.T) {
 	}
 }
 
-func TestDashboard_WatchClosedSchedulesReconnect(t *testing.T) {
-	// watchClosedMsg should produce a non-nil cmd (the backoff
-	// timer) — pre-fix it returned `m, nil` and the dashboard
-	// stayed disconnected forever after a daemon restart.
-	m := New(nil, nil)
-	updated, cmd := m.Update(watchClosedMsg{reason: "test"})
-	if cmd == nil {
-		t.Fatal("watchClosedMsg returned nil cmd; reconnect was not scheduled")
-	}
-	dm := updated.(Model)
-	if dm.watchBackoff != watchReconnectBaseDelay {
-		t.Fatalf("backoff not advanced: want %v, got %v",
-			watchReconnectBaseDelay, dm.watchBackoff)
-	}
-}
-
-func TestDashboard_WatchReconnectMsgFiresSubscribe(t *testing.T) {
-	// The reconnect tick should produce a subscribe cmd. We
-	// can't intercept which cmd it is without running the
-	// runtime, but a non-nil return value (and no panic) is
-	// enough to lock the contract.
-	m := New(nil, nil)
-	_, cmd := m.Update(watchReconnectMsg{})
-	if cmd == nil {
-		t.Fatal("watchReconnectMsg produced nil cmd; subscribe was not re-fired")
-	}
-}
-
-func TestDashboard_SuccessResetsBackoff(t *testing.T) {
-	// After a watchClosedMsg advances the backoff, a successful
-	// watchEventMsg should reset it to zero so the next blip
-	// starts again from the base delay (not whatever the latest
-	// disconnect cooked up).
-	m := New(nil, nil)
-	updated, _ := m.Update(watchClosedMsg{reason: "blip"})
-	updated, _ = updated.(Model).Update(watchClosedMsg{reason: "blip2"})
-	dm := updated.(Model)
-	if dm.watchBackoff <= watchReconnectBaseDelay {
-		t.Fatalf("backoff should have advanced past base, got %v", dm.watchBackoff)
-	}
-	updated, _ = dm.Update(watchEventMsg{task: biam.Task{TaskID: "x"}})
-	dm = updated.(Model)
-	if dm.watchBackoff != 0 {
-		t.Fatalf("backoff not reset on success: got %v", dm.watchBackoff)
-	}
-}
+// Pre-collapse this file also exercised the dashboard model's
+// reconnect path. The dashboard TUI was retired in v0.22.36 in
+// favour of a single canonical `clawtool orchestrator` window;
+// the orchestrator-side cases below cover the same lifecycle.
 
 func TestOrchestrator_WatchClosedSchedulesReconnect(t *testing.T) {
 	m := NewOrchestrator()

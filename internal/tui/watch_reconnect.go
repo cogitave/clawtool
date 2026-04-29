@@ -1,6 +1,30 @@
 package tui
 
-import "time"
+import (
+	"encoding/json"
+	"net"
+	"time"
+
+	"github.com/cogitave/clawtool/internal/agents/biam"
+)
+
+// watchEventMsg carries a task transition envelope from the watch
+// socket plus the open decoder/conn so the model can chain
+// readNextWatchEnvelope to keep draining without a fresh dial.
+type watchEventMsg struct {
+	task biam.Task
+	dec  *json.Decoder
+	conn net.Conn
+}
+
+// watchClosedMsg signals the watch socket dropped or refused.
+// `reason` carries the operator-readable failure cause (dial
+// error, EOF mid-stream, decode error). The model that sees this
+// schedules a reconnect via nextWatchBackoff + a watchReconnectMsg
+// timer.
+type watchClosedMsg struct {
+	reason string
+}
 
 // Auto-reconnect for the daemon's task-watch Unix socket.
 //
