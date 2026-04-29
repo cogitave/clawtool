@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/cli/listfmt"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/hooks"
 )
@@ -33,7 +35,12 @@ func (a *App) runHooks(argv []string) int {
 	}
 	switch argv[0] {
 	case "list":
-		if err := a.HooksList(); err != nil {
+		format, _, err := listfmt.ExtractFlag(argv[1:])
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool hooks list: %v\n", err)
+			return 2
+		}
+		if err := a.HooksList(format); err != nil {
 			fmt.Fprintf(a.Stderr, "clawtool hooks list: %v\n", err)
 			return 1
 		}
@@ -75,7 +82,7 @@ func (a *App) runHooks(argv []string) int {
 
 // HooksList prints every configured event with its entry count.
 // Empty config → friendly hint.
-func (a *App) HooksList() error {
+func (a *App) HooksList(format listfmt.Format) error {
 	cfg, err := config.LoadOrDefault(a.Path())
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -89,12 +96,12 @@ func (a *App) HooksList() error {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	fmt.Fprintf(a.Stdout, "%-24s %s\n", "EVENT", "ENTRIES")
+	cols := listfmt.Cols{Header: []string{"EVENT", "ENTRIES"}}
 	for _, n := range names {
 		entries := cfg.Hooks.Events[n]
-		fmt.Fprintf(a.Stdout, "%-24s %d\n", n, len(entries))
+		cols.Rows = append(cols.Rows, []string{n, strconv.Itoa(len(entries))})
 	}
-	return nil
+	return listfmt.Render(a.Stdout, format, cols)
 }
 
 // HooksShow dumps the per-entry config for a single event.

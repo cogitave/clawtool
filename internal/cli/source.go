@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cogitave/clawtool/internal/catalog"
+	"github.com/cogitave/clawtool/internal/cli/listfmt"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/secrets"
 )
@@ -158,6 +159,11 @@ func (a *App) runSourceAdd(argv []string) int {
 }
 
 func (a *App) runSourceList(argv []string) int {
+	format, _, err := listfmt.ExtractFlag(argv)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool source list: %v\n", err)
+		return 2
+	}
 	cfg, err := config.LoadOrDefault(a.Path())
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool source list: %v\n", err)
@@ -175,7 +181,7 @@ func (a *App) runSourceList(argv []string) int {
 	}
 	sort.Strings(names)
 
-	fmt.Fprintln(a.Stdout, "INSTANCE                      AUTH       PACKAGE")
+	cols := listfmt.Cols{Header: []string{"INSTANCE", "AUTH", "PACKAGE"}}
 	for _, name := range names {
 		src := cfg.Sources[name]
 		auth := "n/a"
@@ -198,7 +204,11 @@ func (a *App) runSourceList(argv []string) int {
 				}
 			}
 		}
-		fmt.Fprintf(a.Stdout, "%-29s %-10s %s\n", name, auth, pkg)
+		cols.Rows = append(cols.Rows, []string{name, auth, pkg})
+	}
+	if err := listfmt.Render(a.Stdout, format, cols); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool source list: %v\n", err)
+		return 1
 	}
 	return 0
 }
