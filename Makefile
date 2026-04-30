@@ -4,7 +4,14 @@
 # runs the same commands in the same way. CI scripts target `make test`,
 # `make e2e`, `make build`.
 
-GO        ?= /usr/local/go/bin/go
+# GO defaults to whichever `go` is on PATH (covers the GitHub
+# Actions setup-go path under /opt/hostedtoolcache/go, brew
+# installs, asdf shims, etc.) and falls back to the legacy
+# /usr/local/go/bin/go for hosts where Go is direct-installed
+# without PATH wiring. scripts/ci.sh has the same fallback chain
+# at runtime — the Makefile mirrors it so `make build` works in
+# the same environments. Override either with `make GO=/path/to/go`.
+GO        ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 BIN_DIR   := bin
 DIST_DIR  := dist
 INSTALL_DIR ?= $(HOME)/.local/bin
