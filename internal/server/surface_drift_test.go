@@ -98,6 +98,16 @@ var surfaceAllowlist = map[string]string{
 	"Glob":           "core search primitive — reach via Agent skill",
 	"Bash":           "core shell primitive — reach via Agent skill",
 	"SendMessage":    "addressed via /clawtool-search routing today; future /clawtool-send",
+
+	// Chat-driven Onboard + Init bundle. CLI verbs already exist
+	// (`clawtool onboard`, `clawtool init`, `clawtool recipe …`);
+	// these MCP tools are the agent-facing peer so a chat
+	// session can drive setup without forcing the operator into
+	// a terminal. No slash commands by design — they're an MCP
+	// surface only.
+	"OnboardStatus": "agent-facing primitive; CLI peer is `clawtool init --preview` / `clawtool recipe status`",
+	"InitApply":     "agent-facing primitive; CLI peer is `clawtool init` (interactive) / `clawtool init --all` (non-interactive)",
+	"OnboardWizard": "agent-facing primitive; CLI peer is `clawtool onboard` (interactive TUI). Chat tool covers only the non-TTY subset.",
 }
 
 // repoRoot walks up from this test file to the repo root (the

@@ -25,6 +25,7 @@ package core
 import (
 	"github.com/cogitave/clawtool/internal/secrets"
 	"github.com/cogitave/clawtool/internal/tools/registry"
+	setuptools "github.com/cogitave/clawtool/internal/tools/setup"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -686,6 +687,47 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategorySetup,
 		Gate:        "",
 		UsageHint:   "Run SandboxDoctor to detect which sandbox engines are available on this host (bwrap / sandbox-exec / docker) BEFORE recommending a sandbox profile that needs one. Returns a per-engine status; use it to suggest the right install command when none is available rather than guessing.",
+	})
+
+	// ─── Chat-driven Onboard + Init bundle ─────────────────────
+	// Three tools that let an AI session drive `clawtool onboard`
+	// + `clawtool init` from chat instead of forcing the operator
+	// into a terminal. Implemented in internal/tools/setup —
+	// distinct package because the bundle pulls in setup.Apply
+	// (recipe registry) + config persistence, neither of which
+	// belongs in core.
+	m.Append(registry.ToolSpec{
+		Name:        "OnboardStatus",
+		Description: "Read-only snapshot of a repo's clawtool setup state — has the .clawtool dir landed, is CLAUDE.md present, which recipes are applied / partial / absent, and what the calling agent should do next.",
+		Keywords:    []string{"onboard", "init", "status", "detect", "setup", "wizard", "chat", "ai-driven", "recipes", "fresh"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		UsageHint:   "Use BEFORE OnboardApply or InitApply to decide what's worth running. Returns the per-recipe state of the operator's repo so the calling agent doesn't blindly re-apply.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			setuptools.RegisterOnboardStatus(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "InitApply",
+		Description: "Apply clawtool's project recipes from chat — dispatches into the same setup.Apply machinery `clawtool init` runs. core_only=true (default) limits to Core recipes; dry_run=true previews without writes. Idempotent.",
+		Keywords:    []string{"init", "apply", "recipes", "setup", "scaffold", "core", "defaults", "chat", "ai-driven", "dry-run"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		UsageHint:   "Use AFTER OnboardStatus to apply core defaults from a chat session. Pass dry_run=true first to preview; the summary's pending_actions list tells the calling agent what to do next. Idempotent — safe to call repeatedly.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			setuptools.RegisterInitApply(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "OnboardWizard",
+		Description: "Run the non-interactive subset of `clawtool onboard` from chat — persist the agent-family default, record the telemetry preference, and write the onboarded marker. Interactive TUI parts (bridge installs, daemon ensure, MCP host registration) stay CLI-only.",
+		Keywords:    []string{"onboard", "wizard", "agent-family", "telemetry", "marker", "setup", "chat", "ai-driven", "primary-cli"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		UsageHint:   "Use this once per host to register clawtool's defaults from chat. Pair: call OnboardStatus first to check if onboarding is already done; if it is, skip this and go straight to InitApply.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			setuptools.RegisterOnboardWizard(s)
+		},
 	})
 
 	return m
