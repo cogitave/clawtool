@@ -91,11 +91,11 @@ type finishedMsg struct{}
 type tickMsg struct{}
 
 // tickEvery returns a tea.Cmd that fires a tickMsg after the
-// animation interval. We use a relatively slow cadence (350ms)
-// because the animation is decorative — faster ticks would burn
-// CPU on every frame redraw without adding visual value.
+// animation interval. 120ms is the spinner sweet spot — fast
+// enough to feel smooth (10 frames in ~1.2s for one full Braille
+// rotation) without burning CPU on every redraw.
 func tickEvery() tea.Cmd {
-	return tea.Tick(350*time.Millisecond, func(time.Time) tea.Msg {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg {
 		return tickMsg{}
 	})
 }
@@ -641,13 +641,11 @@ func sectionFor(k stepKind) string {
 }
 
 // clawtoolLogo is the wizard's brand mark — Pagga-style chunky
-// pixel font. Two rows tall, ~30 cols wide, more visually
-// distinct than the prior box-drawing "Future" font and still
-// renders on any terminal with a modern Unicode block font
-// (Windows Terminal / iTerm / Kitty / Alacritty / WezTerm all
-// ship one by default).
-const clawtoolLogo = `█▀▀ █   ▄▀█ █ █ ▀█▀ █▀█ █▀█ █
-█▄▄ █▄▄ █▀█ ▀▄▀  █  █▄█ █▄█ █▄▄`
+// pixel font. Two rows tall, ~32 cols wide. The "W" uses 5 cols
+// (█ █ █ / █▄█▄█) so it reads as a proper double-peak W rather
+// than a single-V silhouette.
+const clawtoolLogo = `█▀▀ █   ▄▀█ █ █ █ ▀█▀ █▀█ █▀█ █
+█▄▄ █▄▄ █▀█ █▄█▄█  █  █▄█ █▄█ █▄▄`
 
 // onboardFixedCardHeight pins the card's vertical silhouette so
 // short widgets (Confirm) and tall ones (multi-option Select) all
@@ -815,7 +813,15 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 	cur := m.visibleStepNumber()
 	total := m.totalVisibleSteps()
 
-	indicator := m.style.dim.Render(fmt.Sprintf("Step %d of %d", cur, total)) +
+	// Braille spinner — classic TUI "live" indicator. The spinner
+	// glyph rotates every animation frame so the wizard feels
+	// alive while the operator reads the question.
+	spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	spinnerGlyph := spinnerFrames[m.frame%len(spinnerFrames)]
+	spinnerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+
+	indicator := spinnerStyle.Render(spinnerGlyph) + "  " +
+		m.style.dim.Render(fmt.Sprintf("Step %d of %d", cur, total)) +
 		m.style.dim.Render("  ·  ") +
 		m.style.sectionTitle.Render(step.title)
 
