@@ -4,7 +4,22 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.67] - 2026-04-30
+## [0.22.70] - 2026-04-30
+
+### Features
+
+- **catalog:** Add shell-mcp sandbox-aware shell MCP source entry + recipe (0c755ed)## [0.22.69] - 2026-04-30
+
+### Features
+
+- **rules:** Add interceptor:pre_tool_use alias mirroring MCP upstream RFC (f52477c)## [0.22.68] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.67 [skip ci] (4429703)
+### Features
+
+- **catalog:** Add MinishLab/semble code-search MCP source entry + recipe (c078414)## [0.22.67] - 2026-04-30
 
 ### Documentation
 
