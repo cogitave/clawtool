@@ -52,16 +52,32 @@ func run(argv []string) int {
 		// BuildInfo snapshot for shell pipelines. Default stays
 		// the human banner so existing scripts that pattern-match
 		// on "clawtool 0.x.y" don't break.
+		//
+		// `--check` probes the GitHub Releases API (cached 5m)
+		// and returns a stable exit code:
+		//   0 = up-to-date, 1 = newer release available, 2 =
+		// check failed. Pairs with `--json` for structured CI
+		// output. See internal/version/check.go for the contract.
+		var jsonOut, check bool
 		for _, a := range argv[1:] {
-			if a == "--json" || a == "--format=json" {
-				body, err := version.InfoJSON()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "clawtool version: %v\n", err)
-					return 1
-				}
-				fmt.Println(body)
-				return 0
+			switch a {
+			case "--json", "--format=json":
+				jsonOut = true
+			case "--check":
+				check = true
 			}
+		}
+		if check {
+			return version.RunCheck(rootCtx, jsonOut, os.Stdout)
+		}
+		if jsonOut {
+			body, err := version.InfoJSON()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "clawtool version: %v\n", err)
+				return 1
+			}
+			fmt.Println(body)
+			return 0
 		}
 		fmt.Println(version.String())
 		return 0
