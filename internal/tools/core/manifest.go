@@ -729,6 +729,17 @@ func BuildManifest() *registry.Manifest {
 			setuptools.RegisterOnboardWizard(s)
 		},
 	})
+	m.Append(registry.ToolSpec{
+		Name:        "AutonomousRun",
+		Description: "Drive clawtool's autonomous self-paced dev loop from chat: dispatch a goal to a BIAM peer, iterate until done or max-iterations, return the final summary. Loop runs inside clawtool's binary — host-agnostic.",
+		Keywords:    []string{"autonomous", "loop", "biam", "dispatch", "goal", "self-paced", "chat", "ai-driven", "iterate"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		UsageHint:   "Use when the operator gives a multi-step goal (\"build X\", \"refactor Y\") and you want clawtool to drive the dev loop instead of you spending tokens. Pair: call OnboardStatus + InitApply first if the repo isn't initialized. The loop runs in-process; the response includes the final.json summary so you can resume / inspect.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			setuptools.RegisterAutonomousRun(s)
+		},
+	})
 
 	return m
 }
