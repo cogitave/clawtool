@@ -85,6 +85,49 @@ func TestAuth_AcceptsValidToken(t *testing.T) {
 	}
 }
 
+// TestHealth_BuildInfoExposed confirms `/v1/health` carries the
+// version.BuildInfo snapshot under the `build` key. Drives the
+// monitoring-script contract: scripts pulling the endpoint should
+// see go_version / platform / commit fields without having to
+// shell out to `clawtool version --json` separately.
+func TestHealth_BuildInfoExposed(t *testing.T) {
+	srv := httptest.NewServer(newTestMux("real-token"))
+	defer srv.Close()
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/health", nil)
+	req.Header.Set("Authorization", "Bearer real-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("health body is not JSON: %v\nbody: %s", err, body)
+	}
+	// Top-level back-compat: legacy `version` string must still
+	// be present so pre-build-info probes keep working.
+	if _, ok := got["version"]; !ok {
+		t.Errorf("legacy top-level `version` missing from /v1/health: %s", body)
+	}
+	build, ok := got["build"].(map[string]any)
+	if !ok {
+		t.Fatalf("/v1/health missing `build` object: %s", body)
+	}
+	for _, key := range []string{"name", "version", "go_version", "platform"} {
+		if _, ok := build[key]; !ok {
+			t.Errorf("/v1/health build.%s missing: %s", key, body)
+		}
+	}
+	// strings.Contains check on the literal body picks up
+	// snake_case key drift between code and test (catches
+	// accidental tag rename without literal verification).
+	if !strings.Contains(string(body), `"go_version"`) {
+		t.Errorf("body missing snake_case literal `go_version`: %s", body)
+	}
+}
+
 func TestHealth_ReturnsStatusAndVersion(t *testing.T) {
 	srv := httptest.NewServer(newTestMux("t"))
 	defer srv.Close()

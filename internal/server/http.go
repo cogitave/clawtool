@@ -260,9 +260,18 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	// container running v0.22.x advertised "0.21.7" on /v1/health
 	// (the const value at the time the var was introduced) — caught
 	// during Docker e2e probe at v0.22.23.
+	//
+	// `build` carries the same shape as `clawtool version --json`
+	// (introduced in commit 239eede) so monitoring scripts pulling
+	// /v1/health get the GOOS/GOARCH/go-version/VCS surface in one
+	// round trip instead of having to shell out to the binary.
+	// `version` stays at the top level for backward compatibility
+	// with pre-build-info probes (don't break the contract — just
+	// extend it).
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "ok",
 		"version": version.Resolved(),
+		"build":   version.Info(),
 	})
 }
 
