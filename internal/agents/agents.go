@@ -52,16 +52,20 @@ type Options struct {
 }
 
 // Plan is what an adapter would do (or did, in non-dry-run). The CLI
-// renders this for human consumption.
+// renders this for human consumption; `agents claim --json` /
+// `agents release --json` emit the same struct via Go's default
+// marshal so a script can log claim/release events structurally.
+// snake_case JSON tags follow the project-wide convention (mirrors
+// Status, BuildInfo, agentListEntry).
 type Plan struct {
-	Adapter      string   // "claude-code"
-	Action       string   // "claim" | "release" | "noop"
-	SettingsPath string   // file the adapter would mutate
-	MarkerPath   string   // file the adapter would write to track ownership
-	ToolsAdded   []string // tools claim is about to disable
-	ToolsRemoved []string // tools release is about to re-enable
-	WasNoop      bool     // already in the requested state
-	DryRun       bool
+	Adapter      string   `json:"adapter"`                 // "claude-code"
+	Action       string   `json:"action"`                  // "claim" | "release" | "noop"
+	SettingsPath string   `json:"settings_path,omitempty"` // file the adapter would mutate
+	MarkerPath   string   `json:"marker_path,omitempty"`   // file the adapter would write to track ownership
+	ToolsAdded   []string `json:"tools_added,omitempty"`   // tools claim is about to disable
+	ToolsRemoved []string `json:"tools_removed,omitempty"` // tools release is about to re-enable
+	WasNoop      bool     `json:"was_noop,omitempty"`      // already in the requested state
+	DryRun       bool     `json:"dry_run,omitempty"`
 }
 
 // Status is a snapshot of the adapter's current claim state.

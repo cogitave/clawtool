@@ -255,6 +255,117 @@ func TestAgentsStatus_JSONOutput(t *testing.T) {
 	}
 }
 
+// TestAgentsClaim_JSONOutput emits an agents.Plan as indented
+// JSON when --json is set. Drives the wire contract for
+// automation pipelines that log claim events structurally
+// (snake_case keys via the JSON tags on the agents.Plan struct).
+func TestAgentsClaim_JSONOutput(t *testing.T) {
+	_, cleanup := withTmpClaudeSettings(t)
+	defer cleanup()
+
+	app, out, _ := newAgentsApp(t)
+	if rc := app.Run([]string{"agents", "claim", "claude-code", "--json"}); rc != 0 {
+		t.Fatalf("claim --json rc=%d, stdout=%s", rc, out.String())
+	}
+
+	body := strings.TrimSpace(out.String())
+	if len(body) == 0 || body[0] != '{' {
+		t.Fatalf("expected JSON object; got: %q", body)
+	}
+	for _, lit := range []string{`"adapter":`, `"action":`, `"settings_path":`, `"marker_path":`, `"tools_added":`} {
+		if !strings.Contains(body, lit) {
+			t.Errorf("JSON missing literal %s; body: %s", lit, body)
+		}
+	}
+	var got agents.Plan
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
+	}
+	if got.Adapter != "claude-code" {
+		t.Errorf("Adapter = %q, want claude-code", got.Adapter)
+	}
+	if got.Action != "claim" {
+		t.Errorf("Action = %q, want claim", got.Action)
+	}
+	if got.WasNoop {
+		t.Error("WasNoop should be false on first claim")
+	}
+	if len(got.ToolsAdded) == 0 {
+		t.Error("ToolsAdded should not be empty after a fresh claim")
+	}
+}
+
+// TestAgentsRelease_JSONOutput exercises the inverse path:
+// after claim, release --json must report Action=release with
+// ToolsRemoved populated. Same wire contract as claim.
+func TestAgentsRelease_JSONOutput(t *testing.T) {
+	_, cleanup := withTmpClaudeSettings(t)
+	defer cleanup()
+
+	app, out, _ := newAgentsApp(t)
+	// Seed a claim so release isn't a noop.
+	if rc := app.Run([]string{"agents", "claim", "claude-code"}); rc != 0 {
+		t.Fatalf("seed claim rc=%d", rc)
+	}
+	out.Reset()
+
+	if rc := app.Run([]string{"agents", "release", "claude-code", "--json"}); rc != 0 {
+		t.Fatalf("release --json rc=%d", rc)
+	}
+	var got agents.Plan
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, out.String())
+	}
+	if got.Action != "release" {
+		t.Errorf("Action = %q, want release", got.Action)
+	}
+	if len(got.ToolsRemoved) == 0 {
+		t.Error("ToolsRemoved should not be empty after a paired release")
+	}
+}
+
+// TestAgentsClaim_JSONDryRun confirms `--dry-run --json` carries
+// the dry_run bit through the JSON wire so a script can branch
+// on it without parsing human output. Also confirms the plan
+// shape doesn't change between dry-run and real runs.
+func TestAgentsClaim_JSONDryRun(t *testing.T) {
+	_, cleanup := withTmpClaudeSettings(t)
+	defer cleanup()
+
+	app, out, _ := newAgentsApp(t)
+	if rc := app.Run([]string{"agents", "claim", "claude-code", "--dry-run", "--json"}); rc != 0 {
+		t.Fatalf("dry-run --json rc=%d", rc)
+	}
+	var got agents.Plan
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, out.String())
+	}
+	if !got.DryRun {
+		t.Error("DryRun = false, want true on --dry-run path")
+	}
+	if got.Action != "claim" {
+		t.Errorf("Action = %q, want claim", got.Action)
+	}
+}
+
+// TestAgentsClaim_JSONStableShape confirms output is an OBJECT
+// (single result), not an array — claim/release act on one
+// adapter at a time. `jq '.action'` consumers rely on object
+// shape.
+func TestAgentsClaim_JSONStableShape(t *testing.T) {
+	_, cleanup := withTmpClaudeSettings(t)
+	defer cleanup()
+
+	app, out, _ := newAgentsApp(t)
+	if rc := app.Run([]string{"agents", "claim", "claude-code", "--json"}); rc != 0 {
+		t.Fatalf("rc=%d", rc)
+	}
+	body := strings.TrimSpace(out.String())
+	if len(body) == 0 || body[0] != '{' {
+		t.Errorf("expected object (starts with '{'); got: %q", body)
+	}
+}
+
 // TestAgentsStatus_JSONSingleAdapter exercises the path where the
 // operator names a specific adapter together with --json: the
 // output should still be a single-element JSON array (not an

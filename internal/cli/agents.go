@@ -35,12 +35,13 @@ func (a *App) runAgentsClaim(argv []string) int {
 	fs := flag.NewFlagSet("agents claim", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	dryRun := fs.Bool("dry-run", false, "Print the diff without writing.")
+	asJSON := fs.Bool("json", false, "Emit the Plan as machine-readable JSON instead of the human report.")
 	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{})); err != nil {
 		return 2
 	}
 	rest := fs.Args()
 	if len(rest) != 1 {
-		fmt.Fprint(a.Stderr, "usage: clawtool agents claim <agent> [--dry-run]\n")
+		fmt.Fprint(a.Stderr, "usage: clawtool agents claim <agent> [--dry-run] [--json]\n")
 		return 2
 	}
 	adapter, err := agents.Find(rest[0])
@@ -52,6 +53,9 @@ func (a *App) runAgentsClaim(argv []string) int {
 		fmt.Fprintf(a.Stderr, "clawtool agents claim: %v\n", err)
 		return 1
 	}
+	if *asJSON {
+		return a.emitPlanJSON("claim", plan)
+	}
 	a.renderPlan(plan)
 	return 0
 }
@@ -60,12 +64,13 @@ func (a *App) runAgentsRelease(argv []string) int {
 	fs := flag.NewFlagSet("agents release", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	dryRun := fs.Bool("dry-run", false, "Print the diff without writing.")
+	asJSON := fs.Bool("json", false, "Emit the Plan as machine-readable JSON instead of the human report.")
 	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{})); err != nil {
 		return 2
 	}
 	rest := fs.Args()
 	if len(rest) != 1 {
-		fmt.Fprint(a.Stderr, "usage: clawtool agents release <agent> [--dry-run]\n")
+		fmt.Fprint(a.Stderr, "usage: clawtool agents release <agent> [--dry-run] [--json]\n")
 		return 2
 	}
 	adapter, err := agents.Find(rest[0])
@@ -76,6 +81,9 @@ func (a *App) runAgentsRelease(argv []string) int {
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool agents release: %v\n", err)
 		return 1
+	}
+	if *asJSON {
+		return a.emitPlanJSON("release", plan)
 	}
 	a.renderPlan(plan)
 	return 0
@@ -205,6 +213,22 @@ func (a *App) agentNotFound(name string) int {
 		fmt.Fprintf(a.Stderr, "    %s\n", adp.Name())
 	}
 	return 1
+}
+
+// emitPlanJSON marshals an agents.Plan to indented JSON on stdout.
+// Stable wire shape — automation pipelines that gate on `dry_run`
+// or `was_noop` rely on it. Returns the CLI exit code (always 0
+// on success here; the marshal can only fail on impossibly-large
+// fields, which the agents package never produces, but we surface
+// it as exit 1 just in case).
+func (a *App) emitPlanJSON(verb string, p agents.Plan) int {
+	body, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool agents %s: marshal: %v\n", verb, err)
+		return 1
+	}
+	fmt.Fprintln(a.Stdout, string(body))
+	return 0
 }
 
 func (a *App) renderPlan(p agents.Plan) {
