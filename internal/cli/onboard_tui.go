@@ -611,6 +611,17 @@ func sectionFor(k stepKind) string {
 	return ""
 }
 
+// onboardFixedCardWidth and onboardFixedCardHeight set the constant
+// silhouette of the step card. Every step renders inside the same
+// rectangle so the wizard's frame stays put as the operator
+// advances — no jarring resize from one step to the next. Sized
+// for ~74-col terminals; the card auto-clamps narrower if the
+// viewport is tighter.
+const (
+	onboardFixedCardWidth  = 70
+	onboardFixedCardHeight = 18
+)
+
 // View renders the alt-screen payload as a responsive three-band
 // layout that uses the full viewport: header pinned at the top,
 // footer pinned at the bottom, body fills the gap. Width adapts to
@@ -747,22 +758,41 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 	}
 	progress := strings.Join(dots, " ")
 
-	// Wrap the widget in a rounded-border card. Width fills the
-	// available column; Height is unset so the card grows to the
-	// widget's natural rendered height (custom widgets render
-	// every option each frame, no internal viewport drama). The
-	// body container below has Height(bodyH); slack rows pad
-	// below so the footer pins to the alt-screen bottom.
-	cardW := w - 4
-	if cardW < 40 {
-		cardW = 40
+	// Wrap the widget in a rounded-border card with a FIXED size
+	// so every step renders the same visual silhouette — the
+	// operator's eye doesn't have to re-locate the wizard's
+	// frame each time it advances. Inside the card the widget's
+	// view is centred both axes via lipgloss.Place so a 4-row
+	// Confirm and a 12-row Select look equally polished.
+	cardW := onboardFixedCardWidth
+	if cardW > w-4 {
+		cardW = w - 4
 	}
+	if cardW < 50 {
+		cardW = 50
+	}
+	cardH := onboardFixedCardHeight
+	// Padding(1, 3) eats 2 cols + 2 rows; border eats 2 cols + 2
+	// rows. Inner content area is cardW-8 by cardH-4.
+	innerW := cardW - 8
+	innerH := cardH - 4
+	if innerW < 30 {
+		innerW = 30
+	}
+	if innerH < 6 {
+		innerH = 6
+	}
+	centred := lipgloss.Place(innerW, innerH,
+		lipgloss.Center, lipgloss.Center,
+		step.widget.View(),
+	)
 	card := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("212")).
 		Padding(1, 3).
 		Width(cardW).
-		Render(step.widget.View())
+		Height(cardH).
+		Render(centred)
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		indicator,
