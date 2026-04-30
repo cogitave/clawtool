@@ -430,10 +430,38 @@ func (m *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // reports Done (operator pressed enter), apply the answer back to
 // onboardState, persist progress, and advance to the next step.
 // When all steps are exhausted, transition to the run phase.
+//
+// Two keys are intercepted before the widget sees them:
+//   - "b" (back): walk the cursor backward one visible step,
+//     skipping any steps whose skipIf hides them. Resets the
+//     newly-active widget's done flag so a fresh enter advances
+//     cleanly. No-op at step 0.
+//   - widgets handle their own keys (↑/↓/space/enter/etc.).
 func (m *onboardModel) updateStep(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.stepIdx >= len(m.steps) {
 		return m, m.startRunPhase()
 	}
+
+	if k, ok := msg.(tea.KeyMsg); ok && k.String() == "b" {
+		// Back one visible step. Walk past skipIf-hidden entries
+		// (mirror of advanceStepCursor in reverse). At step 0 the
+		// key is a no-op — there's nowhere to go back to.
+		if m.stepIdx == 0 {
+			return m, nil
+		}
+		prev := m.stepIdx - 1
+		for prev > 0 && m.steps[prev].skipIf != nil && m.steps[prev].skipIf(m.state) {
+			prev--
+		}
+		m.stepIdx = prev
+		// Clear the done flag on the now-active step so the next
+		// enter re-advances cleanly. Without this, a single enter
+		// after `b` would short-circuit on the prior advancement.
+		m.steps[m.stepIdx].widget.Reset()
+		_ = saveOnboardProgress(m.stepIdx, m.state, versionShortForOnboard())
+		return m, nil
+	}
+
 	step := m.steps[m.stepIdx]
 	w, cmd := step.widget.Update(msg)
 	m.steps[m.stepIdx].widget = w
@@ -1060,6 +1088,16 @@ func (m *onboardModel) renderFooterCol(w int) string {
 		parts := []string{}
 		if widgetHint != "" {
 			parts = append(parts, widgetHint)
+		}
+		// Surface "b" only past the first step — at step 0
+		// there's nowhere to go back to and showing the hint
+		// would invite the operator to press it for nothing.
+		if m.stepIdx > 0 {
+			if compact {
+				parts = append(parts, "b")
+			} else {
+				parts = append(parts, "b back")
+			}
 		}
 		if compact {
 			parts = append(parts, "^c")

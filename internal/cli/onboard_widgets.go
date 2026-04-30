@@ -146,6 +146,12 @@ func (s *selectWidget) Keybinds() string {
 	return "↑/↓ select  ·  enter confirm"
 }
 
+// Reset clears the submitted flag without disturbing the cursor —
+// used by the wizard's back-step path so re-displaying this widget
+// after the operator pressed `b` accepts a fresh enter without
+// being short-circuited by the prior advancement.
+func (s *selectWidget) Reset() { s.done = false }
+
 // multiSelectWidget is a checklist picker. Space toggles the
 // cursor row; enter submits.
 type multiSelectWidget struct {
@@ -256,6 +262,9 @@ func (m *multiSelectWidget) Keybinds() string {
 	return "↑/↓ navigate  ·  space toggle  ·  a all/none  ·  enter confirm"
 }
 
+// Reset clears the submitted flag — see selectWidget.Reset.
+func (m *multiSelectWidget) Reset() { m.done = false }
+
 // confirmWidget is a yes/no picker. ← / → or h / l toggles cursor,
 // y / n picks immediately, enter submits the cursor's value.
 type confirmWidget struct {
@@ -334,14 +343,24 @@ func (c *confirmWidget) Keybinds() string {
 	return "←/→ toggle  ·  y / n quick  ·  enter confirm"
 }
 
+// Reset clears the submitted flag — see selectWidget.Reset.
+func (c *confirmWidget) Reset() { c.done = false }
+
 // stepWidget unifies the three widget types behind a single
 // interface so the wizard's outer tea.Model can route messages and
 // render a single active step without branching on widget kind.
+//
+// Reset clears the widget's "done" flag without disturbing cursor
+// or selection state. The wizard's back-step keybind ("b") calls
+// Reset on the step it's about to re-display so the next enter
+// press re-advances cleanly instead of being swallowed by a stale
+// done=true left over from the prior advancement.
 type stepWidget interface {
 	Update(tea.Msg) (stepWidget, tea.Cmd)
 	View() string
 	Done() bool
 	Keybinds() string
+	Reset()
 }
 
 // adapter wraps the concrete widget pointer to satisfy stepWidget.
@@ -360,6 +379,7 @@ func (a *selectAdapter) Update(msg tea.Msg) (stepWidget, tea.Cmd) {
 func (a *selectAdapter) View() string     { return a.w.View() }
 func (a *selectAdapter) Done() bool       { return a.w.Done() }
 func (a *selectAdapter) Keybinds() string { return a.w.Keybinds() }
+func (a *selectAdapter) Reset()           { a.w.Reset() }
 
 func (a *multiAdapter) Update(msg tea.Msg) (stepWidget, tea.Cmd) {
 	w, cmd := a.w.Update(msg)
@@ -369,6 +389,7 @@ func (a *multiAdapter) Update(msg tea.Msg) (stepWidget, tea.Cmd) {
 func (a *multiAdapter) View() string     { return a.w.View() }
 func (a *multiAdapter) Done() bool       { return a.w.Done() }
 func (a *multiAdapter) Keybinds() string { return a.w.Keybinds() }
+func (a *multiAdapter) Reset()           { a.w.Reset() }
 
 func (a *confirmAdapter) Update(msg tea.Msg) (stepWidget, tea.Cmd) {
 	w, cmd := a.w.Update(msg)
@@ -378,3 +399,4 @@ func (a *confirmAdapter) Update(msg tea.Msg) (stepWidget, tea.Cmd) {
 func (a *confirmAdapter) View() string     { return a.w.View() }
 func (a *confirmAdapter) Done() bool       { return a.w.Done() }
 func (a *confirmAdapter) Keybinds() string { return a.w.Keybinds() }
+func (a *confirmAdapter) Reset()           { a.w.Reset() }

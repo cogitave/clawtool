@@ -216,6 +216,54 @@ func TestOnboardModel_View_RunPhaseShowsLog(t *testing.T) {
 	}
 }
 
+// TestOnboardModel_BackKey_DecrementsStep confirms that pressing
+// "b" while on step 2 sends the cursor back to step 1 and resets
+// the now-active widget's done flag so a fresh enter advances
+// without short-circuiting.
+func TestOnboardModel_BackKey_DecrementsStep(t *testing.T) {
+	state := onboardState{
+		Found:          map[string]bool{"claude": true},
+		MissingBridges: nil,
+		MCPClaimable:   nil,
+	}
+	m := newOnboardModel(&state, onboardDeps{}, func(string, map[string]any) {})
+	// Manually advance to step 2 and pretend the widget at the
+	// new step is done (the "we just advanced" state).
+	m.stepIdx = 2
+
+	// Press "b" — should decrement to step 1.
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	mm, ok := model.(*onboardModel)
+	if !ok {
+		t.Fatalf("Update should return *onboardModel; got %T", model)
+	}
+	if mm.stepIdx != 1 {
+		t.Errorf("stepIdx = %d, want 1 after `b`", mm.stepIdx)
+	}
+	if mm.steps[mm.stepIdx].widget.Done() {
+		t.Errorf("widget at step 1 should be Reset (done=false) after back-step; got done=true")
+	}
+}
+
+// TestOnboardModel_BackKey_NoopAtStepZero confirms `b` on the
+// first step is a no-op — there's nowhere to go back.
+func TestOnboardModel_BackKey_NoopAtStepZero(t *testing.T) {
+	state := onboardState{
+		Found:          map[string]bool{"claude": true},
+		MissingBridges: nil,
+		MCPClaimable:   nil,
+	}
+	m := newOnboardModel(&state, onboardDeps{}, func(string, map[string]any) {})
+	if m.stepIdx != 0 {
+		t.Fatalf("test setup expects stepIdx=0; got %d", m.stepIdx)
+	}
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	mm := model.(*onboardModel)
+	if mm.stepIdx != 0 {
+		t.Errorf("stepIdx should stay 0 after `b` at first step; got %d", mm.stepIdx)
+	}
+}
+
 // TestSummaryLabelFor confirms the lookup returns the operator-
 // visible label used in the closing checklist.
 func TestSummaryLabelFor(t *testing.T) {
