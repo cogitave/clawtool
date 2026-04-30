@@ -31,7 +31,11 @@ type matrixItem struct {
 	key      string // unique within the form
 	label    string
 	category matrixCategory
-	apply    func(*App, context.Context, string) error
+	// core is true when this row is part of clawtool's curated
+	// default install (recipe Meta.Core). The wizard uses this
+	// to pre-check the row regardless of category.
+	core  bool
+	apply func(*App, context.Context, string) error
 }
 
 type matrixCategory string
@@ -63,10 +67,12 @@ func (a *App) runSetupV2(argv []string, cwd string) int {
 	defaults := make([]string, 0, len(items))
 	for _, it := range items {
 		options = append(options, huh.NewOption(it.label, it.key))
-		// Default-select host + daemon items. Recipes stay opt-in
-		// so the operator doesn't accidentally drop a half-dozen
-		// CI files into the repo on first launch.
-		if it.category == matrixHost || it.category == matrixDaemon {
+		// Default-select host + daemon items, plus any recipe
+		// row whose Meta.Core flag is set. Core recipes are the
+		// curated default install — operator opt-OUT, not opt-IN.
+		// Non-Core recipes stay unchecked so the wizard doesn't
+		// spam unwanted scaffolding on first launch.
+		if it.category == matrixHost || it.category == matrixDaemon || it.core {
 			defaults = append(defaults, it.key)
 		}
 	}
@@ -177,19 +183,23 @@ func buildSetupMatrix(a *App, cwd string) []matrixItem {
 		})
 	}
 
-	// Stage C — recipe gaps that are Stable + need no required
-	// options. Recipes with required options are excluded; the
-	// operator picks them via `clawtool init`.
+	// Stage C — recipe gaps. Stable recipes are always candidates;
+	// Beta recipes ride along ONLY when Core (operator wants Beta
+	// defaults to ship by default — see RecipeMeta.Core). Recipes
+	// with required options are excluded; the operator picks them
+	// via `clawtool init`.
 	type recipeRow struct {
 		key   string
 		label string
 		name  string
+		core  bool
 	}
 	var rows []recipeRow
 	for _, cat := range setup.Categories() {
 		for _, r := range setup.InCategory(cat) {
 			m := r.Meta()
-			if m.Stability != setup.StabilityStable && m.Stability != "" {
+			stable := m.Stability == setup.StabilityStable || m.Stability == ""
+			if !stable && !m.Core {
 				continue
 			}
 			if needsRequiredOptions(m.Name) {
@@ -203,6 +213,7 @@ func buildSetupMatrix(a *App, cwd string) []matrixItem {
 				key:   "recipe:" + m.Name,
 				label: fmt.Sprintf("[%s] %s — %s", cat, m.Name, m.Description),
 				name:  m.Name,
+				core:  m.Core,
 			})
 		}
 	}
@@ -211,6 +222,7 @@ func buildSetupMatrix(a *App, cwd string) []matrixItem {
 		row := row
 		out = append(out, matrixItem{
 			key: row.key, category: matrixRecipe,
+			core:  row.core,
 			label: row.label,
 			apply: func(a *App, ctx context.Context, cwd string) error {
 				r := setup.Lookup(row.name)

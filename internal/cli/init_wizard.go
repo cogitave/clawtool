@@ -31,13 +31,17 @@ const (
 	scopePreview initScope = "preview"
 )
 
-// runInit is the dispatcher entry. Honors --yes and TTY detection,
-// otherwise routes to the chosen scope.
+// runInit is the dispatcher entry. Honors --yes / --all and TTY
+// detection, otherwise routes to the chosen scope.
 func (a *App) runInit(argv []string) int {
 	yes := false
+	all := false
 	for _, arg := range argv {
-		if arg == "--yes" || arg == "-y" {
+		switch arg {
+		case "--yes", "-y":
 			yes = true
+		case "--all":
+			all = true
 		}
 	}
 
@@ -48,6 +52,12 @@ func (a *App) runInit(argv []string) int {
 	}
 
 	fmt.Fprintf(a.Stdout, "clawtool init — %s\n\n", cwd)
+
+	// --all bypasses every prompt and applies every Core recipe
+	// (regardless of Stability) directly. Operator opt-OUT.
+	if all {
+		return a.runInitAll(cwd)
+	}
 
 	noTTY := !isTTY(os.Stdin) || !isTTY(os.Stdout)
 	if yes || noTTY {
@@ -143,6 +153,60 @@ func (a *App) runInitRepoNonInteractive(cwd string) int {
 	}
 	if !any {
 		fmt.Fprintln(a.Stdout, "Nothing applied. Run `clawtool init` interactively to pick recipes.")
+	}
+	return 0
+}
+
+// runInitAll bypasses every prompt and applies every Core recipe
+// (regardless of Stability) whose Detect reports Absent. Recipes
+// requiring options are skipped cleanly. Prints one line per recipe:
+// ✓ applied / ○ already present / ✗ failed.
+//
+// This is the operator-side "ship me everything clawtool considers
+// the curated default install" path — see RecipeMeta.Core.
+func (a *App) runInitAll(cwd string) int {
+	applied, skipped, failed := 0, 0, 0
+	for _, cat := range setup.Categories() {
+		for _, r := range setup.InCategory(cat) {
+			m := r.Meta()
+			if !m.Core {
+				continue
+			}
+			if needsRequiredOptions(m.Name) {
+				// Core recipe that demands input — surface
+				// it as a skip so operators know to re-run
+				// the interactive flow for that one.
+				fmt.Fprintf(a.Stdout, "  ○ %s (needs options; run `clawtool init` interactively)\n", m.Name)
+				skipped++
+				continue
+			}
+			status, _, _ := r.Detect(context.Background(), cwd)
+			if status != setup.StatusAbsent {
+				fmt.Fprintf(a.Stdout, "  ○ %s already present\n", m.Name)
+				skipped++
+				continue
+			}
+			res, err := setup.Apply(context.Background(), r, setup.ApplyOptions{
+				Repo:     cwd,
+				Prompter: setup.AlwaysSkip{},
+			})
+			if err != nil {
+				if errors.Is(err, setup.ErrSkippedByUser) {
+					fmt.Fprintf(a.Stdout, "  ○ %s skipped — %s\n", m.Name, res.SkipReason)
+					skipped++
+					continue
+				}
+				fmt.Fprintf(a.Stdout, "  ✗ %s failed: %v\n", m.Name, err)
+				failed++
+				continue
+			}
+			fmt.Fprintf(a.Stdout, "  ✓ %s applied\n", m.Name)
+			applied++
+		}
+	}
+	fmt.Fprintf(a.Stdout, "\nDone — applied %d, already-present/skipped %d, failed %d.\n", applied, skipped, failed)
+	if failed > 0 {
+		return 1
 	}
 	return 0
 }

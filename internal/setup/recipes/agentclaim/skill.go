@@ -45,6 +45,10 @@ type skillRecipe struct {
 	// Body is empty. clawtool refuses to install if the response
 	// isn't text/markdown or text/plain.
 	URL string
+
+	// core marks the skill as part of the curated default install
+	// (mirrors RecipeMeta.Core); set on the registration literal.
+	core bool
 }
 
 func (s skillRecipe) Meta() setup.RecipeMeta {
@@ -54,6 +58,7 @@ func (s skillRecipe) Meta() setup.RecipeMeta {
 		Description: s.description,
 		Upstream:    s.upstream,
 		Stability:   setup.StabilityBeta,
+		Core:        s.core,
 	}
 }
 
@@ -238,5 +243,8 @@ func init() {
 		description: "Karpathy's \"LLM Wiki\" pattern — drops a SKILL.md that teaches Claude to file insights into ~/wiki/. Plain markdown; no Obsidian dependency.",
 		upstream:    "https://github.com/karpathy/llm-wiki", // canonical pointer; Karpathy has discussed this pattern publicly
 		Body:        karpathyLLMWikiSkill,
+		// Core: the only "skills" recipe shipped today; operator
+		// expects a default install to drop the curated skill.
+		core: true,
 	})
 }

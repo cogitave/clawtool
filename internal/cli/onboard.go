@@ -131,6 +131,7 @@ type onboardDeps struct {
 func (a *App) runOnboard(argv []string) int {
 	yes := false
 	force := false
+	noDefaults := false
 	for _, arg := range argv {
 		switch arg {
 		case "--help", "-h":
@@ -140,7 +141,14 @@ func (a *App) runOnboard(argv []string) int {
 			yes = true
 		case "--force", "-f":
 			force = true
+		case "--no-defaults":
+			noDefaults = true
 		}
+	}
+	// Env-var equivalent of --no-defaults so containers / CI can
+	// suppress the Core-defaults nudge without editing argv.
+	if os.Getenv("CLAWTOOL_ONBOARD_NO_DEFAULTS") == "1" {
+		noDefaults = true
 	}
 	// --force wipes the resume state + onboarded marker so the
 	// wizard starts from scratch without any prompt.
@@ -237,13 +245,72 @@ func (a *App) runOnboard(argv []string) int {
 			fmt.Fprintf(a.Stderr, "clawtool onboard: %v\n", err)
 			return 1
 		}
+		a.maybeNudgeCoreDefaults(yes, noDefaults)
 		return 0
 	}
 	if err := a.onboard(context.Background(), d); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool onboard: %v\n", err)
 		return 1
 	}
+	a.maybeNudgeCoreDefaults(yes, noDefaults)
 	return 0
+}
+
+// maybeNudgeCoreDefaults runs the post-onboard "Install core
+// defaults? [Y/n]" prompt and, on Y / non-TTY / --yes, applies every
+// Core recipe via runInitAll. Skipped when --no-defaults /
+// CLAWTOOL_ONBOARD_NO_DEFAULTS=1.
+//
+// Lives in runOnboard (post-wizard) so the existing onboard / TUI
+// test suites stay untouched: they exercise app.onboard()/onboardTUI
+// directly, not runOnboard, so this nudge never fires from those
+// tests.
+func (a *App) maybeNudgeCoreDefaults(yes, noDefaults bool) {
+	if noDefaults {
+		return
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	// --yes / non-TTY: apply unconditionally (operator-side
+	// "everything we ship" intent).
+	stdout, _ := a.Stdout.(*os.File)
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	stdin, _ := a.Stdin.(*os.File)
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	tty := isTTY(stdout) && isTTY(stdin)
+	if yes || !tty {
+		fmt.Fprintln(a.Stdout, "")
+		fmt.Fprintln(a.Stdout, "── core defaults ────────────────────────────")
+		_ = a.runInitAll(cwd)
+		return
+	}
+	// Interactive: ask once with Y default.
+	apply := true
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title("Install core defaults?").
+			Description("Apply every recipe clawtool considers part of the curated default install (CLAUDE.md, agent-claim, conventional-commits-ci, promptfoo-redteam, etc.). Skip with --no-defaults or CLAWTOOL_ONBOARD_NO_DEFAULTS=1.").
+			Affirmative("Yes, install").
+			Negative("Skip").
+			Value(&apply),
+	))
+	if err := form.Run(); err != nil {
+		// Aborted prompts are silent — operator can still run
+		// `clawtool init --all` later.
+		return
+	}
+	if !apply {
+		return
+	}
+	fmt.Fprintln(a.Stdout, "")
+	fmt.Fprintln(a.Stdout, "── core defaults ────────────────────────────")
+	_ = a.runInitAll(cwd)
 }
 
 // onboardTUI wraps the Bubble Tea wizard. The model owns the entire

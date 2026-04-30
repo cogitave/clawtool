@@ -31,6 +31,10 @@ func (promptfooRedteamRecipe) Meta() setup.RecipeMeta {
 		Description: "Promptfoo redteam baseline that evaluates clawtool's BIAM-dispatched agent families against jailbreak / prompt-injection probes.",
 		Upstream:    "https://github.com/promptfoo/promptfoo",
 		Stability:   setup.StabilityBeta,
+		// Core even though Beta — operator wants jailbreak-eval
+		// scaffolding by default. Beta status reflects the recipe's
+		// soak time, not its desirability.
+		Core: true,
 	}
 }
 

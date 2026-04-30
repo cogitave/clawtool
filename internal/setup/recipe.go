@@ -47,6 +47,13 @@ type RecipeMeta struct {
 
 	// Stability defaults to StabilityStable if zero-valued.
 	Stability Stability
+
+	// Core marks a recipe as part of clawtool's curated default
+	// install. When true, the setup wizard pre-checks the row and
+	// `clawtool init --all` applies it without prompting (regardless
+	// of Stability — Beta recipes can be Core too). Defaults to
+	// false so unset / experimental recipes stay opt-in.
+	Core bool
 }
 
 // Status is what Detect() returns: the recipe's current state in

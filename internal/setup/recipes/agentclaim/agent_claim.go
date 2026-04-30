@@ -31,6 +31,9 @@ func (agentClaimRecipe) Meta() setup.RecipeMeta {
 		Description: "Claim native Bash/Read/Edit/etc. on the named AI agents so only mcp__clawtool__* is exposed to the model.",
 		Upstream:    "https://github.com/cogitave/clawtool/blob/main/internal/agents",
 		Stability:   setup.StabilityStable,
+		// Core: claiming agents is the headline value-prop —
+		// every default install should wire it.
+		Core: true,
 	}
 }
 

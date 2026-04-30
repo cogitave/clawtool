@@ -34,6 +34,8 @@ func (claudeMDRecipe) Meta() setup.RecipeMeta {
 		Description: "Drops a CLAUDE.md (Claude Code's project-system-prompt) — language-aware starter with the conventions clawtool ships its own repo with.",
 		Upstream:    "spec:https://docs.claude.com/en/docs/claude-code/memory",
 		Stability:   setup.StabilityStable,
+		// Core: governance scaffold every fresh repo wants.
+		Core: true,
 	}
 }
 

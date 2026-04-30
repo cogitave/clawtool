@@ -32,6 +32,9 @@ func (commitFormatCIRecipe) Meta() setup.RecipeMeta {
 		Description: "GitHub Actions workflow that fails PRs whose titles aren't Conventional Commits.",
 		Upstream:    "https://github.com/amannn/action-semantic-pull-request",
 		Stability:   setup.StabilityStable,
+		// Core: every shipping repo wants Conventional Commits CI
+		// the moment it has a .github/ directory.
+		Core: true,
 	}
 }
 
