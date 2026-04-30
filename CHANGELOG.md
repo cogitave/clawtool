@@ -4,7 +4,18 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.70] - 2026-04-30
+## [0.22.72] - 2026-04-30
+
+### Features
+
+- **tools:** Expose AutonomousRun MCP tool for chat-driven self-paced dev loops (a266e5e)## [0.22.71] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.70 [skip ci] (e562396)
+### Features
+
+- **cli:** Add 'autonomous' verb for self-paced single-message dev loop (8fc73f8)## [0.22.70] - 2026-04-30
 
 ### Features
 
