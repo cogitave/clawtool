@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -349,5 +350,119 @@ func TestSourceCheck_AllReady(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "ready") {
 		t.Errorf("check missing 'ready': %q", out.String())
+	}
+}
+
+// TestSourceCheck_JSONReady emits structured `[{name, ready}]`
+// when every required env var resolves. Pipelines that gate on
+// `.[].ready == true` no longer need to grep the human table.
+func TestSourceCheck_JSONReady(t *testing.T) {
+	app, out, _, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatalf("add failed")
+	}
+	if rc := app.Run([]string{"source", "set-secret", "github", "GITHUB_TOKEN", "--value", "x"}); rc != 0 {
+		t.Fatalf("set-secret failed")
+	}
+	out.Reset()
+	if rc := app.Run([]string{"source", "check", "--json"}); rc != 0 {
+		t.Fatalf("check --json exit = %d, want 0", rc)
+	}
+	body := strings.TrimSpace(out.String())
+	if len(body) == 0 || body[0] != '[' {
+		t.Fatalf("expected JSON array; got: %q", body)
+	}
+	for _, lit := range []string{`"name":`, `"ready":`} {
+		if !strings.Contains(body, lit) {
+			t.Errorf("JSON missing literal %s; body: %s", lit, body)
+		}
+	}
+	var got []sourceCheckEntry
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
+	}
+	if len(got) != 1 || got[0].Name != "github" || !got[0].Ready {
+		t.Errorf("entries = %+v, want one ready=true github entry", got)
+	}
+	if len(got[0].Missing) != 0 {
+		t.Errorf("Missing should be empty when ready; got %v", got[0].Missing)
+	}
+}
+
+// TestSourceCheck_JSONMissing emits `ready=false` + the
+// `missing` env-var list when credentials aren't configured.
+// Exit 1 propagates so `set -e` scripts also catch the failure.
+func TestSourceCheck_JSONMissing(t *testing.T) {
+	app, out, _, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatalf("add failed")
+	}
+	out.Reset()
+	rc := app.Run([]string{"source", "check", "--json"})
+	if rc != 1 {
+		t.Errorf("rc = %d, want 1 when credentials missing", rc)
+	}
+	var got []sourceCheckEntry
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, out.String())
+	}
+	if len(got) != 1 || got[0].Name != "github" || got[0].Ready {
+		t.Fatalf("entries = %+v, want one ready=false github entry", got)
+	}
+	if len(got[0].Missing) == 0 || got[0].Missing[0] != "GITHUB_TOKEN" {
+		t.Errorf("Missing = %v, want ['GITHUB_TOKEN']", got[0].Missing)
+	}
+}
+
+// TestSourceCheck_SingleNameFilter limits the report to one
+// instance — useful for installer scripts that want to probe a
+// specific source without spilling other instances' state.
+func TestSourceCheck_SingleNameFilter(t *testing.T) {
+	app, out, _, _, _ := newSrcApp(t)
+	// Add two sources.
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatalf("add github failed")
+	}
+	if rc := app.Run([]string{"source", "set-secret", "github", "GITHUB_TOKEN", "--value", "x"}); rc != 0 {
+		t.Fatalf("set-secret github failed")
+	}
+	out.Reset()
+
+	if rc := app.Run([]string{"source", "check", "github", "--json"}); rc != 0 {
+		t.Fatalf("check github --json rc = %d", rc)
+	}
+	var got []sourceCheckEntry
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("filtered output should have exactly 1 entry; got %d: %+v", len(got), got)
+	}
+}
+
+// TestSourceCheck_UnknownInstance fails cleanly with exit 1 +
+// stderr message when the operator names a non-existent source.
+// JSON path emits an `error` object on stdout so pipelines can
+// branch on it.
+func TestSourceCheck_UnknownInstance(t *testing.T) {
+	app, out, errb, _, _ := newSrcApp(t)
+	rc := app.Run([]string{"source", "check", "no-such-source"})
+	if rc != 1 {
+		t.Errorf("rc = %d, want 1 on unknown instance", rc)
+	}
+	if !strings.Contains(errb.String(), "not configured") {
+		t.Errorf("expected 'not configured' in stderr; got %q", errb.String())
+	}
+
+	// JSON path: error object on stdout.
+	out.Reset()
+	errb.Reset()
+	rc = app.Run([]string{"source", "check", "no-such-source", "--json"})
+	if rc != 1 {
+		t.Errorf("rc = %d, want 1 on unknown instance", rc)
+	}
+	body := strings.TrimSpace(out.String())
+	if !strings.HasPrefix(body, "{") || !strings.Contains(body, `"error"`) {
+		t.Errorf("expected error object on stdout; got %q", body)
 	}
 }

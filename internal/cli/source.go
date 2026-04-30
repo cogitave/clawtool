@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,6 +15,17 @@ import (
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/secrets"
 )
+
+// sourceCheckEntry is the JSON wire shape produced by `source
+// check --json`. snake_case keys per the project-wide convention.
+// `ready=true` ⇔ all required env vars resolve via the secrets
+// store (or the process env fallback secrets.Resolve allows).
+// `missing` lists the env-var names that didn't resolve.
+type sourceCheckEntry struct {
+	Name    string   `json:"name"`
+	Ready   bool     `json:"ready"`
+	Missing []string `json:"missing,omitempty"`
+}
 
 // SecretsPath returns the secrets-store path. Tests can shadow App.SecretsPath
 // to point at a tmp file; production uses secrets.DefaultPath().
@@ -354,24 +366,87 @@ func (a *App) runSourceSetSecret(argv []string) int {
 	return 0
 }
 
-func (a *App) runSourceCheck(_ []string) int {
+func (a *App) runSourceCheck(argv []string) int {
+	fs := flag.NewFlagSet("source check", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	asJSON := fs.Bool("json", false, "Emit machine-readable JSON instead of the human table.")
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{})); err != nil {
+		return 2
+	}
+	rest := fs.Args()
+	if len(rest) > 1 {
+		fmt.Fprint(a.Stderr, "usage: clawtool source check [<instance>] [--json]\n")
+		return 2
+	}
+
 	cfgPath := a.Path()
 	cfg, err := config.LoadOrDefault(cfgPath)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool source check: %v\n", err)
 		return 1
 	}
-	if len(cfg.Sources) == 0 {
+
+	// Filter to a single source when the operator named one. Lets
+	// installer scripts probe `source check github --json` for a
+	// specific instance without parsing the bulk roster.
+	var names []string
+	if len(rest) == 1 {
+		want := rest[0]
+		if _, ok := cfg.Sources[want]; !ok {
+			if *asJSON {
+				body, _ := json.Marshal(map[string]string{"error": fmt.Sprintf("instance %q not configured", want)})
+				fmt.Fprintln(a.Stdout, string(body))
+			} else {
+				fmt.Fprintf(a.Stderr, "clawtool source check: %q not configured\n", want)
+			}
+			return 1
+		}
+		names = []string{want}
+	} else {
+		names = make([]string, 0, len(cfg.Sources))
+		for n := range cfg.Sources {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+	}
+
+	store, _ := secrets.LoadOrEmpty(a.SecretsPath())
+
+	if *asJSON {
+		// Always emit a JSON array — uniform shape across
+		// configured / unconfigured / single-name paths so
+		// `jq '.[]'` consumers don't have to special-case.
+		entries := make([]sourceCheckEntry, 0, len(names))
+		allOK := true
+		for _, name := range names {
+			src := cfg.Sources[name]
+			_, missing := store.Resolve(name, src.Env)
+			ready := len(missing) == 0
+			if !ready {
+				allOK = false
+			}
+			entries = append(entries, sourceCheckEntry{
+				Name:    name,
+				Ready:   ready,
+				Missing: missing,
+			})
+		}
+		body, err := json.MarshalIndent(entries, "", "  ")
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool source check: marshal: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(a.Stdout, string(body))
+		if !allOK {
+			return 1
+		}
+		return 0
+	}
+
+	if len(names) == 0 {
 		fmt.Fprintln(a.Stdout, "(no sources configured)")
 		return 0
 	}
-	store, _ := secrets.LoadOrEmpty(a.SecretsPath())
-	names := make([]string, 0, len(cfg.Sources))
-	for n := range cfg.Sources {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-
 	allOK := true
 	for _, name := range names {
 		src := cfg.Sources[name]
