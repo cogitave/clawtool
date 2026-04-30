@@ -4,7 +4,19 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.54] - 2026-04-30
+## [0.22.56] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.54 [skip ci] (fc27276)
+### Features
+
+- **recipes:** Mark mattpocock-skills as Core for default install (4899fe2)
+- **setup:** Add Core recipe flag + auto-install path in onboard / init --all (deb3f45)## [0.22.55] - 2026-04-30
+
+### Fixes
+
+- **cli:** Distinguish dev-build-ahead-of-latest from already-on-latest in upgrade UX (d6ea921)## [0.22.54] - 2026-04-30
 
 ### Features
 
