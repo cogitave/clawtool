@@ -4,7 +4,29 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.42] - 2026-04-30
+## [0.22.46] - 2026-04-30
+
+### Chores
+
+- **deps:** Bump charmbracelet x/ansi v0.11.7 + colorprofile v0.4.3 (d09daaf)
+### Features
+
+- **playbooks:** Add 10xProductivity-style markdown playbook layer (d49230a)## [0.22.45] - 2026-04-30
+
+### Tests
+
+- **server:** Extend surface-drift to slash-command body references (9856982)## [0.22.44] - 2026-04-30
+
+### Features
+
+- **tools:** Expose `SourceRegistry` MCP tool for ecosystem discovery (20d4f6a)## [0.22.43] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.42 [skip ci] (1a8bf08)
+### Features
+
+- **cli:** Add `source registry` verb to probe the MCP Registry (cdecb8c)## [0.22.42] - 2026-04-30
 
 ### Features
 
