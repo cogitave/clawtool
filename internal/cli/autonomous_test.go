@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // stubDispatcher is the test seam for autonomous mode. It records
@@ -210,5 +212,197 @@ func TestAutonomous_StopsOnDone(t *testing.T) {
 	// Bonus: confirm iteration metadata flows into the prompt.
 	if !strings.Contains(stub.prompts[0], "iteration 1 of 10") {
 		t.Errorf("prompt should embed iteration metadata; got: %s", stub.prompts[0])
+	}
+}
+
+// writeFakeFinal emits a final.json with the given goal + iterations
+// run + stopped reason into <repo>/.clawtool/autonomous/. Returns
+// the absolute path so --resume can be pointed at it.
+func writeFakeFinal(t *testing.T, repo, goal, stoppedReason string, iterations int) string {
+	t.Helper()
+	dir := filepath.Join(repo, ".clawtool", "autonomous")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir final: %v", err)
+	}
+	path := filepath.Join(dir, "final.json")
+	body := map[string]any{
+		"goal":           goal,
+		"agent":          "claude",
+		"iterations":     iterations,
+		"stopped_reason": stoppedReason,
+		"finished":       false,
+	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatalf("write final.json: %v", err)
+	}
+	return path
+}
+
+// TestAutonomous_ResumeContinuesFromOffset — given a final.json with
+// iterations=3, --resume must dispatch the FIRST new tick at iter 4
+// and the dispatcher must see the prior goal verbatim.
+func TestAutonomous_ResumeContinuesFromOffset(t *testing.T) {
+	repo := onboardedRepo(t)
+	finalPath := writeFakeFinal(t, repo, "ship the parser", "max-iterations", 3)
+
+	stub := &stubDispatcher{defTick: Tick{Summary: "post-resume", Done: true}}
+	withStub(t, stub)
+	app, _, _, _ := newApp(t)
+	rc := app.Run([]string{
+		"autonomous",
+		"--workdir", repo,
+		"--cooldown", "0s",
+		"--max-iterations", "5",
+		"--resume", finalPath,
+	})
+	if rc != 0 {
+		t.Fatalf("resume exit = %d, want 0", rc)
+	}
+	if stub.calls != 1 {
+		t.Fatalf("dispatcher calls = %d, want 1 (done on first tick)", stub.calls)
+	}
+	// First new prompt must reference iter 4 of (3+5)=8.
+	got := stub.prompts[0]
+	if !strings.Contains(got, "iteration 4 of 8") {
+		t.Errorf("first resumed prompt should be iter 4 of 8; got: %s", got)
+	}
+	// Goal must be carried over from the prior final.json.
+	if !strings.Contains(got, "ship the parser") {
+		t.Errorf("resumed prompt should embed prior goal; got: %s", got)
+	}
+}
+
+// TestAutonomous_ResumeRejectsMalformedJSON — invalid JSON in the
+// referenced final.json must surface as a typed error and exit 1
+// without invoking the dispatcher.
+func TestAutonomous_ResumeRejectsMalformedJSON(t *testing.T) {
+	repo := onboardedRepo(t)
+	finalDir := filepath.Join(repo, ".clawtool", "autonomous")
+	if err := os.MkdirAll(finalDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	finalPath := filepath.Join(finalDir, "final.json")
+	if err := os.WriteFile(finalPath, []byte("{not-valid"), 0o644); err != nil {
+		t.Fatalf("write malformed final: %v", err)
+	}
+
+	stub := &stubDispatcher{}
+	withStub(t, stub)
+	app, _, errb, _ := newApp(t)
+	rc := app.Run([]string{
+		"autonomous",
+		"--workdir", repo,
+		"--cooldown", "0s",
+		"--resume", finalPath,
+	})
+	if rc != 1 {
+		t.Fatalf("malformed-resume exit = %d, want 1", rc)
+	}
+	if !strings.Contains(errb.String(), "malformed final.json") {
+		t.Errorf("stderr should pin malformed-final error; got %q", errb.String())
+	}
+	if stub.calls != 0 {
+		t.Errorf("dispatcher should not run on malformed final.json; got %d calls", stub.calls)
+	}
+}
+
+// TestAutonomous_ResumeAndGoalMutuallyExclusive — passing both a
+// positional <goal> and --resume must fail validation with exit 2.
+func TestAutonomous_ResumeAndGoalMutuallyExclusive(t *testing.T) {
+	repo := onboardedRepo(t)
+	finalPath := writeFakeFinal(t, repo, "anything", "done", 1)
+
+	stub := &stubDispatcher{}
+	withStub(t, stub)
+	app, _, errb, _ := newApp(t)
+	rc := app.Run([]string{
+		"autonomous",
+		"--workdir", repo,
+		"--cooldown", "0s",
+		"--resume", finalPath,
+		"some new goal",
+	})
+	if rc != 2 {
+		t.Fatalf("resume+goal exit = %d, want 2", rc)
+	}
+	if !strings.Contains(errb.String(), errResumeWithGoal.Error()) {
+		t.Errorf("stderr should pin resume-with-goal error; got %q", errb.String())
+	}
+	if stub.calls != 0 {
+		t.Errorf("dispatcher must not run on validation failure; got %d calls", stub.calls)
+	}
+}
+
+// TestAutonomous_WatchTailsTicks — write 2 fake tick files into a
+// tmp dir + a final.json, run --watch with a very-short poll cadence,
+// assert stdout shows both ticks and the loop exits 0.
+func TestAutonomous_WatchTailsTicks(t *testing.T) {
+	repo := onboardedRepo(t)
+	dir := filepath.Join(repo, ".clawtool", "autonomous")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	for i, summary := range []string{"first turn", "second turn"} {
+		t1 := Tick{Summary: summary, FilesChanged: []string{"a.go"}, Done: false}
+		b, _ := json.Marshal(t1)
+		if err := os.WriteFile(filepath.Join(dir, "tick-"+strconv.Itoa(i+1)+".json"), b, 0o644); err != nil {
+			t.Fatalf("write tick: %v", err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "final.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write final: %v", err)
+	}
+
+	// Crank the poll cadence down to 5ms so the test finishes
+	// instantly. Restore on cleanup.
+	prevPoll := watchPollInterval
+	watchPollInterval = 5 * time.Millisecond
+	t.Cleanup(func() { watchPollInterval = prevPoll })
+
+	app, out, _, _ := newApp(t)
+	rc := app.Run([]string{
+		"autonomous",
+		"--watch", repo,
+		"--watch-timeout", "2s",
+	})
+	if rc != 0 {
+		t.Fatalf("watch exit = %d, want 0; stdout=%s", rc, out.String())
+	}
+	got := out.String()
+	for _, want := range []string{
+		"[iter 1] first turn",
+		"[iter 2] second turn",
+		"final.json detected",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("watch stdout missing %q\n--- got ---\n%s", want, got)
+		}
+	}
+}
+
+// TestAutonomous_WatchAndGoalMutuallyExclusive — --watch + a positional
+// <goal> must fail validation with exit 2.
+func TestAutonomous_WatchAndGoalMutuallyExclusive(t *testing.T) {
+	repo := onboardedRepo(t)
+	stub := &stubDispatcher{}
+	withStub(t, stub)
+	app, _, errb, _ := newApp(t)
+	rc := app.Run([]string{
+		"autonomous",
+		"--watch", repo,
+		"some goal",
+	})
+	if rc != 2 {
+		t.Fatalf("watch+goal exit = %d, want 2", rc)
+	}
+	if !strings.Contains(errb.String(), errWatchWithGoal.Error()) {
+		t.Errorf("stderr should pin watch-with-goal error; got %q", errb.String())
+	}
+	if stub.calls != 0 {
+		t.Errorf("dispatcher must not run on validation failure; got %d calls", stub.calls)
 	}
 }

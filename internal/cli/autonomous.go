@@ -29,6 +29,8 @@ const autonomousUsage = `Usage:
   clawtool autonomous "<goal>" [--agent <instance>] [--max-iterations <N>]
                                [--cooldown <duration>] [--workdir <path>]
                                [--dry-run]
+  clawtool autonomous --resume <final.json> [flags]
+  clawtool autonomous --watch  <workdir>    [--watch-timeout <duration>]
 
   Run a self-paced single-message dev loop. The CLI builds a session
   prompt from <goal> + iteration metadata and dispatches it to the
@@ -47,6 +49,19 @@ Flags:
                            Default: cwd.
   --dry-run                Print the planned prompt + flags and exit
                            without dispatching.
+  --resume <final.json>    Continue a prior run: reads goal +
+                           iterations from the named final.json and
+                           dispatches a fresh loop starting at
+                           tick-(N+1).json. Mutually exclusive with
+                           a positional <goal> and with --watch.
+  --watch <workdir>        Tail-follow tick-*.json files written by an
+                           in-progress loop under
+                           <workdir>/.clawtool/autonomous/ and print
+                           one human-friendly line per new tick. Exits
+                           when final.json appears, the watch timeout
+                           fires, or the operator sends SIGINT.
+                           Mutually exclusive with <goal> and --resume.
+  --watch-timeout <dur>    Hard cap on --watch wall time. Default: 5m.
 
 Hint: pair with OnboardStatus + InitApply for "one message, full
 pipeline" — onboard the repo, install defaults, then hand the
@@ -101,21 +116,37 @@ type autonomousArgs struct {
 	cooldown      time.Duration
 	workdir       string
 	dryRun        bool
+	// resumePath: when non-empty, the loop is rehydrated from the
+	// named final.json (goal + iter offset). Mutually exclusive
+	// with a positional <goal> + with --watch.
+	resumePath string
+	// iterOffset: first new iteration is iterOffset+1. Set by --resume.
+	iterOffset int
+	// watchDir: when non-empty, the binary tail-follows tick-*.json
+	// under <watchDir>/.clawtool/autonomous/ instead of dispatching.
+	// Mutually exclusive with <goal> + --resume.
+	watchDir     string
+	watchTimeout time.Duration
 }
 
 func parseAutonomousArgs(argv []string) (autonomousArgs, error) {
-	out := autonomousArgs{agent: "claude", maxIterations: 10, cooldown: 5 * time.Minute}
+	out := autonomousArgs{agent: "claude", maxIterations: 10, cooldown: 5 * time.Minute, watchTimeout: 5 * time.Minute}
 	for i := 0; i < len(argv); i++ {
 		v := argv[i]
 		switch v {
-		case "--agent", "--workdir":
+		case "--agent", "--workdir", "--resume", "--watch":
 			if i+1 >= len(argv) {
 				return out, fmt.Errorf("%s requires a value", v)
 			}
-			if v == "--agent" {
+			switch v {
+			case "--agent":
 				out.agent = argv[i+1]
-			} else {
+			case "--workdir":
 				out.workdir = argv[i+1]
+			case "--resume":
+				out.resumePath = argv[i+1]
+			case "--watch":
+				out.watchDir = argv[i+1]
 			}
 			i++
 		case "--max-iterations":
@@ -128,15 +159,19 @@ func parseAutonomousArgs(argv []string) (autonomousArgs, error) {
 			}
 			out.maxIterations = n
 			i++
-		case "--cooldown":
+		case "--cooldown", "--watch-timeout":
 			if i+1 >= len(argv) {
-				return out, errors.New("--cooldown requires a value")
+				return out, fmt.Errorf("%s requires a value", v)
 			}
 			d, err := time.ParseDuration(argv[i+1])
 			if err != nil {
-				return out, fmt.Errorf("--cooldown: %w", err)
+				return out, fmt.Errorf("%s: %w", v, err)
 			}
-			out.cooldown = d
+			if v == "--cooldown" {
+				out.cooldown = d
+			} else {
+				out.watchTimeout = d
+			}
 			i++
 		case "--dry-run":
 			out.dryRun = true
@@ -162,6 +197,29 @@ func (a *App) runAutonomous(argv []string) int {
 		fmt.Fprintf(a.Stderr, "clawtool autonomous: %v\n\n%s", err, autonomousUsage)
 		return 2
 	}
+	// Mutual-exclusion gate. --watch is the cheapest case (no
+	// dispatcher, no onboard guardrail) so handle it after the
+	// validation block.
+	if err := validateAutonomousModes(args); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool autonomous: %v\n\n%s", err, autonomousUsage)
+		return 2
+	}
+	if args.watchDir != "" {
+		return a.runAutonomousWatch(args)
+	}
+	if args.resumePath != "" {
+		// Rehydrate goal + iter offset from the prior final.json.
+		// Validation already rejected --resume + positional goal.
+		hydrated, err := loadResumeState(args.resumePath)
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool autonomous: --resume: %v\n", err)
+			return 1
+		}
+		args.goal = hydrated.Goal
+		args.iterOffset = hydrated.Iterations
+		fmt.Fprintf(a.Stdout, "clawtool autonomous: resuming %q from iteration %d (prior stop: %s)\n",
+			args.goal, args.iterOffset+1, hydrated.StoppedReason)
+	}
 	if args.goal == "" {
 		fmt.Fprint(a.Stderr, "clawtool autonomous: missing <goal>\n\n"+autonomousUsage)
 		return 2
@@ -186,6 +244,67 @@ func (a *App) runAutonomous(argv []string) int {
 		return a.printAutonomousPlan(args)
 	}
 	return a.runAutonomousLoop(args)
+}
+
+// validateAutonomousModes pins the mutual-exclusion contract:
+//   - --watch is exclusive with <goal> and --resume
+//   - --resume is exclusive with <goal>
+//
+// Errors are returned typed so callers + tests can pattern-match.
+func validateAutonomousModes(args autonomousArgs) error {
+	if args.watchDir != "" {
+		if args.goal != "" {
+			return errWatchWithGoal
+		}
+		if args.resumePath != "" {
+			return errWatchWithResume
+		}
+	}
+	if args.resumePath != "" && args.goal != "" {
+		return errResumeWithGoal
+	}
+	return nil
+}
+
+var (
+	errResumeWithGoal  = errors.New("--resume and a positional <goal> are mutually exclusive")
+	errWatchWithGoal   = errors.New("--watch and a positional <goal> are mutually exclusive")
+	errWatchWithResume = errors.New("--watch and --resume are mutually exclusive")
+)
+
+// resumeState is the subset of final.json the resume flow needs.
+// We accept both `iterations` (current schema) and `iterations_run`
+// (forward-compat alias) so the operator can hand-edit either name.
+type resumeState struct {
+	Goal          string `json:"goal"`
+	Iterations    int    `json:"iterations"`
+	IterationsRun int    `json:"iterations_run,omitempty"`
+	StoppedReason string `json:"stopped_reason"`
+}
+
+// loadResumeState reads + validates a final.json off disk.
+func loadResumeState(path string) (resumeState, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return resumeState{}, fmt.Errorf("final.json not found at %s", path)
+	}
+	if err != nil {
+		return resumeState{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	var s resumeState
+	if err := json.Unmarshal(b, &s); err != nil {
+		return resumeState{}, fmt.Errorf("malformed final.json %s: %w", path, err)
+	}
+	if s.Goal == "" {
+		return resumeState{}, fmt.Errorf("malformed final.json %s: missing goal", path)
+	}
+	if s.IterationsRun > 0 && s.Iterations == 0 {
+		s.Iterations = s.IterationsRun
+	}
+	if s.Iterations < 0 {
+		return resumeState{}, fmt.Errorf("malformed final.json %s: iterations < 0", path)
+	}
+	return s, nil
 }
 
 func (a *App) printAutonomousPlan(args autonomousArgs) int {
@@ -249,16 +368,20 @@ func (a *App) runAutonomousLoop(args autonomousArgs) int {
 		stopped  string
 		finished bool
 	)
-	for i := 1; i <= args.maxIterations; i++ {
+	// iter is the absolute counter (so tick-N.json filenames stay
+	// monotonic across resume); local is the 1-based slot inside
+	// THIS dispatch (so max-iterations stays a per-call cap).
+	for local := 1; local <= args.maxIterations; local++ {
+		iter := args.iterOffset + local
 		if ctx.Err() != nil {
 			stopped = "interrupted"
 			break
 		}
-		prompt := buildSessionPrompt(args.goal, i, args.maxIterations, args.workdir)
-		fmt.Fprintf(a.Stdout, "  iteration %d/%d…\n", i, args.maxIterations)
-		tick, err := defaultDispatcher.Dispatch(ctx, args.agent, prompt, args.workdir, i)
+		prompt := buildSessionPrompt(args.goal, iter, args.iterOffset+args.maxIterations, args.workdir)
+		fmt.Fprintf(a.Stdout, "  iteration %d/%d…\n", iter, args.iterOffset+args.maxIterations)
+		tick, err := defaultDispatcher.Dispatch(ctx, args.agent, prompt, args.workdir, iter)
 		if err != nil {
-			fmt.Fprintf(a.Stderr, "  iteration %d errored: %v\n", i, err)
+			fmt.Fprintf(a.Stderr, "  iteration %d errored: %v\n", iter, err)
 			stopped = "error: " + err.Error()
 			break
 		}
@@ -269,7 +392,7 @@ func (a *App) runAutonomousLoop(args autonomousArgs) int {
 			stopped = "done"
 			break
 		}
-		if i < args.maxIterations && args.cooldown > 0 {
+		if local < args.maxIterations && args.cooldown > 0 {
 			select {
 			case <-ctx.Done():
 			case <-time.After(args.cooldown):
@@ -331,12 +454,130 @@ func writeFinal(tickDir string, args autonomousArgs, ticks []Tick, stoppedReason
 		FinishedAt    time.Time `json:"finished_at"`
 	}{
 		Goal: args.goal, Agent: args.agent, MaxIterations: args.maxIterations,
-		Iterations: len(ticks), StoppedReason: stoppedReason,
-		Finished: finished, Ticks: ticks, FinishedAt: time.Now().UTC(),
+		// Iterations counts cumulative work across resumes so the
+		// next --resume picks up at the correct offset.
+		Iterations:    args.iterOffset + len(ticks),
+		StoppedReason: stoppedReason,
+		Finished:      finished, Ticks: ticks, FinishedAt: time.Now().UTC(),
 	}
 	b, err := json.MarshalIndent(final, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(tickDir, "final.json"), b, 0o644)
+}
+
+// watchPollInterval is the cadence of the --watch tail-follow loop.
+// Exposed as a package-level var so tests can crank it down.
+var watchPollInterval = 2 * time.Second
+
+// runAutonomousWatch tails <watchDir>/.clawtool/autonomous/ and prints
+// one line per newly-appearing tick-*.json. It exits when final.json
+// lands, the wall-clock timeout (args.watchTimeout) fires, or the
+// operator sends SIGINT/SIGTERM. The tick directory does NOT need to
+// exist at start — the operator may invoke watch BEFORE the autonomous
+// run begins; the loop polls until the directory shows up.
+func (a *App) runAutonomousWatch(args autonomousArgs) int {
+	ctx, cancel := context.WithTimeout(context.Background(), args.watchTimeout)
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+	go func() {
+		select {
+		case <-sigCh:
+			fmt.Fprintln(a.Stderr, "clawtool autonomous --watch: interrupt received, stopping")
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	tickDir := filepath.Join(args.watchDir, ".clawtool", "autonomous")
+	finalPath := filepath.Join(tickDir, "final.json")
+	fmt.Fprintf(a.Stdout, "clawtool autonomous --watch: tailing %s (timeout %s, poll %s)\n",
+		tickDir, args.watchTimeout, watchPollInterval)
+
+	seen := map[int]bool{}
+	for {
+		// final.json lands the watch cleanly; return 0 so chat-side
+		// callers can chain on success.
+		if _, err := os.Stat(finalPath); err == nil {
+			a.printNewTicks(tickDir, seen)
+			fmt.Fprintln(a.Stdout, "clawtool autonomous --watch: final.json detected, stopping")
+			return 0
+		}
+		a.printNewTicks(tickDir, seen)
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				fmt.Fprintf(a.Stderr, "clawtool autonomous --watch: timeout after %s\n", args.watchTimeout)
+				return 1
+			}
+			return 0
+		case <-time.After(watchPollInterval):
+		}
+	}
+}
+
+// printNewTicks scans tickDir for tick-N.json files we haven't yet
+// reported and prints one human-friendly line per new entry. Missing
+// directory is treated as a no-op (the operator may invoke watch before
+// the autonomous run starts).
+func (a *App) printNewTicks(tickDir string, seen map[int]bool) {
+	entries, err := os.ReadDir(tickDir)
+	if err != nil {
+		return // dir not yet created — silently retry next poll
+	}
+	type entry struct {
+		iter int
+		path string
+	}
+	var fresh []entry
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, "tick-") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		nStr := strings.TrimSuffix(strings.TrimPrefix(name, "tick-"), ".json")
+		n, err := strconv.Atoi(nStr)
+		if err != nil || seen[n] {
+			continue
+		}
+		fresh = append(fresh, entry{iter: n, path: filepath.Join(tickDir, name)})
+	}
+	// Sort by iteration so output is monotonic even if readdir is
+	// not. (Linux ext4 returns insertion order; macOS APFS does not.)
+	for i := 0; i < len(fresh); i++ {
+		for j := i + 1; j < len(fresh); j++ {
+			if fresh[j].iter < fresh[i].iter {
+				fresh[i], fresh[j] = fresh[j], fresh[i]
+			}
+		}
+	}
+	for _, f := range fresh {
+		seen[f.iter] = true
+		t, err := readTickFromPath(f.path)
+		if err != nil {
+			fmt.Fprintf(a.Stdout, "[iter %d] (unreadable: %v)\n", f.iter, err)
+			continue
+		}
+		files := "none"
+		if len(t.FilesChanged) > 0 {
+			files = strings.Join(t.FilesChanged, ", ")
+		}
+		fmt.Fprintf(a.Stdout, "[iter %d] %s — files: %s\n", f.iter, t.Summary, files)
+	}
+}
+
+func readTickFromPath(path string) (Tick, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return Tick{}, err
+	}
+	var t Tick
+	if err := json.Unmarshal(b, &t); err != nil {
+		return Tick{}, err
+	}
+	return t, nil
 }
