@@ -324,6 +324,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runEgress(argv[1:])
 	case "claude-bootstrap":
 		return a.runClaudeBootstrap(argv[1:])
+	case "bootstrap":
+		return a.runBootstrap(argv[1:])
 	case "apm":
 		return a.runApm(argv[1:])
 	case "playbook":
@@ -566,6 +568,14 @@ Usage:
                             --max-iterations is hit, or Ctrl-C. Hint: pair
                             with OnboardStatus + InitApply for "one
                             message, full pipeline".
+  clawtool bootstrap [--agent <family>] [--workdir <path>] [--dry-run]
+                            Zero-click onboarding. Spawns the chosen BIAM
+                            peer's CLI with its elevation flag, pipes a
+                            bootstrap prompt that asks the agent to run
+                            OnboardWizard + InitApply via MCP, and streams
+                            the agent's reply back. Default agent: claude.
+                            Pair with 'clawtool install' for hands-off
+                            setup of a fresh repo.
   clawtool agent use <i>    Set the sticky default agent (singular
                             'agent' = relay runtime; plural 'agents' =
                             adapter ownership for native tool replacement).

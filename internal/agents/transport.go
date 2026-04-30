@@ -285,3 +285,36 @@ func joinModel(model string, flag string) []string {
 	}
 	return []string{flag, model}
 }
+
+// elevationFlags is the canonical per-family elevation flag map
+// (ADR-023). When a transport's SendOptions.Unattended is true the
+// listed flag is appended to the upstream CLI's argv so the agent
+// runs without per-tool approval prompts. The flag must match what
+// each upstream's published headless mode advertises — see the
+// individual transport files for the inline justifications.
+//
+// This is the single source of truth: per-family transports read
+// it via this map (through the public ElevationFlag below), the
+// transport_unattended_test.go regression suite cross-checks each
+// transport against it, and `clawtool bootstrap` consumes it to
+// pick the right elevation flag when spawning an agent's CLI for
+// the zero-click onboarding flow.
+var elevationFlags = map[string]string{
+	"codex":    "--dangerously-bypass-approvals-and-sandbox",
+	"claude":   "--dangerously-skip-permissions",
+	"gemini":   "--yolo",
+	"opencode": "--yolo",
+	"hermes":   "--yolo",
+	"aider":    "--yes-always",
+}
+
+// ElevationFlag returns the per-family elevation flag (the argv
+// token that disables interactive tool-approval prompts) for the
+// named BIAM peer. Empty string means the family has no published
+// elevation flag — caller should treat that as "agent cannot run
+// unattended" and fall back to interactive mode.
+//
+// Stable family names: claude, codex, gemini, opencode, hermes, aider.
+func ElevationFlag(family string) string {
+	return elevationFlags[family]
+}

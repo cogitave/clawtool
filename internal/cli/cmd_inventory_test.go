@@ -60,6 +60,7 @@ var inventoryFallbackVerbs = []string{
 	"sandbox-worker",
 	"egress",
 	"claude-bootstrap",
+	"bootstrap",
 	"version",
 	"help",
 }

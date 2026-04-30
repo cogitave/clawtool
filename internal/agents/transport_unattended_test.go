@@ -111,20 +111,21 @@ var argsBuildersForTest = []transportArgs{
 }
 
 func TestTransportArgs_UnattendedAddsElevationFlag(t *testing.T) {
-	wantFlag := map[string]string{
-		"codex":    "--dangerously-bypass-approvals-and-sandbox",
-		"claude":   "--dangerously-skip-permissions",
-		"gemini":   "--yolo",
-		"opencode": "--yolo",
-		"hermes":   "--yolo",
-		"aider":    "--yes-always",
-	}
+	// Pull the canonical map via the public ElevationFlag helper so
+	// `clawtool bootstrap` (which spawns peers with the same flag)
+	// and the per-transport Send methods share a single source of
+	// truth. A diff here means transport.go's elevationFlags map
+	// needs the matching update — never patch the test in isolation.
 	for _, tb := range argsBuildersForTest {
 		t.Run(tb.name, func(t *testing.T) {
+			want := ElevationFlag(tb.name)
+			if want == "" {
+				t.Fatalf("%s: ElevationFlag returned empty; transport.go map missing entry", tb.name)
+			}
 			args := tb.build("test prompt", SendOptions{Unattended: true})
 			joined := strings.Join(args, " ")
-			if !strings.Contains(joined, wantFlag[tb.name]) {
-				t.Errorf("%s: unattended args missing %q. got: %v", tb.name, wantFlag[tb.name], args)
+			if !strings.Contains(joined, want) {
+				t.Errorf("%s: unattended args missing %q. got: %v", tb.name, want, args)
 			}
 		})
 	}
