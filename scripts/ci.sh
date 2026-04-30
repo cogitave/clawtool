@@ -167,6 +167,9 @@ else
         run_stage e2e-onboard env CLAWTOOL_E2E_DOCKER=1 "$GO_BIN" test -count=1 -timeout=300s ./test/e2e/onboard/... || true
         run_stage e2e-upgrade env CLAWTOOL_E2E_DOCKER=1 "$GO_BIN" test -count=1 -timeout=300s ./test/e2e/upgrade/... || true
         run_stage e2e-realinstall env CLAWTOOL_E2E_DOCKER=1 "$GO_BIN" test -count=1 -timeout=300s ./test/e2e/realinstall/... || true
+        # Bootstrap fixture: skips cleanly until the bootstrap verb
+        # lands on this branch. Same docker gate as the others.
+        run_stage e2e-bootstrap env CLAWTOOL_E2E_DOCKER=1 "$GO_BIN" test -count=1 -timeout=300s ./test/e2e/bootstrap/... || true
 
         # Docker image build + MCP initialize handshake. Same target
         # the Makefile's docker-smoke runs.
