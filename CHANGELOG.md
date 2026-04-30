@@ -4,7 +4,26 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.72] - 2026-04-30
+## [0.22.76] - 2026-04-30
+
+### Features
+
+- **cli:** Add 'bootstrap' verb spawning chosen agent + auto-running init from chat (db8ebd1)## [0.22.75] - 2026-04-30
+
+### Features
+
+- **rules:** Add guardians taint+Z3 pre_send predicate (phase 1 stub) (ff76b0e)## [0.22.74] - 2026-04-30
+
+### Features
+
+- **cli:** Add 'autonomous --resume' + '--watch' for chat-driven loop continuity (4518cac)## [0.22.73] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.72 [skip ci] (da7a6b3)
+### Features
+
+- **recipes:** Add clawtool-autonomous-loop SKILL.md teaching tick.json contract (2df7512)## [0.22.72] - 2026-04-30
 
 ### Features
 
