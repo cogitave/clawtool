@@ -99,6 +99,15 @@ var argsBuildersForTest = []transportArgs{
 		args = append(args, o.ExtraArgs...)
 		return args
 	}},
+	{"aider", func(prompt string, o SendOptions) []string {
+		args := []string{"--message", prompt, "--no-stream", "--no-pretty"}
+		args = append(args, joinModel(o.Model, "--model")...)
+		if o.Unattended {
+			args = append(args, "--yes-always")
+		}
+		args = append(args, o.ExtraArgs...)
+		return args
+	}},
 }
 
 func TestTransportArgs_UnattendedAddsElevationFlag(t *testing.T) {
@@ -108,6 +117,7 @@ func TestTransportArgs_UnattendedAddsElevationFlag(t *testing.T) {
 		"gemini":   "--yolo",
 		"opencode": "--yolo",
 		"hermes":   "--yolo",
+		"aider":    "--yes-always",
 	}
 	for _, tb := range argsBuildersForTest {
 		t.Run(tb.name, func(t *testing.T) {
