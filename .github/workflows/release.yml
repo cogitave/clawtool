@@ -37,6 +37,19 @@ jobs:
         env:
           OUTPUT: BODY.md
 
+      - name: Reset working tree before goreleaser
+        # The git-cliff-action above runs `git-cliff --bump --output CHANGELOG.md`
+        # under the hood when OUTPUT env is set, leaving CHANGELOG.md dirty.
+        # Goreleaser does an internal `git checkout` and refuses on dirty trees.
+        # Stash + drop everything except BODY.md so the tag's commit is the
+        # exact source of truth.
+        run: |
+          set -euo pipefail
+          git stash push --include-untracked -- ':!BODY.md' || true
+          # Drop the stash — we only needed it gone before goreleaser ran.
+          # CHANGELOG regen later in this workflow re-derives it from cliff.
+          git stash drop || true
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
