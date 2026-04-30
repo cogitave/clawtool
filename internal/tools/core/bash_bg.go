@@ -182,13 +182,20 @@ func SubmitBackgroundBash(parent context.Context, command, cwd string, timeoutMs
 
 	// Wait for the process in a goroutine so Submit returns now.
 	go func() {
-		err := cmd.Wait()
-		// Block until both drain goroutines have flushed every byte
-		// the OS pipe held. Without this join, cmd.Wait can return
-		// (and we can flip status to terminal) while the drainers
-		// are still mid-Read, so a poll racing the goroutine sees
-		// status=done with empty stdout/stderr.
+		// Drain ordering matters. The os/exec docs are explicit:
+		//   "Wait will close the pipe after seeing the command
+		//    exit. It is incorrect to call Wait before all reads
+		//    from the pipe have completed."
+		// Calling cmd.Wait first races: under load (CI runners
+		// with -race), Wait can close the parent pipe end before
+		// drainPipe's last Read returns, dropping bytes. Symptom:
+		// "stdout = ''" on commands that wrote output. drainWG
+		// completes naturally when the child closes its stdout/
+		// stderr fds at exit, so waiting on drainWG first is the
+		// canonical pattern; cmd.Wait then just collects the
+		// exit code without touching the pipes.
 		drainWG.Wait()
+		err := cmd.Wait()
 		task.mu.Lock()
 		task.FinishedAt = time.Now()
 		if err != nil {
