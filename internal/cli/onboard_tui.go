@@ -738,16 +738,74 @@ func (m *onboardModel) View() string {
 	return lipgloss.NewStyle().Padding(2, 1, 1, 1).Render(stack)
 }
 
+// renderShimmerLogo paints the clawtool ASCII brand mark with a
+// gradient highlight band that sweeps left-to-right across the
+// glyph rows once per cycle. Three colour stops form the band:
+// `225` (almost white) at the centre column, `219` (bright pink)
+// one column either side, `213` (medium pink) two columns out,
+// and the base accent `212` everywhere else. The result is a
+// soft "shine" passing through the logo every ~3-4 seconds —
+// the wizard's primary visible animation.
+func (m *onboardModel) renderShimmerLogo() string {
+	rows := strings.Split(clawtoolLogo, "\n")
+	if len(rows) == 0 {
+		return ""
+	}
+	maxLen := 0
+	for _, row := range rows {
+		if l := len([]rune(row)); l > maxLen {
+			maxLen = l
+		}
+	}
+	if maxLen == 0 {
+		return clawtoolLogo
+	}
+	// Sweep from -2 (band starts off-screen left) to maxLen + 2
+	// (band ends off-screen right). Add a quiet pause of 8 extra
+	// frames after each sweep so the logo isn't constantly
+	// shimmering — the eye gets a beat to rest.
+	sweepLen := maxLen + 4 + 8
+	pos := (m.frame % sweepLen) - 2
+
+	colors := func(distance int) string {
+		switch {
+		case distance == 0:
+			return "225"
+		case distance == 1 || distance == -1:
+			return "219"
+		case distance == 2 || distance == -2:
+			return "213"
+		default:
+			return "212"
+		}
+	}
+
+	var out []string
+	for _, row := range rows {
+		runes := []rune(row)
+		var b strings.Builder
+		for i, r := range runes {
+			if r == ' ' {
+				b.WriteRune(' ')
+				continue
+			}
+			b.WriteString(lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color(colors(i - pos))).
+				Render(string(r)))
+		}
+		out = append(out, b.String())
+	}
+	return strings.Join(out, "\n")
+}
+
 // renderHeader renders the wizard banner: a 3-line ASCII logo on
 // the left, a stacked metadata column (tagline / credit / email)
 // on the right separated by a small gap, and a row of filled-
 // background detection pills below. Centred horizontally so it
 // shares an axis with the wizard card beneath it.
 func (m *onboardModel) renderHeader(w int) string {
-	logo := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("212")).
-		Render(clawtoolLogo)
+	logo := m.renderShimmerLogo()
 
 	tagline := lipgloss.NewStyle().
 		Bold(true).
@@ -813,15 +871,7 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 	cur := m.visibleStepNumber()
 	total := m.totalVisibleSteps()
 
-	// Braille spinner — classic TUI "live" indicator. The spinner
-	// glyph rotates every animation frame so the wizard feels
-	// alive while the operator reads the question.
-	spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	spinnerGlyph := spinnerFrames[m.frame%len(spinnerFrames)]
-	spinnerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-
-	indicator := spinnerStyle.Render(spinnerGlyph) + "  " +
-		m.style.dim.Render(fmt.Sprintf("Step %d of %d", cur, total)) +
+	indicator := m.style.dim.Render(fmt.Sprintf("Step %d of %d", cur, total)) +
 		m.style.dim.Render("  ·  ") +
 		m.style.sectionTitle.Render(step.title)
 
