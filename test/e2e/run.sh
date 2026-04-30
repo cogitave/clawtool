@@ -50,22 +50,22 @@ list_response=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   | mcp_session)
 
-echo "$list_response" | grep -q '"name":"clawtool"' \
+grep -q '"name":"clawtool"' <<<"$list_response" \
   || fail "initialize: serverInfo.name != clawtool"
 pass "initialize: serverInfo reports clawtool"
 
-echo "$list_response" | grep -q '"name":"Bash"' \
+grep -q '"name":"Bash"' <<<"$list_response" \
   || fail "tools/list: Bash tool missing"
 pass "tools/list: Bash tool registered (PascalCase per ADR-006)"
 
 for t in Glob ToolSearch WebFetch WebSearch Edit Write SendMessage AgentList BridgeList BridgeAdd BridgeRemove BridgeUpgrade Verify SemanticSearch TaskGet TaskWait TaskList; do
-  if ! echo "$list_response" | grep -q "\"name\":\"$t\""; then
+  if ! grep -q "\"name\":\"$t\"" <<<"$list_response"; then
     fail "tools/list: $t missing"
   fi
   pass "tools/list: $t registered"
 done
 
-echo "$list_response" | grep -q '"required":\["command"\]' \
+grep -q '"required":\["command"\]' <<<"$list_response" \
   || fail "tools/list: Bash inputSchema missing required:[command]"
 pass "tools/list: Bash inputSchema enforces required:[command]"
 
@@ -78,15 +78,15 @@ call_response=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Bash","arguments":{"command":"printf clawtool"}}}' \
   | mcp_session)
 
-echo "$call_response" | grep -qF '"stdout":"clawtool"' \
+grep -qF '"stdout":"clawtool"' <<<"$call_response" \
   || fail "Bash success: stdout != 'clawtool' — got: $call_response"
 pass "Bash success: stdout captured exactly"
 
-echo "$call_response" | grep -qF '"exit_code":0' \
+grep -qF '"exit_code":0' <<<"$call_response" \
   || fail "Bash success: exit_code != 0"
 pass "Bash success: exit_code == 0"
 
-echo "$call_response" | grep -qF '"timed_out":false' \
+grep -qF '"timed_out":false' <<<"$call_response" \
   || fail "Bash success: timed_out != false"
 pass "Bash success: timed_out == false"
 
@@ -99,15 +99,15 @@ fail_response=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Bash","arguments":{"command":"echo first; echo bad >&2; exit 7"}}}' \
   | mcp_session)
 
-echo "$fail_response" | grep -qF '"exit_code":7' \
+grep -qF '"exit_code":7' <<<"$fail_response" \
   || fail "Bash non-zero: exit_code != 7"
 pass "Bash non-zero: exit_code propagated"
 
-echo "$fail_response" | grep -qF '"stdout":"first' \
+grep -qF '"stdout":"first' <<<"$fail_response" \
   || fail "Bash non-zero: stdout dropped"
 pass "Bash non-zero: stdout preserved before failure"
 
-echo "$fail_response" | grep -qF '"stderr":"bad' \
+grep -qF '"stderr":"bad' <<<"$fail_response" \
   || fail "Bash non-zero: stderr missing"
 pass "Bash non-zero: stderr preserved"
 
@@ -120,15 +120,15 @@ to_response=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Bash","arguments":{"command":"echo before; sleep 5; echo never","timeout_ms":300}}}' \
   | mcp_session)
 
-echo "$to_response" | grep -qF '"timed_out":true' \
+grep -qF '"timed_out":true' <<<"$to_response" \
   || fail "Bash timeout: timed_out != true"
 pass "Bash timeout: timed_out == true"
 
-echo "$to_response" | grep -qF '"stdout":"before' \
+grep -qF '"stdout":"before' <<<"$to_response" \
   || fail "Bash timeout: pre-timeout stdout dropped"
 pass "Bash timeout: stdout preserved up to the deadline"
 
-if echo "$to_response" | grep -qF '"never"'; then
+if grep -qF '"never"' <<<"$to_response"; then
   fail "Bash timeout: post-timeout output leaked into stdout"
 fi
 pass "Bash timeout: post-timeout output correctly suppressed"
@@ -152,11 +152,11 @@ list2=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   | mcp_session)
 
-echo "$list2" | grep -q '"name":"Grep"' \
+grep -q '"name":"Grep"' <<<"$list2" \
   || fail "tools/list: Grep tool missing"
 pass "tools/list: Grep registered"
 
-echo "$list2" | grep -q '"name":"Read"' \
+grep -q '"name":"Read"' <<<"$list2" \
   || fail "tools/list: Read tool missing"
 pass "tools/list: Read registered"
 
@@ -169,16 +169,16 @@ grep_response=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Grep","arguments":{"pattern":"clawtool","path":"README.md","cwd":"%s"}}}' "$REPO_ROOT")" \
   | mcp_session)
 
-echo "$grep_response" | grep -qF '"engine":"ripgrep"' \
+grep -qF '"engine":"ripgrep"' <<<"$grep_response" \
   || fail "Grep: engine != ripgrep — got: $grep_response"
 pass "Grep: engine == ripgrep (preferred when present)"
 
-echo "$grep_response" | grep -qF '"matches_count":' \
+grep -qF '"matches_count":' <<<"$grep_response" \
   || fail "Grep: matches_count missing"
 pass "Grep: matches_count present in response"
 
 # At least one match for 'clawtool' in README must be reported.
-if ! echo "$grep_response" | grep -qF '"text":"' ; then
+if ! grep -qF '"text":"' <<<"$grep_response" ; then
   fail "Grep: no matches text in response — got: $grep_response"
 fi
 pass "Grep: at least one match returned"
@@ -192,23 +192,23 @@ read_response=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"README.md","line_start":1,"line_end":3,"cwd":"%s"}}}' "$REPO_ROOT")" \
   | mcp_session)
 
-echo "$read_response" | grep -qF '"format":"text"' \
+grep -qF '"format":"text"' <<<"$read_response" \
   || fail "Read: format != text"
 pass "Read: format == text"
 
-echo "$read_response" | grep -qF '"engine":"stdlib"' \
+grep -qF '"engine":"stdlib"' <<<"$read_response" \
   || fail "Read: engine != stdlib"
 pass "Read: engine == stdlib"
 
-echo "$read_response" | grep -qF '"line_end":3' \
+grep -qF '"line_end":3' <<<"$read_response" \
   || fail "Read: line_end != 3 (range honored)"
 pass "Read: line range honored (line_end=3)"
 
-echo "$read_response" | grep -qF '"total_lines":' \
+grep -qF '"total_lines":' <<<"$read_response" \
   || fail "Read: total_lines missing"
 pass "Read: total_lines reported"
 
-echo "$read_response" | grep -qF 'clawtool' \
+grep -qF 'clawtool' <<<"$read_response" \
   || fail "Read: README content missing"
 pass "Read: README content captured"
 
@@ -249,16 +249,16 @@ list_with_proxy=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
-echo "$list_with_proxy" | grep -q '"name":"Bash"' \
+grep -q '"name":"Bash"' <<<"$list_with_proxy" \
   || fail "proxy: core Bash missing from tools/list"
 pass "proxy: core Bash still present alongside source tools"
 
-echo "$list_with_proxy" | grep -q '"name":"stub__echo"' \
+grep -q '"name":"stub__echo"' <<<"$list_with_proxy" \
   || fail "proxy: stub__echo not aggregated — got: $list_with_proxy"
 pass "proxy: stub__echo aggregated under wire-form name (ADR-006)"
 
 # 8b. Wire-form name parsing: clawtool exposes 'stub__echo' (two underscores)
-echo "$list_with_proxy" | grep -qE '"name":"stub_echo"' \
+grep -qE '"name":"stub_echo"' <<<"$list_with_proxy" \
   && fail "proxy: tool wire-name uses single underscore (ADR-006 requires __)"
 pass "proxy: wire-name uses double underscore separator"
 
@@ -269,7 +269,7 @@ call_response=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"stub__echo","arguments":{"text":"e2e-proxy"}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
-echo "$call_response" | grep -qF 'echo:e2e-proxy' \
+grep -qF 'echo:e2e-proxy' <<<"$call_response" \
   || fail "proxy: tools/call did not return echoed text — got: $call_response"
 pass "proxy: tools/call routed to child and child's response returned"
 
@@ -297,12 +297,12 @@ list_no_bash=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
-if echo "$list_no_bash" | grep -q '"name":"Bash"' ; then
+if grep -q '"name":"Bash"' <<<"$list_no_bash" ; then
   fail "proxy: Bash present despite core_tools.Bash.enabled=false"
 fi
 pass "proxy: disabled core tool correctly absent from tools/list"
 
-echo "$list_no_bash" | grep -q '"name":"stub__echo"' \
+grep -q '"name":"stub__echo"' <<<"$list_no_bash" \
   || fail "proxy: stub__echo missing when Bash disabled"
 pass "proxy: source tool unaffected by core-tool disable"
 
@@ -336,7 +336,7 @@ search_grep=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"search file contents regex","limit":3}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
-echo "$search_grep" | grep -qF '"engine":"bleve-bm25"' \
+grep -qF '"engine":"bleve-bm25"' <<<"$search_grep" \
   || fail "ToolSearch: engine != bleve-bm25"
 pass "ToolSearch: engine == bleve-bm25"
 
@@ -370,7 +370,7 @@ search_core=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ToolSearch","arguments":{"query":"echo","type":"core","limit":5}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
-if echo "$search_core" | grep -qF '"name":"stub__echo"' ; then
+if grep -qF '"name":"stub__echo"' <<<"$search_core" ; then
   fail "ToolSearch type=core: leaked sourced tool stub__echo"
 fi
 pass "ToolSearch: type=core filter excludes sourced tools"
@@ -384,15 +384,15 @@ glob_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Glob","arguments":{"pattern":"**/*.md","cwd":"%s","limit":50}}}' "$REPO_ROOT")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 15 "$BIN" serve 2>/dev/null)
 
-echo "$glob_resp" | grep -qE '"engine":"doublestar(\+git-ls-files)?"' \
+grep -qE '"engine":"doublestar(\+git-ls-files)?"' <<<"$glob_resp" \
   || fail "Glob: engine != doublestar(+git-ls-files)"
 pass "Glob: engine matches doublestar variant (with optional git-ls-files suffix when cwd is a worktree, ADR-021 phase B)"
 
-echo "$glob_resp" | grep -qF 'README.md' \
+grep -qF 'README.md' <<<"$glob_resp" \
   || fail "Glob: README.md not in matches"
 pass "Glob: README.md found via **/*.md"
 
-echo "$glob_resp" | grep -qF '"matches_count":' \
+grep -qF '"matches_count":' <<<"$glob_resp" \
   || fail "Glob: matches_count missing"
 pass "Glob: matches_count present"
 
@@ -424,20 +424,20 @@ html_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$HTMLFX")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$html_resp" | grep -qF '"format":"html"' \
+grep -qF '"format":"html"' <<<"$html_resp" \
   || fail "Read HTML: format != html — got: $html_resp"
 pass "Read HTML: format == html"
 
-echo "$html_resp" | grep -qF '"engine":"go-readability"' \
+grep -qF '"engine":"go-readability"' <<<"$html_resp" \
   || fail "Read HTML: engine != go-readability"
 pass "Read HTML: engine == go-readability"
 
-echo "$html_resp" | grep -qF 'readability extractor' \
+grep -qF 'readability extractor' <<<"$html_resp" \
   || fail "Read HTML: article body missing"
 pass "Read HTML: article body preserved"
 
 # Nav clutter must be stripped.
-if echo "$html_resp" | grep -qF 'Subscribe Now'; then
+if grep -qF 'Subscribe Now' <<<"$html_resp"; then
   fail "Read HTML: nav clutter leaked through (Subscribe Now)"
 fi
 pass "Read HTML: nav clutter correctly stripped"
@@ -451,19 +451,19 @@ csv_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$CSVFX")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$csv_resp" | grep -qF '"format":"csv"' \
+grep -qF '"format":"csv"' <<<"$csv_resp" \
   || fail "Read CSV: format != csv"
 pass "Read CSV: format == csv"
 
-echo "$csv_resp" | grep -qF '"engine":"csv-stdlib"' \
+grep -qF '"engine":"csv-stdlib"' <<<"$csv_resp" \
   || fail "Read CSV: engine != csv-stdlib"
 pass "Read CSV: engine == csv-stdlib"
 
-echo "$csv_resp" | grep -qF 'columns (3): name | city | score' \
+grep -qF 'columns (3): name | city | score' <<<"$csv_resp" \
   || fail "Read CSV: header preview missing"
 pass "Read CSV: header preview rendered"
 
-echo "$csv_resp" | grep -qF 'alpha | Istanbul | 42' \
+grep -qF 'alpha | Istanbul | 42' <<<"$csv_resp" \
   || fail "Read CSV: data row missing"
 pass "Read CSV: data row rendered"
 
@@ -477,7 +477,7 @@ webfetch_bad=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"WebFetch","arguments":{"url":"ftp://example.com/file"}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$webfetch_bad" | grep -qF 'http://' \
+grep -qF 'http://' <<<"$webfetch_bad" \
   || fail "WebFetch: error_reason missing scheme hint"
 pass "WebFetch: rejects non-http(s) scheme with structured reason"
 
@@ -488,7 +488,7 @@ websearch_noauth=$(env -u BRAVE_API_KEY printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"WebSearch","arguments":{"query":"go programming"}}}' \
   | env -u BRAVE_API_KEY XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$websearch_noauth" | grep -qF 'BRAVE_API_KEY' \
+grep -qF 'BRAVE_API_KEY' <<<"$websearch_noauth" \
   || fail "WebSearch: missing-key error should mention BRAVE_API_KEY"
 pass "WebSearch: missing-key error guides user to BRAVE_API_KEY"
 
@@ -503,7 +503,7 @@ write_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Write","arguments":{"path":"%s","content":"hello\\nworld\\n"}}}' "$WFILE")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$write_resp" | grep -qF '"created":true' \
+grep -qF '"created":true' <<<"$write_resp" \
   || fail "Write: created flag missing/false on fresh file"
 pass "Write: created==true on fresh file"
 
@@ -518,7 +518,7 @@ edit_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"hello","new_string":"HOWDY"}}}' "$WFILE")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$edit_resp" | grep -qF '"replaced":true' \
+grep -qF '"replaced":true' <<<"$edit_resp" \
   || fail "Edit: replaced flag missing/false"
 pass "Edit: replaced==true after substitution"
 
@@ -535,7 +535,7 @@ ambig_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"dup line","new_string":"X"}}}' "$WFILE")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$ambig_resp" | grep -qF 'appears 2 times' \
+grep -qF 'appears 2 times' <<<"$ambig_resp" \
   || fail "Edit: should refuse ambiguous match — got: $ambig_resp"
 pass "Edit: refuses ambiguous match (suggests replace_all)"
 
@@ -551,7 +551,7 @@ recipe_list_resp=$(printf '%s\n%s\n%s\n' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 for t in RecipeList RecipeStatus RecipeApply SkillNew; do
-  echo "$recipe_list_resp" | grep -q "\"name\":\"$t\"" \
+  grep -q "\"name\":\"$t\"" <<<"$recipe_list_resp" \
     || fail "tools/list: $t missing"
   pass "tools/list: $t registered"
 done
@@ -568,7 +568,7 @@ list_resp=$(printf '%s\n%s\n%s\n' \
 # JSONRPC envelope's serverInfo.name doesn't leak into the match.
 recipe_payload=$(echo "$list_resp" | grep structuredContent)
 for r in conventional-commits-ci license codeowners dependabot release-please goreleaser agent-claim brain gh-actions-test prettier golangci-lint devcontainer caveman superclaude claude-flow codex-bridge gemini-bridge opencode-bridge clawtool-relay; do
-  echo "$recipe_payload" | grep -qF "\"name\":\"$r\"" \
+  grep -qF "\"name\":\"$r\"" <<<"$recipe_payload" \
     || fail "RecipeList: recipe $r missing"
 done
 pass "RecipeList: all v0.11 recipes present (incl. ADR-014 bridges + clawtool-relay runtime)"
@@ -576,7 +576,7 @@ pass "RecipeList: all v0.11 recipes present (incl. ADR-014 bridges + clawtool-re
 # Category strings are part of the v1.0 contract — every category
 # now has at least one recipe, so all 9 must surface.
 for c in governance commits release ci quality supply-chain knowledge agents runtime; do
-  echo "$recipe_payload" | grep -qF "\"category\":\"$c\"" \
+  grep -qF "\"category\":\"$c\"" <<<"$recipe_payload" \
     || fail "RecipeList: category $c missing"
 done
 pass "RecipeList: all 9 categories surfaced (the v1.0 taxonomy contract)"
@@ -591,7 +591,7 @@ status_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeStatus","arguments":{"name":"conventional-commits-ci","repo":"%s"}}}' "$RECIPE_TMP")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$status_resp" | grep structuredContent | grep -qF '"status":"absent"' \
+grep -qF '"status":"absent"' <<<"$(grep structuredContent <<<"$status_resp")" \
   || fail "RecipeStatus: empty tempdir should report status=absent — got: $status_resp"
 pass "RecipeStatus: empty tempdir → status=absent for conventional-commits-ci"
 
@@ -602,7 +602,7 @@ apply_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeApply","arguments":{"name":"conventional-commits-ci","repo":"%s"}}}' "$RECIPE_TMP")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$apply_resp" | grep structuredContent | grep -qF '"verify_ok":true' \
+grep -qF '"verify_ok":true' <<<"$(grep structuredContent <<<"$apply_resp")" \
   || fail "RecipeApply: verify_ok != true — got: $apply_resp"
 pass "RecipeApply: verify_ok=true after applying conventional-commits-ci"
 
@@ -621,7 +621,7 @@ status2_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeStatus","arguments":{"name":"conventional-commits-ci","repo":"%s"}}}' "$RECIPE_TMP")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$status2_resp" | grep structuredContent | grep -qF '"status":"applied"' \
+grep -qF '"status":"applied"' <<<"$(grep structuredContent <<<"$status2_resp")" \
   || fail "RecipeStatus: post-Apply status != applied"
 pass "RecipeStatus: post-Apply status=applied"
 
@@ -632,7 +632,7 @@ bad_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"RecipeApply","arguments":{"name":"not-a-real-recipe","repo":"%s"}}}' "$RECIPE_TMP")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$bad_resp" | grep -qF "unknown recipe" \
+grep -qF "unknown recipe" <<<"$bad_resp" \
   || fail "RecipeApply: unknown name should surface 'unknown recipe' message"
 pass "RecipeApply: unknown name yields actionable error"
 
@@ -649,7 +649,7 @@ bridge_list_resp=$(printf '%s\n%s\n%s\n' \
 
 bridge_payload=$(echo "$bridge_list_resp" | grep structuredContent)
 for fam in codex opencode gemini; do
-  echo "$bridge_payload" | grep -qF "\"family\":\"$fam\"" \
+  grep -qF "\"family\":\"$fam\"" <<<"$bridge_payload" \
     || fail "BridgeList: family $fam missing"
 done
 pass "BridgeList: codex+opencode+gemini families present"
@@ -661,7 +661,7 @@ bad_bridge=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"BridgeAdd","arguments":{"family":"ghost"}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$bad_bridge" | grep -qF "unknown family" \
+grep -qF "unknown family" <<<"$bad_bridge" \
   || fail "BridgeAdd: unknown family should surface 'unknown family' error"
 pass "BridgeAdd: unknown family yields actionable error"
 
@@ -675,7 +675,7 @@ agent_list_resp=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"AgentList","arguments":{}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$agent_list_resp" | grep structuredContent | grep -qF '"agents":' \
+grep -qF '"agents":' <<<"$(grep structuredContent <<<"$agent_list_resp")" \
   || fail "AgentList: structuredContent should carry an agents array"
 pass "AgentList: structured snapshot returned"
 
@@ -688,7 +688,7 @@ send_resp=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"SendMessage","arguments":{"prompt":"hello","agent":"ghost-instance"}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$send_resp" | grep -qE "not found|no callable|not callable|bridge add" \
+grep -qE "not found|no callable|not callable|bridge add" <<<"$send_resp" \
   || fail "SendMessage: ghost instance should surface a resolution / bridge-missing error — got: $send_resp"
 pass "SendMessage: actionable error when target unreachable"
 
@@ -699,7 +699,7 @@ tag_resp=$(printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"SendMessage","arguments":{"prompt":"hi","tag":"non-existent-tag"}}}' \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
-echo "$tag_resp" | grep -qE "carries tag|no callable" \
+grep -qE "carries tag|no callable" <<<"$tag_resp" \
   || fail "SendMessage tag-routed: unknown tag should surface 'no callable instance carries tag' — got: $tag_resp"
 pass "SendMessage: tag-routed dispatch errors actionably on unknown tag (Phase 4)"
 
@@ -744,13 +744,13 @@ pass "/v1/health: rejects requests without bearer token"
 
 # 16d. Authenticated /v1/health returns 200 + JSON.
 health=$(curl -sS -H "Authorization: Bearer $HTTP_TOKEN" "http://127.0.0.1:$HTTP_PORT/v1/health")
-echo "$health" | grep -qF '"status":"ok"' || fail "/v1/health body: $health"
+grep -qF '"status":"ok"' <<<"$health" || fail "/v1/health body: $health"
 pass "/v1/health: 200 with status=ok"
 
 # 16e. /v1/agents returns the registry snapshot with count + agents.
 agents=$(curl -sS -H "Authorization: Bearer $HTTP_TOKEN" "http://127.0.0.1:$HTTP_PORT/v1/agents")
-echo "$agents" | grep -qF '"agents":' || fail "/v1/agents body: $agents"
-echo "$agents" | grep -qF '"count":' || fail "/v1/agents missing count: $agents"
+grep -qF '"agents":' <<<"$agents" || fail "/v1/agents body: $agents"
+grep -qF '"count":' <<<"$agents" || fail "/v1/agents missing count: $agents"
 pass "/v1/agents: registry snapshot returned"
 
 # 16f. /v1/send_message rejects empty prompt with 400.
@@ -792,9 +792,9 @@ pass "unknown path: 404"
 
 # 16i. /v1/recipes returns the catalog (Phase 4-bis).
 recipes=$(curl -sS -H "Authorization: Bearer $HTTP_TOKEN" "http://127.0.0.1:$HTTP_PORT/v1/recipes")
-echo "$recipes" | grep -qF '"recipes":' || fail "/v1/recipes body: $recipes"
-echo "$recipes" | grep -qF '"name":"license"' || fail "/v1/recipes should include license recipe"
-echo "$recipes" | grep -qF '"name":"codex-bridge"' || fail "/v1/recipes should include codex-bridge"
+grep -qF '"recipes":' <<<"$recipes" || fail "/v1/recipes body: $recipes"
+grep -qF '"name":"license"' <<<"$recipes" || fail "/v1/recipes should include license recipe"
+grep -qF '"name":"codex-bridge"' <<<"$recipes" || fail "/v1/recipes should include codex-bridge"
 pass "/v1/recipes: catalog enumerated (license + codex-bridge present)"
 
 # 16j. /v1/recipe/apply happy path against a tempdir.
@@ -895,11 +895,11 @@ verify_resp=$(printf '%s\n%s\n%s\n' \
   "$(printf '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"Verify\",\"arguments\":{\"repo\":\"%s\"}}}' "$VERIFY_TMP")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 60 "$BIN" serve 2>/dev/null)
 
-echo "$verify_resp" | grep structuredContent | grep -qF '"overall":"pass"' \
+grep -qF '"overall":"pass"' <<<"$(grep structuredContent <<<"$verify_resp")" \
   || fail "Verify: expected overall=pass — got: $verify_resp"
 pass "Verify: detects go module + reports pass"
 
-echo "$verify_resp" | grep structuredContent | grep -qF '"name":"go test ./..."' \
+grep -qF '"name":"go test ./..."' <<<"$(grep structuredContent <<<"$verify_resp")" \
   || fail "Verify: expected runner name 'go test ./...'"
 pass "Verify: runner name carried in response"
 
