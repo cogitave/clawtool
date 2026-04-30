@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.57] - 2026-04-30
+## [0.22.58] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.57 [skip ci] (01683b9)
+### Features
+
+- **tools:** Add UsageHint field surfacing curated guidance via annotations.clawtool (48cc03a)## [0.22.57] - 2026-04-30
 
 ### Documentation
 
