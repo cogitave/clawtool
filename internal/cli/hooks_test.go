@@ -41,6 +41,42 @@ func TestHooksList_Empty(t *testing.T) {
 	}
 }
 
+// TestHooksList_EmptyJSON pins the empty-state contract for
+// `hooks list --format json`: a fresh config emits `[]\n` so a
+// `clawtool hooks list --format json | jq '. | length'` pipeline
+// returns 0 instead of choking on the human banner. Sister of
+// TestSourceList_EmptyJSON / TestSandboxList_EmptyJSON /
+// TestPortalList_EmptyJSON.
+func TestHooksList_EmptyJSON(t *testing.T) {
+	out, _, code := runHooksWith(t, config.HooksConfig{}, []string{"list", "--format", "json"})
+	if code != 0 {
+		t.Fatalf("unexpected exit %d", code)
+	}
+	body := strings.TrimSpace(out)
+	if body != "[]" {
+		t.Errorf("expected '[]' on empty-state JSON; got %q", body)
+	}
+}
+
+// TestHooksList_EmptyTSV exercises the TSV path's empty-state.
+// A header-only line means `awk 'NR>1{...}'` consumers stop
+// cleanly without seeing the human banner mid-pipe.
+func TestHooksList_EmptyTSV(t *testing.T) {
+	out, _, code := runHooksWith(t, config.HooksConfig{}, []string{"list", "--format", "tsv"})
+	if code != 0 {
+		t.Fatalf("unexpected exit %d", code)
+	}
+	body := strings.TrimRight(out, "\n")
+	lines := strings.Split(body, "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 header line; got %d: %q", len(lines), body)
+	}
+	cells := strings.Split(lines[0], "\t")
+	if len(cells) != 2 || cells[0] != "EVENT" || cells[1] != "ENTRIES" {
+		t.Errorf("expected EVENT\\tENTRIES header; got %q", lines[0])
+	}
+}
+
 func TestHooksList_PrintsCounts(t *testing.T) {
 	out, _, code := runHooksWith(t, config.HooksConfig{
 		Events: map[string][]config.HookEntry{

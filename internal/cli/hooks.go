@@ -106,16 +106,26 @@ func (a *App) HooksList(format listfmt.Format) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	header := []string{"EVENT", "ENTRIES"}
 	if len(cfg.Hooks.Events) == 0 {
-		fmt.Fprintln(a.Stdout, "(no hooks configured — see https://github.com/cogitave/clawtool#hooks for examples)")
-		return nil
+		// Empty-state contract (sister of source / sandbox /
+		// portal list): table mode keeps the actionable hint,
+		// JSON / TSV consumers get the structured empty shape
+		// (`[]\n` and a header line) so a `clawtool hooks list
+		// --format json | jq '. | length'` pipeline returns 0
+		// instead of choking on the human banner.
+		if format == listfmt.FormatTable {
+			fmt.Fprintln(a.Stdout, "(no hooks configured — see https://github.com/cogitave/clawtool#hooks for examples)")
+			return nil
+		}
+		return listfmt.Render(a.Stdout, format, listfmt.Cols{Header: header})
 	}
 	names := make([]string, 0, len(cfg.Hooks.Events))
 	for n := range cfg.Hooks.Events {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	cols := listfmt.Cols{Header: []string{"EVENT", "ENTRIES"}}
+	cols := listfmt.Cols{Header: header}
 	for _, n := range names {
 		entries := cfg.Hooks.Events[n]
 		cols.Rows = append(cols.Rows, []string{n, strconv.Itoa(len(entries))})
