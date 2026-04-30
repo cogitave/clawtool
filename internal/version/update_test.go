@@ -184,6 +184,59 @@ func TestCheckForUpdate_StaleCacheTriggersRefetch(t *testing.T) {
 	}
 }
 
+// TestBuildInfo_UsesResolvedNotVersionConst asserts the
+// up-to-date probe surfaces and compares against Resolved() —
+// not the bare `Version` const. The const carries the
+// dev-fallback ("0.21.7") on every goreleaser-baked binary; if
+// buildInfo read it directly, every production install would
+// see HasUpdate=true and Current="0.21.7" against a real latest
+// like "v0.22.40". Codifies the contract documented on the
+// UpdateInfo.Current field.
+func TestBuildInfo_UsesResolvedNotVersionConst(t *testing.T) {
+	got := buildInfo(cachedUpdate{
+		Latest:    "v" + Resolved(),
+		FetchedAt: time.Now().UTC(),
+	})
+	if got.Current != Resolved() {
+		t.Errorf("Current = %q, want Resolved() = %q", got.Current, Resolved())
+	}
+	if got.HasUpdate {
+		t.Errorf("HasUpdate = true when latest matches Resolved(); want false")
+	}
+}
+
+// TestFetchLatestTag_UserAgentCarriesResolved asserts the
+// outbound User-Agent header carries Resolved(), so a production
+// binary identifies itself with its goreleaser tag instead of
+// the dev-fallback const. Catches a regression where the UA
+// would be frozen at "clawtool-update-check/0.21.7" forever.
+func TestFetchLatestTag_UserAgentCarriesResolved(t *testing.T) {
+	withCacheDir(t)
+	var capturedUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedUA = r.Header.Get("User-Agent")
+		_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": "v0.0.1"})
+	}))
+	defer srv.Close()
+
+	prevClient := updateHTTPClient
+	prevURL := updateCheckURLOverride
+	defer func() {
+		updateHTTPClient = prevClient
+		updateCheckURLOverride = prevURL
+	}()
+	updateHTTPClient = srv.Client()
+	updateCheckURLOverride = srv.URL
+
+	if _, err := fetchLatestTag(context.Background()); err != nil {
+		t.Fatalf("fetchLatestTag: %v", err)
+	}
+	want := "clawtool-update-check/" + Resolved()
+	if capturedUA != want {
+		t.Errorf("User-Agent = %q, want %q", capturedUA, want)
+	}
+}
+
 // rewriteTransport bends every outgoing request to a local
 // httptest server, regardless of the URL the caller passed.
 type rewriteTransport struct{ target string }

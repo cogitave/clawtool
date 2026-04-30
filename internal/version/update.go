@@ -56,7 +56,12 @@ type UpdateInfo struct {
 	// on error.
 	Latest string
 
-	// Current is the local build version (Version package var).
+	// Current is the local build version as Resolved() returns it
+	// — i.e. the goreleaser-stamped tag when present, else the
+	// debug.BuildInfo Main.Version, else the package fallback.
+	// Reading the bare `Version` var here would mis-report on every
+	// production binary (it carries the dev-fallback "0.21.7"); a
+	// HasUpdate=true would fire for already-current installs.
 	Current string
 
 	// FetchedAt is when we last asked GitHub. Surfaced so the user
@@ -144,9 +149,17 @@ func CheckForUpdate(ctx context.Context) UpdateInfo {
 }
 
 func buildInfo(c cachedUpdate) UpdateInfo {
+	// Resolved() honours the goreleaser ldflags-baked tag, then
+	// debug.BuildInfo, then the dev-fallback const — using the
+	// bare `Version` here would always return "0.21.7" on a
+	// production binary and falsely flag every install as out of
+	// date. The HasUpdate compare must read the same source so
+	// the two facts (Current shown, HasUpdate decided) stay in
+	// agreement.
+	current := Resolved()
 	info := UpdateInfo{
 		Latest:    c.Latest,
-		Current:   Version,
+		Current:   current,
 		FetchedAt: c.FetchedAt,
 	}
 	if c.ErrString != "" {
@@ -156,7 +169,7 @@ func buildInfo(c cachedUpdate) UpdateInfo {
 	if c.Latest == "" {
 		return info
 	}
-	info.HasUpdate = isNewer(c.Latest, Version)
+	info.HasUpdate = isNewer(c.Latest, current)
 	return info
 }
 
@@ -168,7 +181,11 @@ func fetchLatestTag(ctx context.Context) (string, error) {
 		return "", err
 	}
 	// User-Agent is required by the GitHub API for anonymous calls.
-	req.Header.Set("User-Agent", "clawtool-update-check/"+Version)
+	// Resolved() so production binaries identify themselves with
+	// the actual goreleaser tag — bare Version would freeze the UA
+	// at the dev-fallback "0.21.7" forever and rate-limit forensics
+	// across hosts would be useless.
+	req.Header.Set("User-Agent", "clawtool-update-check/"+Resolved())
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := updateHTTPClient.Do(req)
