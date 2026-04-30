@@ -22,11 +22,13 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/observability"
+	"github.com/cogitave/clawtool/internal/rules"
 	"github.com/cogitave/clawtool/internal/xdg"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -399,6 +401,45 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 			}
 		}
 
+		// pre_send rules engine (.clawtool/rules.toml): in-process
+		// evaluation of operator-declared invariants — e.g.
+		// "code-writing prompts never go to opencode" (memory-rule
+		// codified). Loading is best-effort: a missing rules.toml
+		// means "no rules" not an error, mirroring the Commit
+		// tool's pre_commit invocation site.
+		if loaded, _, _, lerr := rules.LoadDefault(); lerr == nil && len(loaded) > 0 {
+			args := map[string]string{
+				"agent":  a.Instance,
+				"family": a.Family,
+				"prompt": truncateForRules(prompt),
+			}
+			if v, ok := opts["unattended"].(bool); ok && v {
+				args["unattended"] = "true"
+			} else {
+				args["unattended"] = "false"
+			}
+			if sid, ok := opts["session_id"].(string); ok && sid != "" {
+				args["session_id"] = sid
+			}
+			if tag, ok := opts["tag"].(string); ok && tag != "" {
+				args["tag"] = tag
+			}
+			verdict := rules.Evaluate(loaded, rules.Context{
+				Event: rules.EventPreSend,
+				Args:  args,
+				Now:   time.Now(),
+			})
+			if verdict.IsBlocked() {
+				blockErr := fmt.Errorf("rules.toml blocked dispatch (%d rule(s) failed): %s",
+					len(verdict.Blocked), formatBlockedRules(verdict.Blocked))
+				s.observer.RecordError(sendCtx, blockErr)
+				sendEnd()
+				release()
+				lastErr = fmt.Errorf("pre_send hook blocked dispatch to %q: %w", a.Instance, blockErr)
+				continue
+			}
+		}
+
 		// Sandbox resolution per-iteration: when the agent has a
 		// sandbox name configured (AgentConfig.Sandbox), look the
 		// profile up in cfg.Sandboxes and stash it on a per-call
@@ -466,6 +507,38 @@ func (o *observedReadCloser) Close() error {
 	err := o.ReadCloser.Close()
 	o.end()
 	return err
+}
+
+// truncateForRules clamps the prompt before passing it through
+// rules.Context.Args["prompt"]. The rules engine condition DSL only
+// uses arg() for `==` / `!=` string compare, so a long prompt would
+// just bloat the verdict logs without improving matchability.
+const rulesPromptMaxLen = 512
+
+func truncateForRules(prompt string) string {
+	if len(prompt) <= rulesPromptMaxLen {
+		return prompt
+	}
+	return prompt[:rulesPromptMaxLen] + "…[truncated]"
+}
+
+// formatBlockedRules renders a verdict's blocked Results into a
+// single line. Each entry is "<rule-name>: <reason> — <hint>" so the
+// operator (and the agent reading the error) sees both WHY the rule
+// fired and what to do about it.
+func formatBlockedRules(blocked []rules.Result) string {
+	parts := make([]string, 0, len(blocked))
+	for _, r := range blocked {
+		entry := r.Rule
+		if r.Reason != "" {
+			entry += ": " + r.Reason
+		}
+		if r.Hint != "" {
+			entry += " — " + r.Hint
+		}
+		parts = append(parts, entry)
+	}
+	return strings.Join(parts, "; ")
 }
 
 // Resolve applies the ADR-014 precedence chain to pick an Agent for
