@@ -4,7 +4,26 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.46] - 2026-04-30
+## [0.22.50] - 2026-04-30
+
+### Features
+
+- **cli:** Add --backend flag to 'source registry' for Smithery probe (34a166a)## [0.22.49] - 2026-04-30
+
+### Documentation
+
+- **playbooks:** Add Mastra HTTP-agent setup playbook (93b9575)## [0.22.48] - 2026-04-30
+
+### Features
+
+- **agents:** Add Aider as BIAM transport peer #6 (9748391)## [0.22.47] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.46 [skip ci] (03324b5)
+### Features
+
+- **catalog:** Add Smithery registry probe alongside MCP Registry (1b22a81)## [0.22.46] - 2026-04-30
 
 ### Chores
 
