@@ -459,6 +459,16 @@ func BuildManifest() *registry.Manifest {
 			RegisterSourceCheckTool(s)
 		},
 	})
+	m.Append(registry.ToolSpec{
+		Name:        "SourceRegistry",
+		Description: "Probe the official MCP Registry (registry.modelcontextprotocol.io) and return the first N server entries. Returns {url, count, servers: [{name, description, version}]}. Pass `limit` (1..50, default 10) to control page size; pass `url` to override the base URL. Same wire shape as `clawtool source registry --json`. Read-only; no auth required (the registry is anonymous). Use to discover ecosystem-published MCP servers before `source add` falls back to the embedded catalog.",
+		Keywords:    []string{"source", "registry", "mcp", "discover", "catalog", "ecosystem", "servers", "available", "browse", "remote", "introspect"},
+		Category:    registry.CategoryDiscovery,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterSourceRegistryTool(s)
+		},
+	})
 
 	// ─── Version probe (CategoryDiscovery — read-only metadata) ─
 	m.Append(registry.ToolSpec{
