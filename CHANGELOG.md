@@ -4,7 +4,22 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.62] - 2026-04-30
+## [0.22.65] - 2026-04-30
+
+### Features
+
+- **portal:** Add Bifrost portal stub + config template (phase 1, no runtime dep) (3f69c0d)## [0.22.64] - 2026-04-30
+
+### Features
+
+- **cli:** Add 'apm import' verb (apm.yml → clawtool source registry, phase 1) (126795e)## [0.22.63] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.62 [skip ci] (b43445f)
+### Features
+
+- **catalog:** Add mcp-toolbox source entry + recipe for DB-MCP onboarding (9e2a2b7)## [0.22.62] - 2026-04-30
 
 ### Features
 
