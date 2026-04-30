@@ -823,11 +823,12 @@ func (m *onboardModel) renderHeader(w int) string {
 		email,
 	)
 	gap := lipgloss.NewStyle().Width(4).Render(" ")
-	// Center vertically so the 2-row logo aligns with the
-	// 4-row metaCol's middle band — without this the logo
-	// sticks to the top edge while the credit/email lines
-	// extend below it, making the brand row look unbalanced.
-	brandRow := lipgloss.JoinHorizontal(lipgloss.Center, logo, gap, metaCol)
+	// Bottom-align so the 2-row logo lines up with the bottom
+	// two rows of the 3-row metaCol (credit + email), letting
+	// the tagline float above as a kicker. Top-aligned felt
+	// stuck to the top; centered drifted the logo too low.
+	// Bottom is the visually balanced choice.
+	brandRow := lipgloss.JoinHorizontal(lipgloss.Bottom, logo, gap, metaCol)
 
 	// Filled-background pills for detected hosts; dim text only
 	// for missing ones. Bright pill catches the eye without the
@@ -942,10 +943,15 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 		"",
 		card,
 	)
+	// Vertical-centre the body so any leftover slack between the
+	// card and the footer band gets distributed evenly above and
+	// below — the wizard sits in the middle of the body region
+	// instead of clinging to the top with a big empty zone below.
 	return lipgloss.NewStyle().
 		Width(w).
 		Height(bodyH).
 		Align(lipgloss.Center).
+		AlignVertical(lipgloss.Center).
 		Render(body)
 }
 
@@ -964,6 +970,7 @@ func (m *onboardModel) renderRunBody(w, bodyH int) string {
 		Width(w).
 		Height(bodyH).
 		Align(lipgloss.Center).
+		AlignVertical(lipgloss.Center).
 		Render(body)
 }
 
@@ -981,6 +988,7 @@ func (m *onboardModel) renderDoneBody(w, bodyH int) string {
 		Width(w).
 		Height(bodyH).
 		Align(lipgloss.Center).
+		AlignVertical(lipgloss.Center).
 		Render(body)
 }
 
