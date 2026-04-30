@@ -159,6 +159,118 @@ func TestProbeRegistry_BadJSON(t *testing.T) {
 	}
 }
 
+// TestProbeSmitheryRegistry_HappyPath confirms Smithery's flat
+// `{servers: [{qualifiedName, description}]}` envelope is
+// projected into the shared RegistryResult shape so callers
+// can treat both registries interchangeably.
+func TestProbeSmitheryRegistry_HappyPath(t *testing.T) {
+	srv := fakeRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/servers" {
+			t.Errorf("path = %q, want /servers", got)
+		}
+		if got := r.URL.Query().Get("pageSize"); got != "5" {
+			t.Errorf("pageSize query = %q, want 5", got)
+		}
+		if got := r.URL.Query().Get("page"); got != "1" {
+			t.Errorf("page query = %q, want 1", got)
+		}
+		if got := r.Header.Get("User-Agent"); got != "clawtool-catalog-probe" {
+			t.Errorf("UA = %q, want clawtool-catalog-probe", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"servers": [
+				{"qualifiedName": "exa", "displayName": "Exa Search", "description": "Web search"},
+				{"qualifiedName": "context7", "displayName": "Context7", "description": "Doc context"}
+			]
+		}`))
+	})
+
+	res, err := ProbeSmitheryRegistry(context.Background(), srv.URL, 5)
+	if err != nil {
+		t.Fatalf("ProbeSmitheryRegistry: %v", err)
+	}
+	if res.BaseURL != srv.URL {
+		t.Errorf("BaseURL = %q", res.BaseURL)
+	}
+	if res.Count != 2 {
+		t.Fatalf("Count = %d, want 2", res.Count)
+	}
+	// qualifiedName → Name projection.
+	if res.Servers[0].Name != "exa" {
+		t.Errorf("Servers[0].Name = %q, want exa", res.Servers[0].Name)
+	}
+	if res.Servers[1].Description != "Doc context" {
+		t.Errorf("Servers[1].Description = %q", res.Servers[1].Description)
+	}
+	// No version in Smithery's list shape — should be empty.
+	if res.Servers[0].Version != "" {
+		t.Errorf("Servers[0].Version = %q, want empty (Smithery list has no version)", res.Servers[0].Version)
+	}
+}
+
+// TestProbeSmitheryRegistry_DefaultURLNotEmpty asserts the
+// default URL constant ships at the expected host, so a future
+// migration to a vanity domain trips this guard.
+func TestProbeSmitheryRegistry_DefaultURLNotEmpty(t *testing.T) {
+	if DefaultSmitheryRegistryURL == "" {
+		t.Fatal("DefaultSmitheryRegistryURL must be non-empty")
+	}
+	if !strings.HasPrefix(DefaultSmitheryRegistryURL, "https://") {
+		t.Errorf("DefaultSmitheryRegistryURL = %q, want https:// prefix", DefaultSmitheryRegistryURL)
+	}
+}
+
+// TestProbeSmitheryRegistry_HTTPError surfaces a 5xx as a
+// wrapped error including status + body for diagnostics. Same
+// pattern as the official-registry probe so callers can branch
+// uniformly.
+func TestProbeSmitheryRegistry_HTTPError(t *testing.T) {
+	srv := fakeRegistry(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"detail":"smithery down"}`))
+	})
+	_, err := ProbeSmitheryRegistry(context.Background(), srv.URL, 5)
+	if err == nil {
+		t.Fatal("expected error on 5xx")
+	}
+	if !strings.Contains(err.Error(), "503") {
+		t.Errorf("err should mention status; got %q", err)
+	}
+	if !strings.Contains(err.Error(), "smithery") {
+		t.Errorf("err should mention smithery (for diagnostic clarity); got %q", err)
+	}
+}
+
+// TestProbeSmitheryRegistry_LimitClamping mirrors the official
+// probe's clamping behaviour — same [1, 50] inclusive bounds
+// keep the upstream from rejecting hostile / accidentally-huge
+// requests.
+func TestProbeSmitheryRegistry_LimitClamping(t *testing.T) {
+	cases := []struct {
+		in   int
+		want string
+	}{
+		{0, "10"},
+		{-5, "10"},
+		{200, "50"},
+		{20, "20"},
+	}
+	for _, tc := range cases {
+		var got string
+		srv := fakeRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+			got = r.URL.Query().Get("pageSize")
+			_, _ = w.Write([]byte(`{"servers":[]}`))
+		})
+		if _, err := ProbeSmitheryRegistry(context.Background(), srv.URL, tc.in); err != nil {
+			t.Fatalf("limit=%d: %v", tc.in, err)
+		}
+		if got != tc.want {
+			t.Errorf("limit=%d → pageSize=%q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 // TestProbeRegistry_EmptyServers handles the registry-empty
 // case (no servers match). Should return Count=0 + empty
 // slice, not an error — empty is a valid registry state.
