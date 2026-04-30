@@ -653,16 +653,24 @@ const clawtoolLogo = `█▀▀ █   ▄▀█ █ █ █ ▀█▀ █▀█ 
 // from the viewport so wide terminals get a generous frame.
 const onboardFixedCardHeight = 18
 
+// onboardCompactWidth is the breakpoint below which the wizard
+// switches to a compact layout (single-line text header, no ASCII
+// logo, no host-detection pills, abbreviated footer hints). 70
+// cols is the threshold where the chunky 32-col logo starts
+// crowding the metaCol; below that we drop ornament for clarity.
+const onboardCompactWidth = 70
+
 // computeCardWidth picks the card's horizontal size from the
 // available viewport: most of the screen, with a soft ceiling for
-// readability and a soft floor for narrow terminals.
+// readability and a soft floor for narrow terminals (mobile
+// terminals / split panes can be 40-50 cols).
 func computeCardWidth(viewportWidth int) int {
-	w := viewportWidth - 12 // breathing room left + right
+	w := viewportWidth - 8
 	if w > 120 {
 		w = 120
 	}
-	if w < 60 {
-		w = 60
+	if w < 40 {
+		w = 40
 	}
 	return w
 }
@@ -738,6 +746,37 @@ func (m *onboardModel) View() string {
 	return lipgloss.NewStyle().Padding(2, 1, 1, 1).Render(stack)
 }
 
+// renderCompactHeader is the narrow-viewport header. Drops the
+// ASCII logo and detection pills; renders a single dim line with
+// brand + version + tagline so the header consumes only 1 row.
+// Used when m.width < onboardCompactWidth (~70 cols).
+func (m *onboardModel) renderCompactHeader(w int) string {
+	brand := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("212")).
+		Render("clawtool")
+	tagline := m.style.dim.Render(fmt.Sprintf(" v%s · first-run setup", versionShortForOnboard()))
+
+	// One-glyph host detection summary so the operator still
+	// sees what was found without sacrificing a row.
+	families := []string{"claude", "codex", "gemini", "opencode", "hermes"}
+	var pills []string
+	for _, f := range families {
+		if m.state.Found[f] {
+			pills = append(pills, m.style.tickOK.Render("●"))
+		} else {
+			pills = append(pills, m.style.dim.Render("○"))
+		}
+	}
+	pillRow := strings.Join(pills, " ")
+
+	body := lipgloss.JoinVertical(lipgloss.Center,
+		brand+tagline,
+		pillRow,
+	)
+	return lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(body)
+}
+
 // renderShimmerLogo paints the clawtool ASCII brand mark with a
 // gradient highlight band that sweeps left-to-right across the
 // glyph rows once per cycle. Three colour stops form the band:
@@ -799,12 +838,20 @@ func (m *onboardModel) renderShimmerLogo() string {
 	return strings.Join(out, "\n")
 }
 
-// renderHeader renders the wizard banner: a 3-line ASCII logo on
-// the left, a stacked metadata column (tagline / credit / email)
-// on the right separated by a small gap, and a row of filled-
-// background detection pills below. Centred horizontally so it
-// shares an axis with the wizard card beneath it.
+// renderHeader renders the wizard banner. Two modes:
+//
+//   - Full (m.width >= onboardCompactWidth): chunky ASCII logo +
+//     stacked metadata column + filled-background pill row. The
+//     polished default for a normal-width terminal.
+//   - Compact (m.width < onboardCompactWidth): single-line text
+//     header with no ASCII logo, no pills. Keeps the wizard
+//     usable on narrow terminals (mobile clients, tmux split
+//     panes, dock-anchored windows). The wizard's content survives;
+//     the brand ornament steps aside.
 func (m *onboardModel) renderHeader(w int) string {
+	if m.width < onboardCompactWidth {
+		return m.renderCompactHeader(w)
+	}
 	logo := m.renderShimmerLogo()
 
 	tagline := lipgloss.NewStyle().
@@ -998,6 +1045,7 @@ func (m *onboardModel) renderDoneBody(w, bodyH int) string {
 // specific (Select shows different keys than MultiSelect or
 // Confirm) so the footer asks the active widget what to advertise.
 func (m *onboardModel) renderFooterCol(w int) string {
+	compact := m.width < onboardCompactWidth
 	var hint string
 	switch m.phase {
 	case phaseSteps:
@@ -1005,19 +1053,54 @@ func (m *onboardModel) renderFooterCol(w int) string {
 		if m.stepIdx < len(m.steps) && m.steps[m.stepIdx].widget != nil {
 			widgetHint = m.steps[m.stepIdx].widget.Keybinds()
 		}
+		if compact {
+			// Strip prose; keep only the keys.
+			widgetHint = compactKeybinds(widgetHint)
+		}
 		parts := []string{}
 		if widgetHint != "" {
 			parts = append(parts, widgetHint)
 		}
-		parts = append(parts, "ctrl-c quit")
+		if compact {
+			parts = append(parts, "^c")
+		} else {
+			parts = append(parts, "ctrl-c quit")
+		}
 		hint = m.style.dim.Render(strings.Join(parts, "  ·  "))
 	case phaseRun:
-		hint = m.style.dim.Render(fmt.Sprintf("running %d/%d  ·  ctrl-c quit",
-			m.queueIdx+1, len(m.queue)))
+		if compact {
+			hint = m.style.dim.Render(fmt.Sprintf("%d/%d", m.queueIdx+1, len(m.queue)))
+		} else {
+			hint = m.style.dim.Render(fmt.Sprintf("running %d/%d  ·  ctrl-c quit",
+				m.queueIdx+1, len(m.queue)))
+		}
 	case phaseDone:
-		hint = m.style.dim.Render("press any key to exit")
+		if compact {
+			hint = m.style.dim.Render("any key")
+		} else {
+			hint = m.style.dim.Render("press any key to exit")
+		}
 	}
 	return lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(hint)
+}
+
+// compactKeybinds shortens a widget's verbose Keybinds() string
+// for narrow terminals: "↑/↓ select  ·  enter confirm" → "↑↓ ↵".
+// Drops descriptive nouns (select / confirm / toggle / quick) so
+// only the input glyphs survive.
+func compactKeybinds(full string) string {
+	replacer := strings.NewReplacer(
+		"↑/↓ navigate", "↑↓",
+		"↑/↓ select", "↑↓",
+		"space toggle", "␣",
+		"a all/none", "a",
+		"enter confirm", "↵",
+		"enter submit", "↵",
+		"←/→ toggle", "←→",
+		"y / n quick", "y/n",
+		"  ·  ", " ",
+	)
+	return strings.TrimSpace(replacer.Replace(full))
 }
 func (m *onboardModel) visibleStepNumber() int {
 	n := 0
