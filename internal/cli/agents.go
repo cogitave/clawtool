@@ -25,6 +25,8 @@ func (a *App) runAgents(argv []string) int {
 		return a.runAgentsStatus(argv[1:])
 	case "list":
 		return a.runAgentsList(argv[1:])
+	case "detect":
+		return a.runAgentsDetect(argv[1:])
 	default:
 		fmt.Fprintf(a.Stderr, "clawtool agents: unknown subcommand %q\n\n%s", argv[0], agentsUsage)
 		return 2
@@ -215,6 +217,100 @@ func (a *App) agentNotFound(name string) int {
 	return 1
 }
 
+// runAgentsDetect probes one host adapter and exits with a stable
+// code that installer scripts can branch on without parsing JSON:
+//
+//	0 — adapter detected on this host AND clawtool has claimed it
+//	1 — adapter detected, NOT claimed (or transient/Status error)
+//	2 — adapter NOT detected on this host
+//
+// Pairs with `agents claim` for unattended bootstrap loops:
+//
+//	clawtool agents detect claude-code || \
+//	  clawtool agents claim claude-code
+//
+// `--json` emits a structured payload with the same exit code so
+// scripts that already pipe through jq stay uniform across the
+// agents-domain commands.
+func (a *App) runAgentsDetect(argv []string) int {
+	fs := flag.NewFlagSet("agents detect", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	asJSON := fs.Bool("json", false, "Emit machine-readable JSON {detected, claimed, exit_code} alongside the exit code.")
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{})); err != nil {
+		return 2
+	}
+	rest := fs.Args()
+	if len(rest) != 1 {
+		fmt.Fprint(a.Stderr, "usage: clawtool agents detect <agent> [--json]\n")
+		return 2
+	}
+	adapter, err := agents.Find(rest[0])
+	if err != nil {
+		return a.agentNotFound(rest[0])
+	}
+	s, statusErr := adapter.Status()
+	exitCode := 2
+	switch {
+	case statusErr != nil:
+		// Treat status errors as "detected, not claimed" — the
+		// adapter exists but couldn't introspect itself. Caller
+		// can either retry or fall through to claim.
+		exitCode = 1
+	case !s.Detected:
+		exitCode = 2
+	case !s.Claimed:
+		exitCode = 1
+	default:
+		exitCode = 0
+	}
+
+	if *asJSON {
+		body, err := json.MarshalIndent(struct {
+			Adapter  string `json:"adapter"`
+			Detected bool   `json:"detected"`
+			Claimed  bool   `json:"claimed"`
+			ExitCode int    `json:"exit_code"`
+			Error    string `json:"error,omitempty"`
+		}{
+			Adapter:  rest[0],
+			Detected: s.Detected,
+			Claimed:  s.Claimed,
+			ExitCode: exitCode,
+			Error:    errString(statusErr),
+		}, "", "  ")
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool agents detect: marshal: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(a.Stdout, string(body))
+		return exitCode
+	}
+
+	switch exitCode {
+	case 0:
+		fmt.Fprintf(a.Stdout, "✓ %s detected and claimed by clawtool\n", rest[0])
+	case 1:
+		if statusErr != nil {
+			fmt.Fprintf(a.Stdout, "%s detected; status check errored: %v\n", rest[0], statusErr)
+		} else {
+			fmt.Fprintf(a.Stdout, "%s detected but NOT claimed (run `clawtool agents claim %s`)\n", rest[0], rest[0])
+		}
+	default:
+		fmt.Fprintf(a.Stdout, "%s not detected on this host\n", rest[0])
+	}
+	return exitCode
+}
+
+// errString turns an error into a string for JSON marshalling,
+// preserving the empty-when-nil semantic so omitempty tags drop
+// the field cleanly on the success path.
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
 // emitPlanJSON marshals an agents.Plan to indented JSON on stdout.
 // Stable wire shape — automation pipelines that gate on `dry_run`
 // or `was_noop` rely on it. Returns the CLI exit code (always 0
@@ -309,6 +405,15 @@ const agentsUsage = `Usage:
                               Print known agent adapters. --json
                               emits machine-readable output:
                               [{"name":"claude-code","detected":true}].
+
+  clawtool agents detect <agent> [--json]
+                              Probe one adapter and exit with a
+                              stable code:
+                                0 = detected AND claimed
+                                1 = detected, not claimed
+                                2 = not detected
+                              Pairs with 'claim' for unattended
+                              installer scripts.
 
 Known agents (v0.8.4): claude-code.
 `

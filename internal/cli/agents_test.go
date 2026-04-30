@@ -366,6 +366,133 @@ func TestAgentsClaim_JSONStableShape(t *testing.T) {
 	}
 }
 
+// TestAgentsDetect_ClaimedReturnsZero exercises the happy
+// installer path: claude-code is on PATH (Detected=true) AND
+// has been claimed → exit 0, banner says "detected and claimed".
+func TestAgentsDetect_ClaimedReturnsZero(t *testing.T) {
+	_, cleanup := withTmpClaudeSettings(t)
+	defer cleanup()
+
+	app, _, _ := newAgentsApp(t)
+	if rc := app.Run([]string{"agents", "claim", "claude-code"}); rc != 0 {
+		t.Fatalf("seed claim rc=%d", rc)
+	}
+
+	out := &bytes.Buffer{}
+	app.Stdout = out
+	rc := app.Run([]string{"agents", "detect", "claude-code"})
+	if rc != 0 {
+		t.Errorf("detect rc=%d, want 0 (detected+claimed)", rc)
+	}
+	if !strings.Contains(out.String(), "detected and claimed") {
+		t.Errorf("banner missing detected+claimed phrasing: %q", out.String())
+	}
+}
+
+// TestAgentsDetect_DetectedNotClaimedReturnsOne stands up a fresh
+// claude-code adapter (settings dir exists so Detected=true) but
+// skips the claim step → exit 1, banner suggests `agents claim`.
+func TestAgentsDetect_DetectedNotClaimedReturnsOne(t *testing.T) {
+	_, cleanup := withTmpClaudeSettings(t)
+	defer cleanup()
+
+	app, out, _ := newAgentsApp(t)
+	rc := app.Run([]string{"agents", "detect", "claude-code"})
+	if rc != 1 {
+		t.Errorf("detect rc=%d, want 1 (detected, not claimed)", rc)
+	}
+	if !strings.Contains(out.String(), "detected but NOT claimed") {
+		t.Errorf("banner missing detected-not-claimed phrasing: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "clawtool agents claim") {
+		t.Errorf("banner should suggest the next step: %q", out.String())
+	}
+}
+
+// TestAgentsDetect_NotDetectedReturnsTwo points the adapter at a
+// settings path whose parent directory doesn't exist → Detected
+// returns false → exit 2.
+func TestAgentsDetect_NotDetectedReturnsTwo(t *testing.T) {
+	// Directory that definitely doesn't exist. The claudecode
+	// adapter checks parent dir existence; we use a path under
+	// a non-existent root so Stat fails.
+	missing := filepath.Join(t.TempDir(), "no-such-dir", "settings.json")
+	agents.SetClaudeCodeSettingsPath(missing)
+	t.Cleanup(func() { agents.SetClaudeCodeSettingsPath("") })
+
+	app, out, _ := newAgentsApp(t)
+	rc := app.Run([]string{"agents", "detect", "claude-code"})
+	if rc != 2 {
+		t.Errorf("detect rc=%d, want 2 (not detected)", rc)
+	}
+	if !strings.Contains(out.String(), "not detected") {
+		t.Errorf("banner missing not-detected phrasing: %q", out.String())
+	}
+}
+
+// TestAgentsDetect_JSONOutput emits a structured payload whose
+// exit_code field matches the process exit code. Pipelines that
+// log the probe AND branch on it can use the same JSON without
+// double-invoking.
+func TestAgentsDetect_JSONOutput(t *testing.T) {
+	_, cleanup := withTmpClaudeSettings(t)
+	defer cleanup()
+
+	app, _, _ := newAgentsApp(t)
+	if rc := app.Run([]string{"agents", "claim", "claude-code"}); rc != 0 {
+		t.Fatalf("seed claim rc=%d", rc)
+	}
+
+	out := &bytes.Buffer{}
+	app.Stdout = out
+	rc := app.Run([]string{"agents", "detect", "claude-code", "--json"})
+	if rc != 0 {
+		t.Errorf("detect --json rc=%d, want 0", rc)
+	}
+	body := out.String()
+	for _, lit := range []string{`"adapter":`, `"detected":`, `"claimed":`, `"exit_code":`} {
+		if !strings.Contains(body, lit) {
+			t.Errorf("JSON missing literal %s; body: %s", lit, body)
+		}
+	}
+	var got struct {
+		Adapter  string `json:"adapter"`
+		Detected bool   `json:"detected"`
+		Claimed  bool   `json:"claimed"`
+		ExitCode int    `json:"exit_code"`
+	}
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
+	}
+	if got.Adapter != "claude-code" {
+		t.Errorf("adapter = %q, want claude-code", got.Adapter)
+	}
+	if !got.Detected {
+		t.Error("detected should be true on a seeded settings dir")
+	}
+	if !got.Claimed {
+		t.Error("claimed should be true after seed claim")
+	}
+	if got.ExitCode != 0 {
+		t.Errorf("exit_code = %d, want 0 (matches rc)", got.ExitCode)
+	}
+}
+
+// TestAgentsDetect_UnknownAgent rejects names not in the
+// adapter registry — same exit-1 + stderr-list-known shape as
+// claim/release, so installer scripts that catch this case work
+// uniformly across the agents subcommand surface.
+func TestAgentsDetect_UnknownAgent(t *testing.T) {
+	app, _, errb := newAgentsApp(t)
+	rc := app.Run([]string{"agents", "detect", "not-real"})
+	if rc != 1 {
+		t.Errorf("rc=%d, want 1 (unknown agent)", rc)
+	}
+	if !strings.Contains(errb.String(), "unknown agent") {
+		t.Errorf("expected 'unknown agent' in stderr; got %q", errb.String())
+	}
+}
+
 // TestAgentsStatus_JSONSingleAdapter exercises the path where the
 // operator names a specific adapter together with --json: the
 // output should still be a single-element JSON array (not an
