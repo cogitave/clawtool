@@ -1,0 +1,30 @@
+# managed-by: clawtool
+# Starter config marker for MinishLab/semble (MIT).
+# Upstream: https://github.com/MinishLab/semble
+#
+# Semble does NOT require a config file to run — it's a zero-setup
+# code-search MCP server. This file exists so clawtool can:
+#   1. Track that the operator has opted into semble for this repo.
+#   2. Document the next steps in one place.
+#
+# Next steps:
+#   1. Install uv:   https://docs.astral.sh/uv/getting-started/installation/
+#   2. Register as an MCP source for this project:
+#        clawtool source add semble
+#      This wires up `uvx --from "semble[mcp]" semble` per the catalog.
+#   3. (Optional) Sub-agent support — Claude Code lazy-loads MCP tool
+#      schemas, so sub-agents can't call mcp__semble__search directly.
+#      Run once in your project root:
+#        uvx --from "semble[mcp]" semble init
+#      That drops .claude/agents/semble-search.md so sub-agents can
+#      shell out via `semble search` instead.
+#
+# Workflow (from upstream README):
+#   - Start with `semble search "<intent>"` to find relevant chunks.
+#   - Read full files only when a chunk lacks context.
+#   - `semble find-related <file> <line>` to discover similar code.
+#   - Fall back to grep only for exhaustive literal matches.
+
+semble:
+  # Reserved for future clawtool-managed semble settings (index cache
+  # path, default top_k, etc.). Empty today; semble's own defaults apply.

@@ -187,3 +187,13 @@ required_env = ["JIRA_URL", "JIRA_USERNAME", "JIRA_API_TOKEN"]
 auth_hint = "Generate an API token at https://id.atlassian.com/manage-profile/security/api-tokens. Set JIRA_URL to https://<your>.atlassian.net."
 homepage = "https://github.com/sooperset/mcp-atlassian"
 maintained = "community"
+
+[entries.semble]
+description = "MinishLab/semble: code-search MCP server delivering ~98% fewer tokens than grep+read. MIT."
+runtime = "binary"
+package = "uvx"
+args = ["--from", "semble[mcp]", "semble"]
+required_env = []
+auth_hint = "Install uv per https://docs.astral.sh/uv/getting-started/installation/ — uvx will fetch the semble[mcp] extras on first run. No API keys; runs fully on CPU. Optional: `clawtool recipe apply semble` drops a starter .clawtool/semble/config.yaml documenting the workflow for sub-agents."
+homepage = "https://github.com/MinishLab/semble"
+maintained = "minishlab"

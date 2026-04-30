@@ -62,6 +62,42 @@ func TestBuiltin_HasMcpToolbox(t *testing.T) {
 	}
 }
 
+func TestBuiltin_HasSemble(t *testing.T) {
+	c, _ := Builtin()
+	e, ok := c.Lookup("semble")
+	if !ok {
+		t.Fatal("semble not in catalog")
+	}
+	if e.Description == "" {
+		t.Error("semble description must be set")
+	}
+	if e.Homepage == "" {
+		t.Error("semble homepage must be set")
+	}
+	if e.Runtime != "binary" {
+		t.Errorf("semble runtime = %q, want binary", e.Runtime)
+	}
+	if e.Maintained != "minishlab" {
+		t.Errorf("semble maintained = %q, want minishlab", e.Maintained)
+	}
+	if !strings.Contains(strings.ToLower(e.Description), "mit") {
+		t.Error("semble description should record the MIT license")
+	}
+	if e.Package != "uvx" {
+		t.Errorf("semble package = %q, want uvx (operator-installed runner)", e.Package)
+	}
+	// uvx invocation must pass the [mcp] extras + the semble entrypoint.
+	wantArgs := []string{"--from", "semble[mcp]", "semble"}
+	if len(e.Args) != len(wantArgs) {
+		t.Fatalf("semble args = %v, want %v", e.Args, wantArgs)
+	}
+	for i, w := range wantArgs {
+		if e.Args[i] != w {
+			t.Errorf("semble args[%d] = %q, want %q", i, e.Args[i], w)
+		}
+	}
+}
+
 func TestLookup_MissReturnsOkFalse(t *testing.T) {
 	c, _ := Builtin()
 	_, ok := c.Lookup("definitely-not-a-real-source")
