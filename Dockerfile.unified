@@ -1,0 +1,180 @@
+# Dockerfile.unified — single multi-stage build for every clawtool image.
+#
+# Replaces the previously scattered Dockerfile / Dockerfile.worker /
+# docker/Dockerfile.relay trio (and gives the test/e2e fixtures a
+# shared base to FROM). One source of truth, lower layers reused
+# across targets, one cache.
+#
+# Targets (build with `docker build --target <name> ...`):
+#
+#   base      — golang + node tooling builder image. Internal.
+#   builder   — compiles the clawtool Go binary with -trimpath +
+#               version ldflags. Internal; consumed via COPY --from.
+#   clawtool  — production runtime: distroless/static, ~7 MB, no
+#               shell. Default target.
+#   worker    — ubuntu:24.04 sandbox-worker variant with bash, git,
+#               python, node, document-generation libs. Pulls the
+#               clawtool binary from the `builder` stage so it
+#               shares the lower compile cache with `clawtool`.
+#   relay     — debian:bookworm-slim relay variant with the four
+#               upstream coding-agent CLIs (claude / codex /
+#               opencode / gemini) installed and the HTTP gateway
+#               on :8080. Also pulls the binary from `builder`.
+#   e2e-base  — slim debian + mock host-CLI scaffolding the test/e2e
+#               fixtures FROM. NOT a runtime image; only a
+#               foundation for the e2e Dockerfiles' final stages.
+#
+# Build examples:
+#   docker build --target clawtool -t cogitave/clawtool:latest .
+#   docker build --target worker   -t clawtool-worker:dev    .
+#   docker build --target relay    -t clawtool-relay:dev     .
+#
+# Default target is `clawtool` (matches the legacy `./Dockerfile`).
+
+# ─── stage: base — shared tooling for any go build ────────────────
+FROM golang:1.26-bookworm AS base
+WORKDIR /src
+# Cache module downloads in their own layer so source-only edits
+# don't bust the dep cache.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# ─── stage: builder — compile the clawtool binary ─────────────────
+FROM base AS builder
+COPY . .
+
+ARG VERSION=docker
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
+
+# Static build (CGO_ENABLED=0) so distroless/static can run the
+# result without libc. -trimpath strips source paths from panic
+# traces; -X injects the version metadata internal/version reads
+# at runtime.
+RUN CGO_ENABLED=0 go build \
+        -trimpath \
+        -ldflags="-s -w \
+          -X github.com/cogitave/clawtool/internal/version.Version=${VERSION} \
+          -X github.com/cogitave/clawtool/internal/version.Commit=${COMMIT} \
+          -X github.com/cogitave/clawtool/internal/version.BuildDate=${BUILD_DATE}" \
+        -o /out/clawtool ./cmd/clawtool
+
+# ─── stage: clawtool — production distroless runtime ──────────────
+FROM gcr.io/distroless/static-debian12:nonroot AS clawtool
+
+LABEL org.opencontainers.image.title="clawtool"
+LABEL org.opencontainers.image.description="MCP server + dispatch layer for AI coding agents."
+LABEL org.opencontainers.image.source="https://github.com/cogitave/clawtool"
+LABEL org.opencontainers.image.licenses="MIT"
+
+COPY --from=builder /out/clawtool /usr/local/bin/clawtool
+
+# distroless/static-nonroot runs as UID 65532. Mount user configs
+# read-only at /config when running serve.
+USER nonroot:nonroot
+
+ENTRYPOINT ["/usr/local/bin/clawtool"]
+CMD ["serve"]
+
+# ─── stage: worker — sandbox-worker variant ───────────────────────
+# Shares the `builder` stage with `clawtool` so a single image
+# build reuses the Go compile cache. Runtime base diverges from
+# distroless because the sandbox-worker needs a real shell + the
+# host-tool surface (git, python, node) the daemon dials in to.
+FROM ubuntu:24.04 AS worker
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash coreutils findutils grep sed gawk \
+    git ca-certificates curl \
+    python3 python3-pip \
+    nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Document-generation toolchain (claude.ai parity for /mnt/skills
+# work patterns). Optional — strip if image size matters more than
+# feature parity.
+RUN pip3 install --break-system-packages --no-cache-dir \
+    python-docx openpyxl python-pptx pypdf reportlab pillow \
+    || true
+
+# Drop privileges. The worker process runs as `claude`, mirroring
+# claude.ai's container layout. Operator-mounted /workspace stays
+# rw under this user.
+RUN useradd -ms /bin/bash claude
+
+COPY --from=builder --chown=claude:claude --chmod=0755 \
+    /out/clawtool /usr/local/bin/clawtool
+
+USER claude
+WORKDIR /workspace
+
+EXPOSE 2024
+ENTRYPOINT ["/usr/local/bin/clawtool"]
+CMD ["sandbox-worker", "--listen", "0.0.0.0:2024", "--workdir", "/workspace"]
+
+# ─── stage: relay — HTTP gateway with upstream CLIs ───────────────
+# Same builder reuse pattern as `worker`. Runtime is debian-slim
+# because we install the upstream coding-agent CLIs (npm + curl
+# bash installer) — distroless has no package manager.
+FROM debian:bookworm-slim AS relay
+
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends \
+      ca-certificates curl git \
+      ripgrep pandoc poppler-utils \
+      nodejs npm \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# Upstream coding-agent CLIs. Install commands match each
+# project's own README — clawtool doesn't reinvent any.
+RUN npm install -g @openai/codex @google/gemini-cli @anthropic-ai/claude-code \
+ && npm cache clean --force \
+ && curl -fsSL https://opencode.ai/install | bash \
+ && rm -rf /root/.npm /tmp/*
+
+COPY --from=builder /out/clawtool /usr/local/bin/clawtool
+
+# Default config + secrets locations. Operators bind-mount over
+# these to inject account-specific configs and credentials.
+RUN mkdir -p /etc/clawtool /root/.config/clawtool
+
+# Exercise the bridge-list code path at image-build time so a
+# regressed binary fails the build instead of failing first run.
+RUN clawtool bridge list || true
+
+ENV CLAWTOOL_LISTEN=:8080 \
+    CLAWTOOL_TOKEN_FILE=/etc/clawtool/listener-token
+
+EXPOSE 8080
+
+# Pre-flight: refuse to start if the token file is missing.
+ENTRYPOINT ["sh", "-c", "\
+  if [ ! -f \"$CLAWTOOL_TOKEN_FILE\" ]; then \
+    echo 'clawtool: token file '\"$CLAWTOOL_TOKEN_FILE\"' not present; mount one or run init-token first' >&2; \
+    exit 1; \
+  fi; \
+  exec clawtool serve --listen \"$CLAWTOOL_LISTEN\" --token-file \"$CLAWTOOL_TOKEN_FILE\"\
+"]
+
+# ─── stage: e2e-base — foundation for test/e2e/* fixtures ─────────
+# Slim debian + the bits every onboard / upgrade fixture needs
+# (bash, ca-certs, jq, curl, procps). Mock host-CLI generation
+# stays in each fixture's own Dockerfile because the mock
+# behavior varies between fixtures (different version strings,
+# different invocation-log paths). The e2e Dockerfiles can
+# `FROM clawtool/e2e-base AS run` once they are migrated to use
+# this unified file.
+FROM debian:bookworm-slim AS e2e-base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash ca-certificates jq curl procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# The fixtures expect XDG roots under /tmp so daemon state is
+# discoverable from `docker exec` children.
+ENV XDG_CONFIG_HOME=/tmp/cfg \
+    XDG_STATE_HOME=/tmp/state \
+    XDG_DATA_HOME=/tmp/data
+
+# No ENTRYPOINT — each fixture sets its own.

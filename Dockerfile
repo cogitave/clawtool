@@ -1,3 +1,6 @@
+# DEPRECATED: use Dockerfile.unified --target=clawtool. This file
+# will be removed in a future release once consumers migrate.
+#
 # clawtool — multi-stage Docker build.
 #
 # Stage 1: build the Go binary with -trimpath + ldflags so the

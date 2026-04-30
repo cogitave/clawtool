@@ -74,15 +74,37 @@ stub-server: ## Build the stub MCP server used as a test fixture.
 portal-integration: ## Drive portal.Ask through real Chrome against an httptest fake portal. Requires Chrome / Chromium on PATH.
 	$(GO) test -tags integration -count=1 -v -run TestAsk_RealChrome ./internal/portal/
 
-.PHONY: docker docker-smoke
+.PHONY: docker docker-smoke docker-build-clawtool docker-build-worker docker-build-relay docker-build-all
 DOCKER_TAG ?= cogitave/clawtool:dev
+DOCKER_WORKER_TAG ?= cogitave/clawtool-worker:dev
+DOCKER_RELAY_TAG ?= cogitave/clawtool-relay:dev
+DOCKER_UNIFIED ?= Dockerfile.unified
 
-docker: ## Build the cogitave/clawtool Docker image (multi-stage, distroless static).
-	docker build \
+docker: docker-build-clawtool ## Build the cogitave/clawtool Docker image (alias for docker-build-clawtool).
+
+docker-build-clawtool: ## Build the production clawtool image from Dockerfile.unified --target=clawtool (distroless static).
+	docker build -f $(DOCKER_UNIFIED) --target clawtool \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg BUILD_DATE=$(shell date -u +%Y-%m-%dT%H:%M:%SZ) \
 		-t $(DOCKER_TAG) .
 	@echo "✓ built $(DOCKER_TAG)"
+
+docker-build-worker: ## Build the sandbox-worker image from Dockerfile.unified --target=worker (ubuntu:24.04 + bash/git/python/node).
+	docker build -f $(DOCKER_UNIFIED) --target worker \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg BUILD_DATE=$(shell date -u +%Y-%m-%dT%H:%M:%SZ) \
+		-t $(DOCKER_WORKER_TAG) .
+	@echo "✓ built $(DOCKER_WORKER_TAG)"
+
+docker-build-relay: ## Build the relay HTTP-gateway image from Dockerfile.unified --target=relay (debian-slim + claude/codex/opencode/gemini CLIs).
+	docker build -f $(DOCKER_UNIFIED) --target relay \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg BUILD_DATE=$(shell date -u +%Y-%m-%dT%H:%M:%SZ) \
+		-t $(DOCKER_RELAY_TAG) .
+	@echo "✓ built $(DOCKER_RELAY_TAG)"
+
+docker-build-all: docker-build-clawtool docker-build-worker docker-build-relay ## Build clawtool + worker + relay images sequentially (shares the unified builder layer cache).
+	@echo "✓ built all three unified-Dockerfile images"
 
 docker-smoke: docker ## Verify the built image responds to MCP `initialize` over stdio.
 	@echo "Running MCP initialize handshake against $(DOCKER_TAG)..."

@@ -1,3 +1,6 @@
+# DEPRECATED: use Dockerfile.unified --target=relay. This file
+# will be removed in a future release once consumers migrate.
+#
 # clawtool relay — Phase 3 of ADR-014
 #
 # A single image that hosts clawtool plus the four upstream coding-agent

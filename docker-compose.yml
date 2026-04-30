@@ -19,6 +19,13 @@
 services:
   clawtool:
     image: ${CLAWTOOL_IMAGE:-cogitave/clawtool}:${CLAWTOOL_TAG:-latest}
+    # `target: clawtool` selects the production distroless stage from
+    # the unified multi-stage build. Override CLAWTOOL_IMAGE/_TAG to
+    # pull a published image instead of building locally.
+    build:
+      context: .
+      dockerfile: Dockerfile.unified
+      target: clawtool
     container_name: clawtool-serve
     restart: unless-stopped
     command:

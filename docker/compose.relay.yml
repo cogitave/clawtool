@@ -19,9 +19,12 @@
 services:
   clawtool:
     image: clawtool-relay:latest
+    # `target: relay` selects the relay stage of the unified
+    # multi-stage build (Dockerfile.unified at the repo root).
     build:
       context: ..
-      dockerfile: docker/Dockerfile.relay
+      dockerfile: Dockerfile.unified
+      target: relay
     restart: unless-stopped
     environment:
       # Defaults match the Dockerfile's ENV; override here if you

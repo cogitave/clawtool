@@ -172,7 +172,8 @@ else
         run_stage e2e-bootstrap env CLAWTOOL_E2E_DOCKER=1 "$GO_BIN" test -count=1 -timeout=300s ./test/e2e/bootstrap/... || true
 
         # Docker image build + MCP initialize handshake. Same target
-        # the Makefile's docker-smoke runs.
+        # the Makefile's docker-smoke runs. Builds via the unified
+        # multi-stage Dockerfile.unified --target=clawtool.
         run_stage docker-smoke make docker-smoke || true
     else
         printf "${YELLOW}▶ e2e-docker + docker stages skipped (set CLAWTOOL_E2E_DOCKER=1 to run)${RESET}\n\n"

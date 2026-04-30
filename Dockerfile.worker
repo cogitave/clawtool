@@ -1,3 +1,6 @@
+# DEPRECATED: use Dockerfile.unified --target=worker. This file
+# will be removed in a future release once consumers migrate.
+#
 # Sandbox worker image (ADR-029).
 #
 # Pairs with the clawtool daemon: daemon dials this container's
