@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.65] - 2026-04-30
+## [0.22.66] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.65 [skip ci] (9444c87)
+### Fixes
+
+- **ci:** Stop CHANGELOG.md drift breaking goreleaser checkout + add release-health helper (2a6685c)## [0.22.65] - 2026-04-30
 
 ### Features
 
