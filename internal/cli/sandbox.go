@@ -100,21 +100,6 @@ func (a *App) SandboxList(format listfmt.Format) error {
 	if err != nil {
 		return err
 	}
-	header := []string{"PROFILE", "ENGINE", "DESCRIPTION"}
-	if len(cfg.Sandboxes) == 0 {
-		// Mirrors `source list`'s empty-state contract: the
-		// human banner stays in table mode (interactive shell
-		// users get an actionable docs pointer), while JSON /
-		// TSV consumers get the structured empty shape (`[]\n`
-		// and a header line). Pre-fix, a `clawtool sandbox list
-		// --format json | jq '. | length'` pipeline choked on
-		// the human banner whenever no profiles existed.
-		if format == listfmt.FormatTable {
-			fmt.Fprintln(a.Stdout, "(no sandbox profiles configured — see docs/sandbox.md)")
-			return nil
-		}
-		return listfmt.Render(a.Stdout, format, listfmt.Cols{Header: header})
-	}
 	names := make([]string, 0, len(cfg.Sandboxes))
 	for n := range cfg.Sandboxes {
 		names = append(names, n)
@@ -122,12 +107,16 @@ func (a *App) SandboxList(format listfmt.Format) error {
 	sort.Strings(names)
 
 	engine := sandbox.SelectEngine()
-	cols := listfmt.Cols{Header: header}
+	cols := listfmt.Cols{Header: []string{"PROFILE", "ENGINE", "DESCRIPTION"}}
 	for _, n := range names {
 		p := cfg.Sandboxes[n]
 		cols.Rows = append(cols.Rows, []string{n, engine.Name(), strings.TrimSpace(p.Description)})
 	}
-	return listfmt.Render(a.Stdout, format, cols)
+	// Empty-state contract codified in listfmt.RenderOrHint
+	// (sister of skill / source / portal / hooks list): table
+	// mode emits the human hint, JSON + TSV route through Render
+	// so pipelines see `[]\n` / a header line.
+	return listfmt.RenderOrHint(a.Stdout, format, cols, "(no sandbox profiles configured — see docs/sandbox.md)")
 }
 
 // SandboxShow parses one profile + prints the resolved view.
