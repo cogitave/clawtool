@@ -4,7 +4,54 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.39] - 2026-04-30
+## [0.22.40] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.39 [skip ci] (eb72756)
+### Features
+
+- **cli:** Add `--dry-run` to `portal remove` (7043893)
+- **cli:** Add `--dry-run` to `source rename` (ca918b8)
+- **cli:** Add `--dry-run` to `source remove` (b364ec6)
+- **tools:** Expose `SourceCheck` MCP tool for credential probe (61b9828)
+- **cli:** Add --json + single-instance filter to `source check` (ddabc05)
+- **cli:** Add --json output to `bridge add` and `bridge upgrade` (63dea0c)
+- **tools:** Expose `AgentDetect` MCP tool for host-adapter probe (47dba2f)
+- **cli:** Add --json output to `sandbox doctor` (0759329)
+- **cli:** Add `agents detect <agent>` exit-code probe (ef4c698)
+- **cli:** Add --dry-run to `skill new` (44a9819)
+- **cli:** Add --dry-run to `rules remove` (71f07fc)
+- **cli:** Add --dry-run to `rules new` (5824012)
+- **cli:** Add --json output to `agents claim` and `agents release` (64e02fc)
+- **cli:** Add --format json|tsv|table to `skill list` (49c4bc5)
+- **cli:** Add --json output to `rules show` (278bc1f)
+- **cli:** Add --json output to `rules list` (7d337a8)
+- **cli:** `version --check` exit-code probe for monitoring scripts (df8ab31)
+- **tools:** Expose `Version` MCP tool with BuildInfo snapshot (45a79f2)
+- **server:** Expose BuildInfo on /v1/health under `build` key (54bf658)
+- **version:** Structured `clawtool version --json` output (239eede)
+- **cli:** Onboard wizard `b` keybind navigates back one step (c85d974)
+- **cli:** Add --json output to agents list (7dc8ad0)
+- **cli:** Add --json output to agents status (6ae3fbf)
+### Fixes
+
+- **cli:** Emit header-only TSV from `skill list` on empty state (012abc0)
+- **cli:** Emit `[]` from `hooks list --format json` on empty state (3af47eb)
+- **cli:** Emit `[]` from `portal list --format json` on empty state (d71b78e)
+- **cli:** Emit `[]` from `sandbox list --format json` on empty state (83436bf)
+- **cli:** Emit `[]` from `source list --format json` on empty state (18aed7e)
+- **build:** Makefile resolves GO via PATH first, fallback to legacy (7c16197)
+- **test/e2e:** Switch echo|grep assertions to here-strings (d53ee15)
+- **version:** Update-check reads Resolved() instead of bare const (3acf2ee)
+- **bash:** Drain stdout/stderr before cmd.Wait to satisfy os/exec contract (acbb134)
+### Refactor
+
+- **cli:** Migrate `hooks list` to listfmt.RenderOrHint (ff1e9cb)
+- **cli:** Migrate `portal list` to listfmt.RenderOrHint (7b5be2e)
+- **cli:** Migrate `sandbox list` to listfmt.RenderOrHint (b6d7caf)
+- **cli:** Migrate `source list` to listfmt.RenderOrHint (f024f06)
+- **cli:** Introduce listfmt.RenderOrHint helper for empty-state contract (d7cbe60)## [0.22.39] - 2026-04-30
 
 ### Documentation
 
