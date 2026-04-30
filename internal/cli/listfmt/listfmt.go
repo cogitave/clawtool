@@ -71,6 +71,35 @@ func Render(w io.Writer, format Format, cols Cols) error {
 	}
 }
 
+// RenderOrHint codifies the empty-state contract every
+// `clawtool * list` command discovered during the
+// 18aed7e..012abc0 series: when there are no rows to render,
+// table mode emits a human-readable hint (the operator running
+// the command interactively gets an actionable next-step) while
+// JSON / TSV consumers route through Render so pipelines see
+// the structured empty shape (`[]\n` and a header line
+// respectively). Pre-helper, every list command hand-rolled the
+// same `if format == FormatTable { print hint; return } else
+// { Render(empty rows) }` branch; the helper bakes the contract
+// into one place so future list commands inherit it for free.
+//
+// The hint may contain embedded newlines for multi-line
+// pointers (`skill list` ships a two-line "no skills" + "try
+// `skill new <name>`" pair). A trailing newline is appended
+// automatically — callers should NOT include one themselves.
+//
+// When cols.Rows is non-empty the hint is ignored and the
+// function delegates to Render unconditionally — same shape
+// as `Render` itself, callable on any list state without a
+// pre-emptive `len(cols.Rows) == 0` guard at the call site.
+func RenderOrHint(w io.Writer, format Format, cols Cols, hint string) error {
+	if len(cols.Rows) == 0 && format == FormatTable {
+		_, err := fmt.Fprintln(w, hint)
+		return err
+	}
+	return Render(w, format, cols)
+}
+
 // ParseFormat normalises a string into a known Format. Empty,
 // unknown values, and the defaults all collapse to FormatTable.
 // Callers that want to reject unknowns can compare against

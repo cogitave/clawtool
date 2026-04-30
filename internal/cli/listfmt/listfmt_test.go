@@ -154,6 +154,105 @@ func TestExtractFlag_BareFlagWithoutValue(t *testing.T) {
 	}
 }
 
+// TestRenderOrHint_TableEmptyEmitsHint pins the table-mode
+// branch: no rows + format=table → write hint + newline, skip
+// Render. This keeps the actionable next-step in front of an
+// interactive operator who runs `clawtool * list` on a fresh
+// box.
+func TestRenderOrHint_TableEmptyEmitsHint(t *testing.T) {
+	var buf bytes.Buffer
+	cols := Cols{Header: []string{"NAME", "STATUS"}}
+	if err := RenderOrHint(&buf, FormatTable, cols, "(no items configured)"); err != nil {
+		t.Fatalf("RenderOrHint: %v", err)
+	}
+	out := buf.String()
+	if out != "(no items configured)\n" {
+		t.Errorf("table-empty output = %q, want %q", out, "(no items configured)\n")
+	}
+	// Specifically: the header should NOT have been rendered.
+	if strings.Contains(out, "NAME") {
+		t.Errorf("table-empty should suppress header; got %q", out)
+	}
+}
+
+// TestRenderOrHint_JSONEmptyRoutesRender pins the JSON branch:
+// no rows + format=json → delegate to Render → emit `[]\n`. The
+// human hint must not leak into the byte stream.
+func TestRenderOrHint_JSONEmptyRoutesRender(t *testing.T) {
+	var buf bytes.Buffer
+	cols := Cols{Header: []string{"NAME", "STATUS"}}
+	if err := RenderOrHint(&buf, FormatJSON, cols, "(no items configured)"); err != nil {
+		t.Fatalf("RenderOrHint: %v", err)
+	}
+	body := strings.TrimSpace(buf.String())
+	if body != "[]" {
+		t.Errorf("json-empty output = %q, want %q", body, "[]")
+	}
+	if strings.Contains(buf.String(), "no items configured") {
+		t.Error("hint should not leak into JSON stream")
+	}
+}
+
+// TestRenderOrHint_TSVEmptyRoutesRender pins the TSV branch: no
+// rows + format=tsv → delegate to Render → emit a single
+// header line, no human banner. Pipe consumers can `awk
+// 'NR>1{...}'` cleanly.
+func TestRenderOrHint_TSVEmptyRoutesRender(t *testing.T) {
+	var buf bytes.Buffer
+	cols := Cols{Header: []string{"NAME", "STATUS"}}
+	if err := RenderOrHint(&buf, FormatTSV, cols, "(no items configured)"); err != nil {
+		t.Fatalf("RenderOrHint: %v", err)
+	}
+	body := strings.TrimRight(buf.String(), "\n")
+	lines := strings.Split(body, "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 header line; got %d: %q", len(lines), body)
+	}
+	if lines[0] != "NAME\tSTATUS" {
+		t.Errorf("tsv header = %q, want %q", lines[0], "NAME\tSTATUS")
+	}
+	if strings.Contains(buf.String(), "no items configured") {
+		t.Error("hint should not leak into TSV stream")
+	}
+}
+
+// TestRenderOrHint_NonEmptyDelegates verifies that when rows
+// are present the hint is ignored (regardless of format) and
+// Render is called with the populated cols. Sanity check so a
+// future bug where the hint accidentally prints over real data
+// trips the test.
+func TestRenderOrHint_NonEmptyDelegates(t *testing.T) {
+	for _, format := range []Format{FormatTable, FormatTSV, FormatJSON} {
+		var buf bytes.Buffer
+		if err := RenderOrHint(&buf, format, sample, "should-not-appear"); err != nil {
+			t.Fatalf("format=%s: %v", format, err)
+		}
+		out := buf.String()
+		if strings.Contains(out, "should-not-appear") {
+			t.Errorf("format=%s leaked hint into populated stream: %q", format, out)
+		}
+		if !strings.Contains(out, "codex") {
+			t.Errorf("format=%s missing data row: %q", format, out)
+		}
+	}
+}
+
+// TestRenderOrHint_MultilineHint confirms the hint can carry
+// embedded newlines for two-line pointers (skill list ships
+// "no skills" + "try `skill new`"). The trailing newline is
+// added by RenderOrHint, not by the caller.
+func TestRenderOrHint_MultilineHint(t *testing.T) {
+	var buf bytes.Buffer
+	cols := Cols{Header: []string{"X"}}
+	hint := "line one\nline two"
+	if err := RenderOrHint(&buf, FormatTable, cols, hint); err != nil {
+		t.Fatalf("RenderOrHint: %v", err)
+	}
+	if buf.String() != "line one\nline two\n" {
+		t.Errorf("multiline hint = %q, want %q", buf.String(), "line one\nline two\n")
+	}
+}
+
 func sliceEq(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

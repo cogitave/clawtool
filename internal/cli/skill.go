@@ -229,19 +229,14 @@ func (a *App) runSkillList(argv []string) int {
 		}
 	}
 
-	// Empty-state contract (sister of source / sandbox / portal /
-	// hooks list): table mode keeps the actionable hint, JSON
-	// AND TSV consumers get the structured empty shape (`[]\n`
-	// and a header line) so a `clawtool skill list --format tsv
-	// | awk 'NR>1{...}'` pipeline doesn't have to special-case
-	// the human banner. Pre-fix this branch only carved out JSON;
-	// TSV consumers fell through to the human banner.
-	if len(cols.Rows) == 0 && format == listfmt.FormatTable {
-		fmt.Fprintln(a.Stdout, "(no skills installed)")
-		fmt.Fprintln(a.Stdout, "Try: clawtool skill new my-first-skill --description \"...\"")
-		return 0
-	}
-	if err := listfmt.Render(a.Stdout, format, cols); err != nil {
+	// Empty-state contract codified in listfmt.RenderOrHint
+	// (sister of source / sandbox / portal / hooks list): table
+	// mode emits the human hint, JSON + TSV consumers get the
+	// structured empty shape via Render. Multi-line hint OK —
+	// RenderOrHint appends one trailing newline and otherwise
+	// passes the body through verbatim.
+	hint := "(no skills installed)\nTry: clawtool skill new my-first-skill --description \"...\""
+	if err := listfmt.RenderOrHint(a.Stdout, format, cols, hint); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool skill list: %v\n", err)
 		return 1
 	}
