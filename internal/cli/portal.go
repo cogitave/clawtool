@@ -37,7 +37,9 @@ const portalUsage = `Usage:
   clawtool portal add --manual <name>   Legacy editor-driven path: opens $EDITOR
                                         with a TOML template; result is appended
                                         to ~/.config/clawtool/config.toml.
-  clawtool portal remove <name>         Remove the [portals.<name>] block.
+  clawtool portal remove <name> [--dry-run]
+                                        Remove the [portals.<name>] block.
+                                        --dry-run previews the change without writing.
   clawtool portal ask [<name>] "<prompt>"
                                         Drive the saved web-UI flow with the
                                         prompt and stream the response.
@@ -98,11 +100,27 @@ func (a *App) runPortal(argv []string) int {
 		}
 		return a.dispatchPortalErr("add", a.runPortalAddWizard(name))
 	case "remove":
-		if len(argv) != 2 {
-			fmt.Fprintln(a.Stderr, "usage: clawtool portal remove <name>")
+		// Parse `<name> [--dry-run]` in any order — symmetric
+		// with how `case "add":` above handles `[--manual] <name>`.
+		dryRun := false
+		var name string
+		for _, v := range argv[1:] {
+			switch v {
+			case "--dry-run":
+				dryRun = true
+			default:
+				if name != "" {
+					fmt.Fprintln(a.Stderr, "usage: clawtool portal remove <name> [--dry-run]")
+					return 2
+				}
+				name = v
+			}
+		}
+		if name == "" {
+			fmt.Fprintln(a.Stderr, "usage: clawtool portal remove <name> [--dry-run]")
 			return 2
 		}
-		return a.dispatchPortalErr("remove", a.PortalRemove(argv[1]))
+		return a.dispatchPortalErr("remove", a.PortalRemove(name, dryRun))
 	case "ask":
 		if err := a.PortalAsk(argv[1:]); err != nil {
 			fmt.Fprintf(a.Stderr, "clawtool portal ask: %v\n", err)
@@ -287,13 +305,24 @@ func (a *App) PortalAdd(name string) error {
 // stanza. Cookies in secrets.toml are left in place so a temporary
 // remove-then-re-add doesn't lose the export. Operators clean
 // secrets manually when they want a true uninstall.
-func (a *App) PortalRemove(name string) error {
+//
+// When dryRun is true, the existence check still runs (so typos
+// surface at preview time) but the file is not rewritten — the
+// caller gets a `(dry-run) would remove …` banner instead of the
+// success line. Symmetric with `source remove --dry-run`
+// (b364ec6) and the rest of the dry-run uniformity series.
+func (a *App) PortalRemove(name string, dryRun bool) error {
 	portals, cfgPath, err := a.loadPortals()
 	if err != nil {
 		return err
 	}
 	if _, ok := portals[name]; !ok {
 		return fmt.Errorf("portal %q not found", name)
+	}
+	if dryRun {
+		fmt.Fprintf(a.Stdout, "(dry-run) would remove portal %q from %s\n", name, cfgPath)
+		fmt.Fprintf(a.Stdout, "    cookies under [scopes.%q] in secrets.toml would be left in place\n", portal.SecretsScopePrefix+name)
+		return nil
 	}
 	if err := config.RemovePortalBlock(cfgPath, name); err != nil {
 		return err
