@@ -544,9 +544,12 @@ const sourceUsage = `Usage:
   clawtool source check       Report which configured sources have all their
                               required credentials.
   clawtool source registry [--limit N] [--url URL] [--json]
-                              Probe the official MCP Registry
-                              (registry.modelcontextprotocol.io) and list
-                              the first N servers. Read-only; doesn't
+                           [--backend mcp|smithery|both]
+                              Probe an MCP catalog and list the first N
+                              servers. --backend selects the source:
+                              'mcp' (default, registry.modelcontextprotocol.io),
+                              'smithery' (registry.smithery.ai), or 'both'
+                              to merge + dedupe by name. Read-only; doesn't
                               touch local config or secrets.
 `
 
@@ -581,35 +584,46 @@ func reorderFlagsFirst(argv []string, valueFlags map[string]bool) []string {
 	return append(flags, positional...)
 }
 
-// runSourceRegistry probes the official MCP Registry endpoint
-// (registry.modelcontextprotocol.io) and prints a summary of
-// the first N servers. Surfaces ecosystem discovery alongside
-// the embedded `clawtool source catalog` view — the registry
-// is the federated source of truth for MCP servers, the
-// builtin catalog stays the offline fast-path.
+// runSourceRegistry probes one or both MCP catalogs and prints
+// a summary of the first N servers. Surfaces ecosystem discovery
+// alongside the embedded `clawtool source catalog` view — the
+// registries are the federated sources of truth for MCP servers,
+// the builtin catalog stays the offline fast-path.
 //
 // Flags:
 //
 //	--limit N    server count to fetch (1..50, default 10)
-//	--url URL    registry base URL (default: catalog.DefaultRegistryURL)
-//	             — useful for tests + private mirrors.
+//	--url URL    registry base URL (default depends on --backend)
+//	             — useful for tests + private mirrors. When
+//	             --backend=both, --url is ignored on both probes
+//	             so each hits its own canonical default.
 //	--json       emit the RegistryResult as JSON instead of the
 //	             human banner.
+//	--backend    'mcp' (default), 'smithery', or 'both'. 'both'
+//	             merges the results, deduplicating by Name (which
+//	             is Smithery's qualifiedName projection).
 func (a *App) runSourceRegistry(argv []string) int {
 	fs := flag.NewFlagSet("source registry", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	limit := fs.Int("limit", 10, "Max servers to fetch (1..50).")
-	baseURL := fs.String("url", catalog.DefaultRegistryURL, "Registry base URL.")
+	baseURL := fs.String("url", "", "Registry base URL (default depends on --backend).")
 	asJSON := fs.Bool("json", false, "Emit JSON instead of the human banner.")
-	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{"limit": true, "url": true})); err != nil {
+	backend := fs.String("backend", "mcp", "Catalog backend: mcp | smithery | both.")
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{"limit": true, "url": true, "backend": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprint(a.Stderr, "usage: clawtool source registry [--limit N] [--url URL] [--json]\n")
+		fmt.Fprint(a.Stderr, "usage: clawtool source registry [--limit N] [--url URL] [--json] [--backend mcp|smithery|both]\n")
+		return 2
+	}
+	switch *backend {
+	case "mcp", "smithery", "both":
+	default:
+		fmt.Fprintf(a.Stderr, "clawtool source registry: --backend must be one of mcp|smithery|both, got %q\n", *backend)
 		return 2
 	}
 
-	res, err := catalog.ProbeRegistry(context.Background(), *baseURL, *limit)
+	res, err := a.probeBackends(context.Background(), *backend, *baseURL, *limit)
 	if err != nil {
 		if *asJSON {
 			fmt.Fprintf(a.Stdout, "{\"error\":%q}\n", err.Error())
@@ -629,7 +643,14 @@ func (a *App) runSourceRegistry(argv []string) int {
 		return 0
 	}
 
-	fmt.Fprintf(a.Stdout, "MCP Registry: %s\n", res.BaseURL)
+	label := "MCP Registry"
+	switch *backend {
+	case "smithery":
+		label = "Smithery Registry"
+	case "both":
+		label = "MCP + Smithery Registry"
+	}
+	fmt.Fprintf(a.Stdout, "%s: %s\n", label, res.BaseURL)
 	fmt.Fprintf(a.Stdout, "%d server(s) returned (limit %d):\n\n", res.Count, *limit)
 	for _, s := range res.Servers {
 		ver := s.Version
@@ -642,4 +663,74 @@ func (a *App) runSourceRegistry(argv []string) int {
 		}
 	}
 	return 0
+}
+
+// probeFn is the contract shared by ProbeRegistry and
+// ProbeSmitheryRegistry — captured here so tests can stub the
+// network layer without importing httptest into every assertion.
+type probeFn func(ctx context.Context, baseURL string, limit int) (*catalog.RegistryResult, error)
+
+// probeMCP and probeSmithery are package-level variables that
+// default to the real catalog probes; tests rebind them to
+// observe call counts and inject deterministic fixtures.
+var (
+	probeMCP      probeFn = catalog.ProbeRegistry
+	probeSmithery probeFn = catalog.ProbeSmitheryRegistry
+)
+
+// probeBackends dispatches to one or both registry probes based
+// on the --backend flag and returns a single merged
+// RegistryResult. For backend="both" the two probes are run
+// sequentially (keeps the diff small + the failure mode simple);
+// servers from the MCP registry win when a Name collides with a
+// Smithery qualifiedName.
+func (a *App) probeBackends(ctx context.Context, backend, baseURL string, limit int) (*catalog.RegistryResult, error) {
+	switch backend {
+	case "mcp":
+		url := baseURL
+		if url == "" {
+			url = catalog.DefaultRegistryURL
+		}
+		return probeMCP(ctx, url, limit)
+	case "smithery":
+		url := baseURL
+		if url == "" {
+			url = catalog.DefaultSmitheryRegistryURL
+		}
+		return probeSmithery(ctx, url, limit)
+	case "both":
+		// --url is ambiguous when probing two backends, so we
+		// ignore it and let each probe hit its own default.
+		mcp, err := probeMCP(ctx, catalog.DefaultRegistryURL, limit)
+		if err != nil {
+			return nil, fmt.Errorf("mcp probe: %w", err)
+		}
+		sm, err := probeSmithery(ctx, catalog.DefaultSmitheryRegistryURL, limit)
+		if err != nil {
+			return nil, fmt.Errorf("smithery probe: %w", err)
+		}
+		seen := make(map[string]struct{}, len(mcp.Servers)+len(sm.Servers))
+		merged := make([]catalog.RegistryServer, 0, len(mcp.Servers)+len(sm.Servers))
+		for _, s := range mcp.Servers {
+			if _, dup := seen[s.Name]; dup {
+				continue
+			}
+			seen[s.Name] = struct{}{}
+			merged = append(merged, s)
+		}
+		for _, s := range sm.Servers {
+			if _, dup := seen[s.Name]; dup {
+				continue
+			}
+			seen[s.Name] = struct{}{}
+			merged = append(merged, s)
+		}
+		return &catalog.RegistryResult{
+			BaseURL: mcp.BaseURL + " + " + sm.BaseURL,
+			Count:   len(merged),
+			Servers: merged,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown backend %q", backend)
+	}
 }
