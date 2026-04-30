@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -57,6 +58,8 @@ func (a *App) runSource(argv []string) int {
 		return a.runSourceSetSecret(argv[1:])
 	case "check":
 		return a.runSourceCheck(argv[1:])
+	case "registry":
+		return a.runSourceRegistry(argv[1:])
 	default:
 		fmt.Fprintf(a.Stderr, "clawtool source: unknown subcommand %q\n\n%s", argv[0], sourceUsage)
 		return 2
@@ -540,6 +543,11 @@ const sourceUsage = `Usage:
                               value is read from stdin.
   clawtool source check       Report which configured sources have all their
                               required credentials.
+  clawtool source registry [--limit N] [--url URL] [--json]
+                              Probe the official MCP Registry
+                              (registry.modelcontextprotocol.io) and list
+                              the first N servers. Read-only; doesn't
+                              touch local config or secrets.
 `
 
 // Look for runtime errors here as well as the App-level helpers.
@@ -571,4 +579,67 @@ func reorderFlagsFirst(argv []string, valueFlags map[string]bool) []string {
 		positional = append(positional, a)
 	}
 	return append(flags, positional...)
+}
+
+// runSourceRegistry probes the official MCP Registry endpoint
+// (registry.modelcontextprotocol.io) and prints a summary of
+// the first N servers. Surfaces ecosystem discovery alongside
+// the embedded `clawtool source catalog` view — the registry
+// is the federated source of truth for MCP servers, the
+// builtin catalog stays the offline fast-path.
+//
+// Flags:
+//
+//	--limit N    server count to fetch (1..50, default 10)
+//	--url URL    registry base URL (default: catalog.DefaultRegistryURL)
+//	             — useful for tests + private mirrors.
+//	--json       emit the RegistryResult as JSON instead of the
+//	             human banner.
+func (a *App) runSourceRegistry(argv []string) int {
+	fs := flag.NewFlagSet("source registry", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	limit := fs.Int("limit", 10, "Max servers to fetch (1..50).")
+	baseURL := fs.String("url", catalog.DefaultRegistryURL, "Registry base URL.")
+	asJSON := fs.Bool("json", false, "Emit JSON instead of the human banner.")
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{"limit": true, "url": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 {
+		fmt.Fprint(a.Stderr, "usage: clawtool source registry [--limit N] [--url URL] [--json]\n")
+		return 2
+	}
+
+	res, err := catalog.ProbeRegistry(context.Background(), *baseURL, *limit)
+	if err != nil {
+		if *asJSON {
+			fmt.Fprintf(a.Stdout, "{\"error\":%q}\n", err.Error())
+		} else {
+			fmt.Fprintf(a.Stderr, "clawtool source registry: %v\n", err)
+		}
+		return 1
+	}
+
+	if *asJSON {
+		enc := json.NewEncoder(a.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(res); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool source registry: encode: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+
+	fmt.Fprintf(a.Stdout, "MCP Registry: %s\n", res.BaseURL)
+	fmt.Fprintf(a.Stdout, "%d server(s) returned (limit %d):\n\n", res.Count, *limit)
+	for _, s := range res.Servers {
+		ver := s.Version
+		if ver == "" {
+			ver = "(no version)"
+		}
+		fmt.Fprintf(a.Stdout, "  %s [%s]\n", s.Name, ver)
+		if d := strings.TrimSpace(s.Description); d != "" {
+			fmt.Fprintf(a.Stdout, "    %s\n", d)
+		}
+	}
+	return 0
 }
