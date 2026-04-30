@@ -21,6 +21,7 @@ func TestParse_Primitives(t *testing.T) {
 		`tool_call_count("Edit") > 5`,
 		`tool_call_count("Bash") >= 1`,
 		`arg("instance") == "opencode"`,
+		`guardians_check("plan")`,
 		`true`,
 		`false`,
 	}
@@ -156,6 +157,65 @@ func TestEval_LogicalOps(t *testing.T) {
 		if got != want {
 			t.Errorf("eval %q = %v, want %v", src, got, want)
 		}
+	}
+}
+
+func TestEval_GuardiansCheckStub(t *testing.T) {
+	// Phase-1 contract: guardians_check ALWAYS returns true so a
+	// pre_send rule wired against it never blocks. Operators can
+	// codify the rule shape today; phase-2 flips the verdict to
+	// the real Z3-SAT result without changing the surface.
+	cases := []struct {
+		name string
+		args map[string]string
+	}{
+		{"empty plan arg present", map[string]string{"plan": ""}},
+		{"plan arg with body", map[string]string{"plan": "draft: edit README, run tests"}},
+		{"plan arg missing entirely", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := Context{Event: EventPreSend, Args: tc.args}
+			got, why, err := mustParse(t, `guardians_check("plan")`).eval(ctx)
+			if err != nil {
+				t.Fatalf("eval: %v", err)
+			}
+			if !got {
+				t.Errorf("phase-1 stub must always return true, got false (why=%q)", why)
+			}
+		})
+	}
+}
+
+func TestEvaluate_GuardiansCheckNeverBlocks(t *testing.T) {
+	// End-to-end: a block-severity rule shaped like the recipe
+	// template (`condition = guardians_check("plan")`) must
+	// NEVER block today. clawtool's rule engine treats a
+	// condition that evaluates to TRUE as "rule passed", and
+	// the phase-1 stub always returns true → this rule always
+	// passes. Phase-2 will return false (with an UNSAT-core
+	// reason) when the plan violates a taint-flow invariant,
+	// flipping this rule to a real block — but the rule shape
+	// itself stays identical across the two phases.
+	rules := []Rule{
+		{
+			Name:      "guardians-presend",
+			When:      EventPreSend,
+			Condition: `guardians_check("plan")`,
+			Severity:  SeverityBlock,
+			Hint:      "phase-1 stub; phase-2 wires Z3 + taint engine.",
+		},
+	}
+	ctx := Context{
+		Event: EventPreSend,
+		Args:  map[string]string{"plan": "anything goes today"},
+	}
+	v := Evaluate(rules, ctx)
+	if v.IsBlocked() {
+		t.Fatalf("phase-1 stub must not block; got blocked=%+v", v.Blocked)
+	}
+	if len(v.Warnings) != 0 {
+		t.Errorf("phase-1 stub must not warn; got warnings=%+v", v.Warnings)
 	}
 }
 

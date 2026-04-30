@@ -7,6 +7,7 @@
 //                 | commit_message_contains(s)
 //                 | tool_call_count(name) > N
 //                 | arg(key) == value
+//                 | guardians_check(plan_arg)   // phase-1 stub, always true
 //                 | true | false
 //   expression   := primitive | NOT expression | expression AND expression | expression OR expression
 //
@@ -213,6 +214,25 @@ func (c callExpr) eval(ctx Context) (bool, string, error) {
 		default:
 			return false, "", fmt.Errorf("arg() needs == or != comparison")
 		}
+
+	case "guardians_check":
+		// Phase-1 STUB for metareflection/guardians (MIT,
+		// https://github.com/metareflection/guardians) — a
+		// taint-tracking + Z3-SAT plan-level pre_send predicate.
+		// Today this always returns true (never blocks); the
+		// surface contract exists so operators can wire
+		// `guardians_check("plan")` into their pre_send rules
+		// now and have the verdict flip to a real Z3 result
+		// once phase-2 lands the engine behind a build tag.
+		//
+		// The arg names a Context.Args key that holds the
+		// drafted plan / message body. Phase-2 will: read
+		// ctx.Args[c.arg], run the taint propagation pass over
+		// the plan's tool-call graph, encode the safety
+		// invariants as Z3 assertions, and return false +
+		// reason on UNSAT.
+		_ = ctx.Args[c.arg] // touch the arg so the contract stays explicit
+		return true, "", nil
 	}
 	return false, "", fmt.Errorf("unknown predicate %q", c.name)
 }
