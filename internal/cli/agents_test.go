@@ -155,6 +155,60 @@ func exists(path string) (bool, error) {
 	}
 }
 
+// TestAgentsList_JSONOutput confirms `agents list --json` emits a
+// JSON array of {name, detected} entries — the wire contract for
+// shell pipelines that want the registered-adapters roster without
+// parsing the human table.
+func TestAgentsList_JSONOutput(t *testing.T) {
+	app, out, _ := newAgentsApp(t)
+	if rc := app.Run([]string{"agents", "list", "--json"}); rc != 0 {
+		t.Fatalf("list --json rc=%d", rc)
+	}
+	var got []struct {
+		Name     string `json:"name"`
+		Detected bool   `json:"detected"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not valid JSON: %v\nbody: %s", err, out.String())
+	}
+	if len(got) == 0 {
+		t.Fatal("expected at least one entry (claude-code adapter is registered)")
+	}
+	// Required keys must appear in the literal output (catches
+	// accidental field-name divergence between code and tag).
+	body := out.String()
+	for _, key := range []string{`"name"`, `"detected"`} {
+		if !strings.Contains(body, key) {
+			t.Errorf("JSON output missing required key %s; body: %s", key, body)
+		}
+	}
+	// claude-code must be in the array.
+	found := false
+	for _, e := range got {
+		if e.Name == "claude-code" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("claude-code missing from JSON list: %+v", got)
+	}
+}
+
+// TestAgentsList_JSONStableShape confirms the JSON path produces an
+// ARRAY (not an object) so `jq '.[]'` consumers stay uniform with
+// `agents status --json`.
+func TestAgentsList_JSONStableShape(t *testing.T) {
+	app, out, _ := newAgentsApp(t)
+	if rc := app.Run([]string{"agents", "list", "--json"}); rc != 0 {
+		t.Fatalf("list --json rc=%d", rc)
+	}
+	body := strings.TrimSpace(out.String())
+	if len(body) == 0 || body[0] != '[' {
+		t.Errorf("expected output to start with '[' (array); got: %q", body)
+	}
+}
+
 // TestAgentsStatus_JSONOutput confirms `agents status --json`
 // emits a parseable JSON array of Status objects with the
 // documented field shape (snake_case keys). Drives the wire

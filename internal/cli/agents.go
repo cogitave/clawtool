@@ -24,7 +24,7 @@ func (a *App) runAgents(argv []string) int {
 	case "status":
 		return a.runAgentsStatus(argv[1:])
 	case "list":
-		return a.runAgentsList()
+		return a.runAgentsList(argv[1:])
 	default:
 		fmt.Fprintf(a.Stderr, "clawtool agents: unknown subcommand %q\n\n%s", argv[0], agentsUsage)
 		return 2
@@ -141,19 +141,59 @@ func (a *App) runAgentsStatus(argv []string) int {
 	return 0
 }
 
-func (a *App) runAgentsList() int {
-	if len(agents.Registry) == 0 {
+// agentListEntry is the JSON shape produced by `agents list --json`.
+// Kept distinct from agents.Status so list stays light (no settings
+// path / claimed-tools array) — operators piping list into a script
+// usually only want "what adapters exist + are they on this host?".
+type agentListEntry struct {
+	Name     string `json:"name"`
+	Detected bool   `json:"detected"`
+}
+
+func (a *App) runAgentsList(argv []string) int {
+	fs := flag.NewFlagSet("agents list", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	asJSON := fs.Bool("json", false, "Emit machine-readable JSON instead of the human list.")
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{})); err != nil {
+		return 2
+	}
+	if len(fs.Args()) > 0 {
+		fmt.Fprint(a.Stderr, "usage: clawtool agents list [--json]\n")
+		return 2
+	}
+
+	// Build a stable name-sorted slice of every registered adapter
+	// + its detection bit. Same data both branches use; only the
+	// rendering differs.
+	entries := make([]agentListEntry, 0, len(agents.Registry))
+	for _, adp := range agents.Registry {
+		entries = append(entries, agentListEntry{
+			Name:     adp.Name(),
+			Detected: adp.Detected(),
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+
+	if *asJSON {
+		// Always emit a JSON array (possibly empty) — uniform
+		// shape lets `jq '.[].name'` work even when no adapters
+		// are registered.
+		body, err := json.MarshalIndent(entries, "", "  ")
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool agents list: marshal: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(a.Stdout, string(body))
+		return 0
+	}
+
+	if len(entries) == 0 {
 		fmt.Fprintln(a.Stdout, "(no agent adapters registered)")
 		return 0
 	}
 	fmt.Fprintln(a.Stdout, "Known agent adapters:")
-	names := make([]string, 0, len(agents.Registry))
-	for _, adp := range agents.Registry {
-		names = append(names, adp.Name())
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		fmt.Fprintf(a.Stdout, "  %s\n", n)
+	for _, e := range entries {
+		fmt.Fprintf(a.Stdout, "  %s\n", e.Name)
 	}
 	return 0
 }
@@ -241,7 +281,10 @@ const agentsUsage = `Usage:
                               --json emits machine-readable output for
                               shell pipelines (jq, etc.).
 
-  clawtool agents list        Print known agent adapters.
+  clawtool agents list [--json]
+                              Print known agent adapters. --json
+                              emits machine-readable output:
+                              [{"name":"claude-code","detected":true}].
 
 Known agents (v0.8.4): claude-code.
 `
