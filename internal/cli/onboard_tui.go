@@ -84,6 +84,22 @@ type stepResultMsg struct {
 // transitions to phaseDone.
 type finishedMsg struct{}
 
+// tickMsg is the periodic frame-bump used to drive animations
+// (active progress dot pulse + logo shimmer). Fires every ~350ms;
+// the Update handler increments the model's frame counter and
+// schedules the next tick.
+type tickMsg struct{}
+
+// tickEvery returns a tea.Cmd that fires a tickMsg after the
+// animation interval. We use a relatively slow cadence (350ms)
+// because the animation is decorative — faster ticks would burn
+// CPU on every frame redraw without adding visual value.
+func tickEvery() tea.Cmd {
+	return tea.Tick(350*time.Millisecond, func(time.Time) tea.Msg {
+		return tickMsg{}
+	})
+}
+
 // wizardStep wraps one custom widget (Select / MultiSelect /
 // Confirm) plus the apply hook that copies the widget's answer
 // into onboardState. skipIf gates conditional steps (e.g. bridges
@@ -121,6 +137,12 @@ type onboardModel struct {
 
 	phaseStartAt time.Time
 	err          error
+
+	// frame counts elapsed animation ticks (incremented on every
+	// tickMsg). Used by renderStep to pulse the active progress
+	// dot and by renderHeader to shimmer the logo accent. Wraps
+	// at int max naturally; we always read frame % N.
+	frame int
 }
 
 // newOnboardModel builds the wizard from onboardState + deps. The
@@ -347,14 +369,15 @@ func (m *onboardModel) advanceStepCursor() {
 	}
 }
 
-// Init kicks off the wizard. Custom widgets don't need an Init cmd
-// (they're synchronous renderers) so we just defend against the
-// edge case where the step list is empty.
+// Init kicks off the wizard + the animation tick loop. Custom
+// widgets don't need an Init cmd (they're synchronous renderers),
+// but the animation needs the first tick scheduled here so the
+// progress-dot pulse + logo shimmer kick in from frame 1.
 func (m *onboardModel) Init() tea.Cmd {
 	if m.stepIdx >= len(m.steps) {
 		return m.startRunPhase()
 	}
-	return nil
+	return tickEvery()
 }
 
 // Update routes incoming msgs to the current phase: form during
@@ -389,6 +412,12 @@ func (m *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case finishedMsg:
 		m.phase = phaseDone
 		return m, nil
+
+	case tickMsg:
+		m.frame++
+		// Reschedule the next animation tick so the loop runs
+		// continuously while the wizard is alive.
+		return m, tickEvery()
 	}
 
 	if m.phase == phaseSteps {
@@ -611,13 +640,14 @@ func sectionFor(k stepKind) string {
 	return ""
 }
 
-// clawtoolLogo is the multi-line ASCII brand mark shown in the
-// wizard banner. Box-drawing characters render as a chunky bold
-// logo on any modern terminal (Windows Terminal / iTerm / Kitty /
-// Alacritty / WezTerm all ship Unicode block fonts by default).
-const clawtoolLogo = `┏━╸╻  ┏━┓╻ ╻╺┳╸┏━┓┏━┓╻
-┃  ┃  ┣━┫┃╻┃ ┃ ┃ ┃┃ ┃┃
-┗━╸┗━╸╹ ╹┗┻┛ ╹ ┗━┛┗━┛┗━╸`
+// clawtoolLogo is the wizard's brand mark — Pagga-style chunky
+// pixel font. Two rows tall, ~30 cols wide, more visually
+// distinct than the prior box-drawing "Future" font and still
+// renders on any terminal with a modern Unicode block font
+// (Windows Terminal / iTerm / Kitty / Alacritty / WezTerm all
+// ship one by default).
+const clawtoolLogo = `█▀▀ █   ▄▀█ █ █ ▀█▀ █▀█ █▀█ █
+█▄▄ █▄▄ █▀█ ▀▄▀  █  █▄█ █▄█ █▄▄`
 
 // onboardFixedCardHeight pins the card's vertical silhouette so
 // short widgets (Confirm) and tall ones (multi-option Select) all
@@ -696,13 +726,14 @@ func (m *onboardModel) View() string {
 		body = m.renderDoneBody(contentW, bodyH)
 	}
 
-	// Stack: header → body (filled) → footer. No centring; the
-	// body's Height() makes it consume the slack so footer pins
-	// to the bottom. Top padding (2 rows) gives the wizard
-	// breathing room above the header so it doesn't hug the
-	// alt-screen top edge.
+	// Stack: header → blank → body (filled) → footer. The extra
+	// blank row between header and body separates the brand
+	// banner from the active step indicator so the operator's
+	// eye registers them as distinct zones. Top padding (2 rows)
+	// gives breathing room above the header.
 	stack := lipgloss.JoinVertical(lipgloss.Left,
 		header,
+		"",
 		body,
 		footer,
 	)
@@ -788,13 +819,22 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 		m.style.dim.Render("  ·  ") +
 		m.style.sectionTitle.Render(step.title)
 
+	// Active dot pulse: cycle through 4 progressively brighter
+	// pinks tied to the animation frame counter so the operator's
+	// eye is gently pulled to "where am I now?". Completed dots
+	// stay solid green; pending dots stay dim. This is the only
+	// element whose colour varies per frame.
+	pulseColors := []string{"212", "213", "218", "219"}
+	activeColor := pulseColors[m.frame%len(pulseColors)]
+	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(activeColor))
+
 	dots := make([]string, total)
 	for i := 1; i <= total; i++ {
 		switch {
 		case i < cur:
 			dots[i-1] = m.style.tickOK.Render("●")
 		case i == cur:
-			dots[i-1] = m.style.headerTitle.Render("◉")
+			dots[i-1] = activeStyle.Render("◉")
 		default:
 			dots[i-1] = m.style.dim.Render("○")
 		}
@@ -835,6 +875,7 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 		indicator,
 		"",
 		progress,
+		"",
 		"",
 		card,
 	)
