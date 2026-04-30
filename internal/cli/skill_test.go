@@ -241,6 +241,34 @@ func TestSkillList_HumanNoSkills(t *testing.T) {
 	}
 }
 
+// TestSkillList_TSVNoSkills pins the empty-state contract for
+// `--format tsv` — pre-fix this fell through to the human banner
+// because the empty-case carve-out only excluded JSON. Sister of
+// TestSkillList_JSONNoSkills; together they keep both pipe-friendly
+// formats free of the `(no skills installed)` prose. Mirrors the
+// hooks/portal/sandbox/source-list empty-state series.
+func TestSkillList_TSVNoSkills(t *testing.T) {
+	withFakeClaudeHomeForCLI(t)
+	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	out := &bytes.Buffer{}
+	app.Stdout = out
+	if rc := app.runSkillList([]string{"--format", "tsv"}); rc != 0 {
+		t.Fatalf("rc = %d", rc)
+	}
+	body := strings.TrimRight(out.String(), "\n")
+	lines := strings.Split(body, "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 header line on empty-state TSV; got %d: %q", len(lines), body)
+	}
+	cells := strings.Split(lines[0], "\t")
+	if len(cells) != 2 || cells[0] != "SKILL" || cells[1] != "ROOT" {
+		t.Errorf("expected SKILL\\tROOT header; got %q", lines[0])
+	}
+	if strings.Contains(body, "no skills installed") {
+		t.Errorf("TSV mode should NOT emit the human banner; got %q", body)
+	}
+}
+
 // TestSkillNew_DryRunDoesNotWrite confirms `--dry-run` previews
 // the scaffold without creating SKILL.md or the subdirectories.
 // Symmetric with `rules new --dry-run` (5824012). Operators can

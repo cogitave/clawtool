@@ -229,12 +229,14 @@ func (a *App) runSkillList(argv []string) int {
 		}
 	}
 
-	// Empty case: JSON path always emits an array (`[]`) so
-	// pipelines see the same shape across configured /
-	// unconfigured machines. table/tsv get the human hint —
-	// an interactive `clawtool skill list` on a fresh box should
-	// nudge toward `skill new` rather than print just a header.
-	if len(cols.Rows) == 0 && format != listfmt.FormatJSON {
+	// Empty-state contract (sister of source / sandbox / portal /
+	// hooks list): table mode keeps the actionable hint, JSON
+	// AND TSV consumers get the structured empty shape (`[]\n`
+	// and a header line) so a `clawtool skill list --format tsv
+	// | awk 'NR>1{...}'` pipeline doesn't have to special-case
+	// the human banner. Pre-fix this branch only carved out JSON;
+	// TSV consumers fell through to the human banner.
+	if len(cols.Rows) == 0 && format == listfmt.FormatTable {
 		fmt.Fprintln(a.Stdout, "(no skills installed)")
 		fmt.Fprintln(a.Stdout, "Try: clawtool skill new my-first-skill --description \"...\"")
 		return 0
