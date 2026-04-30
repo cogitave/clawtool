@@ -110,11 +110,19 @@ func (a *App) runAgentNew(argv []string) int {
 	useUser := fs.Bool("user", false, "Install under ~/.claude/agents/ (default)")
 	useLocal := fs.Bool("local", false, "Install under ./.claude/agents/ instead")
 	force := fs.Bool("force", false, "Overwrite an existing agent file")
-	if err := fs.Parse(argv); err != nil {
+	dryRun := fs.Bool("dry-run", false, "Print what would be created without writing.")
+	// stdlib flag stops at the first non-flag; reorder so flags can come
+	// after the positional <name> (the form users actually type).
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{
+		"description": true,
+		"tools":       true,
+		"instance":    true,
+		"model":       true,
+	})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprint(a.Stderr, "usage: clawtool agent new <name> --description \"...\" [options]\n")
+		fmt.Fprint(a.Stderr, "usage: clawtool agent new <name> --description \"...\" [options] [--dry-run]\n")
 		return 2
 	}
 	name := fs.Arg(0)
@@ -135,13 +143,43 @@ func (a *App) runAgentNew(argv []string) int {
 	if *useLocal {
 		root = agentgen.LocalAgentsRoot()
 	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		fmt.Fprintf(a.Stderr, "agent new: mkdir: %v\n", err)
+	path := filepath.Join(root, name+".md")
+	exists := false
+	if _, err := os.Stat(path); err == nil {
+		exists = true
+	}
+	if exists && !*force {
+		fmt.Fprintf(a.Stderr, "agent new: %s already exists (use --force to overwrite)\n", path)
 		return 1
 	}
-	path := filepath.Join(root, name+".md")
-	if _, err := os.Stat(path); err == nil && !*force {
-		fmt.Fprintf(a.Stderr, "agent new: %s already exists (use --force to overwrite)\n", path)
+
+	if *dryRun {
+		// Symmetric with `skill new --dry-run` (44a9819) and
+		// `rules new --dry-run` (5824012): all pre-flight
+		// validation has already passed (name format,
+		// description present, --user/--local conflict,
+		// already-exists check). Print the preview without
+		// touching disk.
+		verb := "would create"
+		if exists && *force {
+			verb = "would overwrite"
+		}
+		fmt.Fprintf(a.Stdout, "(dry-run) %s agent %q at %s\n", verb, name, path)
+		fmt.Fprintf(a.Stdout, "  description: %s\n", strings.TrimSpace(*desc))
+		if t := agentgen.ParseTools(*tools); len(t) > 0 {
+			fmt.Fprintf(a.Stdout, "  tools:       %s\n", strings.Join(t, ", "))
+		}
+		if inst := strings.TrimSpace(*instance); inst != "" {
+			fmt.Fprintf(a.Stdout, "  instance:    %s\n", inst)
+		}
+		if m := strings.TrimSpace(*model); m != "" {
+			fmt.Fprintf(a.Stdout, "  model:       %s\n", m)
+		}
+		return 0
+	}
+
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		fmt.Fprintf(a.Stderr, "agent new: mkdir: %v\n", err)
 		return 1
 	}
 
