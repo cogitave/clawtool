@@ -116,6 +116,53 @@ func TestUpgradeUX_ReleaseNotesTruncatesAtMaxLines(t *testing.T) {
 	}
 }
 
+// renderUpToDate has two distinct sub-cases that USED to collapse
+// into the same misleading "current → current" output. These tests
+// pin the wording of each so the regression doesn't sneak back.
+
+func TestRenderUpToDate_EqualPinsAlreadyOnLatestWording(t *testing.T) {
+	buf := &bytes.Buffer{}
+	ux := newUpgradeUX(buf)
+	renderUpToDate(ux, "0.22.49", "0.22.49")
+	got := buf.String()
+	if !strings.Contains(got, "already on the latest tagged release (0.22.49)") {
+		t.Fatalf("equal case should pin the 'already on the latest' wording:\n%s", got)
+	}
+	if !strings.Contains(got, "0.22.49 -> 0.22.49") {
+		t.Fatalf("equal case header should show same version on both sides:\n%s", got)
+	}
+	if strings.Contains(got, "ahead of") {
+		t.Fatalf("equal case must NOT use the ahead-of-latest wording:\n%s", got)
+	}
+}
+
+func TestRenderUpToDate_AheadPinsDevBuildWordingAndBothVersionsInHeader(t *testing.T) {
+	buf := &bytes.Buffer{}
+	ux := newUpgradeUX(buf)
+	// goreleaser-snapshot / branch build is newer than the
+	// latest published tag — the case the bug surfaced on.
+	renderUpToDate(ux, "0.22.58-tui-responsive", "0.22.49")
+	got := buf.String()
+	if !strings.Contains(got, "ahead of the latest tagged release (0.22.49)") {
+		t.Fatalf("ahead case should explain the gap toward latest:\n%s", got)
+	}
+	if !strings.Contains(got, "your local build (0.22.58-tui-responsive)") {
+		t.Fatalf("ahead case should name the local build version:\n%s", got)
+	}
+	if !strings.Contains(got, "dev/branch build, no upgrade necessary") {
+		t.Fatalf("ahead case should reassure the operator no upgrade is needed:\n%s", got)
+	}
+	// Header MUST carry BOTH version strings — that's the entire
+	// point of the fix. The old code rendered "current → current"
+	// on the ahead branch, which was the lie.
+	if !strings.Contains(got, "0.22.49 -> 0.22.58-tui-responsive") {
+		t.Fatalf("ahead case header must show latest -> current (both versions distinct):\n%s", got)
+	}
+	if strings.Contains(got, "already on the latest tagged release") {
+		t.Fatalf("ahead case must NOT reuse the equal-case wording:\n%s", got)
+	}
+}
+
 func TestHumanBytes_BoundaryCases(t *testing.T) {
 	cases := []struct {
 		in   int64

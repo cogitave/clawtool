@@ -72,17 +72,28 @@ func (a *App) runUpgrade(argv []string) int {
 	// path. Treat anything that isn't a real version as "always
 	// outdated" so devs on a hand-built binary still get to upgrade
 	// to the latest tagged release.
+	//
+	// Three-way branch on the current vs latest comparison:
+	//   * Equal           — operator IS on the latest tag.
+	//   * Ahead (current  > latest) — local build (typically a
+	//                                 goreleaser-snapshot or
+	//                                 branch build like
+	//                                 `0.22.58-tui-responsive`)
+	//                                 is newer than the latest
+	//                                 published tag. Worth
+	//                                 surfacing distinctly so the
+	//                                 operator doesn't read
+	//                                 "current → current" as
+	//                                 "no upgrade available".
+	//   * Behind          — fall through to the normal upgrade
+	//                       flow further down.
+	latestVersion := latest.Version()
 	if isComparableVersion(currentVersion) && latest.LessOrEqual(currentVersion) {
-		ux.HeaderDelta(currentVersion, currentVersion)
-		ux.Note(fmt.Sprintf("already on the latest tagged release (%s)", currentVersion))
-		ux.NextSteps([]string{
-			"clawtool overview     see the live state of the daemon and any active dispatches",
-			"clawtool changelog    full release history",
-		})
+		renderUpToDate(ux, currentVersion, latestVersion)
 		return 0
 	}
 
-	ux.HeaderDelta(currentVersion, latest.Version())
+	ux.HeaderDelta(currentVersion, latestVersion)
 	if checkOnly {
 		ux.Note("--check passed: skipping the actual install")
 		ux.NextSteps([]string{
@@ -227,6 +238,39 @@ func humanBytes(n int64) string {
 	default:
 		return fmt.Sprintf("%d B", n)
 	}
+}
+
+// renderUpToDate handles the "no upgrade needed" rendering. Two
+// distinct sub-cases collapse here:
+//
+//   - Equal: operator IS on the latest tagged release. The "→"
+//     arrow lands on the same version on both sides; the note
+//     pins that as the published state.
+//   - Ahead: operator's local build is *newer* than the latest
+//     tagged release — typically a goreleaser-snapshot or
+//     branch build like `0.22.58-tui-responsive` that hasn't
+//     been published yet. The header arrow shows latest →
+//     current so the *direction* of the gap is unambiguous, and
+//     the note explains that this is a dev/branch build and no
+//     upgrade is necessary. Without this branch the operator
+//     used to see "current → current" + "already on the latest
+//     tagged release" which read as "no upgrade available" but
+//     actually hid the (different, fine) state of being ahead.
+//
+// Pure rendering: no I/O beyond `ux`. Tested directly with a
+// bytes.Buffer-backed upgradeUX in upgrade_ux_test.go.
+func renderUpToDate(ux *upgradeUX, current, latest string) {
+	if current == latest {
+		ux.HeaderDelta(current, current)
+		ux.Note(fmt.Sprintf("already on the latest tagged release (%s)", current))
+	} else {
+		ux.HeaderDelta(latest, current)
+		ux.Note(fmt.Sprintf("your local build (%s) is ahead of the latest tagged release (%s) — dev/branch build, no upgrade necessary", current, latest))
+	}
+	ux.NextSteps([]string{
+		"clawtool overview     see the live state of the daemon and any active dispatches",
+		"clawtool changelog    full release history",
+	})
 }
 
 // isComparableVersion reports whether v looks like real semver-ish
