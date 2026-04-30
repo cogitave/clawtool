@@ -4,7 +4,40 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.38] - 2026-04-29
+## [0.22.39] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.38 [skip ci] (2857f25)
+### Features
+
+- **cli:** Responsive onboard layout for narrow terminals (2720a87)
+- **cli:** Polish onboard TUI with sidebar layout + ASCII banner (35cd4d8)
+- **cli:** Onboard wizard resume + re-entry guard (492f544)
+- **cli:** Rewrite onboard as Bubble Tea wizard with alt-screen (9551018)
+### Fixes
+
+- **a2a:** Drain in-flight peer-registry saves before t.TempDir cleanup (cfba933)
+- **cli:** Onboard form renders all options at natural size (d1a5e74)
+- **cli:** Onboard form fills card area instead of compressing to one row (8540a69)
+- **cli:** Onboard TUI gate falls back to os.Stdin when App.Stdin nil (df44f29)
+### Refactor
+
+- **cli:** Pin onboard step card to fixed silhouette + centre content (695bce6)
+- **cli:** Drop huh embed; ship custom Select / MultiSelect / Confirm (9ed5304)
+- **cli:** Bring back outer rounded card; fix form clamping properly (bb7202c)
+- **cli:** Drop nested card frame around onboard step content (67a107b)
+- **cli:** Onboard TUI fills viewport responsively (2ec851c)
+- **cli:** Redesign onboard TUI per Charm style patterns (7b5980d)
+### Style
+
+- **cli:** Bottom-align logo with metaCol + balance body slack vertically (bed72f5)
+- **cli:** Vertically centre logo against meta column in header (ba404aa)
+- **cli:** Move animation onto the clawtool logo (gradient shimmer) (fe5e269)
+- **cli:** Fix W glyph in logo + add Braille spinner to step indicator (062e012)
+- **cli:** Swap onboard logo + animate active progress dot (b6c8534)
+- **cli:** Widen onboard card + polish header banner (c30561b)
+- **cli:** Centre onboard wizard horizontally in viewport (e17bd19)## [0.22.38] - 2026-04-29
 
 ### Documentation
 
