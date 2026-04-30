@@ -272,6 +272,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runBridge(argv[1:])
 	case "send":
 		return a.runSend(argv[1:])
+	case "autonomous":
+		return a.runAutonomous(argv[1:])
 	case "worktree":
 		return a.runWorktree(argv[1:])
 	case "task":
@@ -556,6 +558,14 @@ Usage:
                             CLAWTOOL_AGENT env > sticky default >
                             single-instance fallback.
   clawtool send --list      Print the supervisor's agent registry.
+  clawtool autonomous "<goal>" [--agent <i>] [--max-iterations N] [--cooldown <d>] [--dry-run]
+                            Self-paced single-message dev loop. The CLI
+                            builds a session prompt from <goal> + iteration
+                            metadata and dispatches it to the chosen BIAM
+                            peer until the agent emits DONE: <summary>,
+                            --max-iterations is hit, or Ctrl-C. Hint: pair
+                            with OnboardStatus + InitApply for "one
+                            message, full pipeline".
   clawtool agent use <i>    Set the sticky default agent (singular
                             'agent' = relay runtime; plural 'agents' =
                             adapter ownership for native tool replacement).
