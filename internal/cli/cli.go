@@ -322,6 +322,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runEgress(argv[1:])
 	case "claude-bootstrap":
 		return a.runClaudeBootstrap(argv[1:])
+	case "apm":
+		return a.runApm(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -573,6 +575,12 @@ Usage:
                             runtime) and their state in the current repo.
   clawtool recipe status [<name>]
                             Detect output for one recipe or all of them.
+  clawtool apm import [<path>] [--dry-run] [--repo <p>]
+                            Import a microsoft/apm manifest (apm.yml). MCP
+                            servers are registered via 'clawtool source add';
+                            skills + playbooks are recorded in
+                            <repo>/.clawtool/apm-imported-manifest.toml for
+                            phase-2 recipe wiring.
   clawtool recipe apply <name> [key=value ...]
                             Inject the recipe into the current working
                             directory. Examples:
