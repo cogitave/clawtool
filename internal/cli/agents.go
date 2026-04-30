@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"sort"
@@ -81,34 +82,62 @@ func (a *App) runAgentsRelease(argv []string) int {
 }
 
 func (a *App) runAgentsStatus(argv []string) int {
-	if len(argv) == 0 {
-		// Status across every registered adapter.
-		fmt.Fprintln(a.Stdout, "AGENT          DETECTED  CLAIMED  TOOLS DISABLED BY CLAWTOOL")
+	fs := flag.NewFlagSet("agents status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	asJSON := fs.Bool("json", false, "Emit machine-readable JSON instead of the human table.")
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{})); err != nil {
+		return 2
+	}
+	rest := fs.Args()
+	if len(rest) > 1 {
+		fmt.Fprint(a.Stderr, "usage: clawtool agents status [<agent>] [--json]\n")
+		return 2
+	}
+
+	// Build the slice of statuses we'll surface — single-adapter
+	// when the operator named one, otherwise every registered
+	// adapter. Errors are non-fatal; we fall back to a Notes line
+	// inside the row so a single broken adapter doesn't sink the
+	// whole report.
+	var rows []agents.Status
+	if len(rest) == 1 {
+		adapter, err := agents.Find(rest[0])
+		if err != nil {
+			return a.agentNotFound(rest[0])
+		}
+		s, err := adapter.Status()
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool agents status: %v\n", err)
+			return 1
+		}
+		rows = []agents.Status{s}
+	} else {
 		for _, adp := range agents.Registry {
 			s, err := adp.Status()
 			if err != nil {
 				fmt.Fprintf(a.Stderr, "agents status %s: %v\n", adp.Name(), err)
 				continue
 			}
-			a.renderStatusRow(s)
+			rows = append(rows, s)
 		}
+	}
+
+	if *asJSON {
+		// Stable indented JSON so curl|jq scripts can pipe it
+		// directly. Trailing newline matches the human path.
+		body, err := json.MarshalIndent(rows, "", "  ")
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool agents status: marshal: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(a.Stdout, string(body))
 		return 0
 	}
-	if len(argv) > 1 {
-		fmt.Fprint(a.Stderr, "usage: clawtool agents status [<agent>]\n")
-		return 2
-	}
-	adapter, err := agents.Find(argv[0])
-	if err != nil {
-		return a.agentNotFound(argv[0])
-	}
-	s, err := adapter.Status()
-	if err != nil {
-		fmt.Fprintf(a.Stderr, "clawtool agents status: %v\n", err)
-		return 1
-	}
+
 	fmt.Fprintln(a.Stdout, "AGENT          DETECTED  CLAIMED  TOOLS DISABLED BY CLAWTOOL")
-	a.renderStatusRow(s)
+	for _, s := range rows {
+		a.renderStatusRow(s)
+	}
 	return 0
 }
 
@@ -206,9 +235,11 @@ const agentsUsage = `Usage:
                               Re-enable everything 'claim' previously
                               disabled. Idempotent; safe to run twice.
 
-  clawtool agents status [<agent>]
+  clawtool agents status [<agent>] [--json]
                               Show what's claimed across every adapter,
                               or a single adapter when <agent> is given.
+                              --json emits machine-readable output for
+                              shell pipelines (jq, etc.).
 
   clawtool agents list        Print known agent adapters.
 

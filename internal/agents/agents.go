@@ -66,12 +66,12 @@ type Plan struct {
 
 // Status is a snapshot of the adapter's current claim state.
 type Status struct {
-	Adapter      string
-	Detected     bool
-	SettingsPath string
-	Claimed      bool     // true when our marker file exists and lists tools
-	DisabledByUs []string // tools we disabled (read from marker)
-	Notes        string   // anything an adapter wants to surface (e.g. "settings file missing")
+	Adapter      string   `json:"adapter"`
+	Detected     bool     `json:"detected"`
+	SettingsPath string   `json:"settings_path,omitempty"`
+	Claimed      bool     `json:"claimed"`                  // true when our marker file exists and lists tools
+	DisabledByUs []string `json:"disabled_by_us,omitempty"` // tools we disabled (read from marker)
+	Notes        string   `json:"notes,omitempty"`          // anything an adapter wants to surface (e.g. "settings file missing")
 }
 
 // Registry is the set of available adapters. Adapters self-register in

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,5 +152,75 @@ func exists(path string) (bool, error) {
 		return true, nil
 	} else {
 		return false, err
+	}
+}
+
+// TestAgentsStatus_JSONOutput confirms `agents status --json`
+// emits a parseable JSON array of Status objects with the
+// documented field shape (snake_case keys). Drives the wire
+// contract for shell pipelines (`clawtool agents status --json |
+// jq '.[].claimed'`).
+func TestAgentsStatus_JSONOutput(t *testing.T) {
+	_, cleanup := withTmpClaudeSettings(t)
+	defer cleanup()
+
+	app, out, _ := newAgentsApp(t)
+	if rc := app.Run([]string{"agents", "status", "--json"}); rc != 0 {
+		t.Fatalf("status --json rc=%d", rc)
+	}
+
+	var got []agents.Status
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not valid JSON: %v\nbody: %s", err, out.String())
+	}
+	if len(got) == 0 {
+		t.Fatal("expected at least one status row (claude-code adapter is registered)")
+	}
+
+	// Field shape check: claude-code row must be present, and the
+	// JSON keys must be snake_case (verified by re-marshalling and
+	// inspecting the literal output instead of struct tags alone —
+	// catches accidental field-name divergence).
+	body := out.String()
+	for _, key := range []string{`"adapter"`, `"detected"`, `"claimed"`} {
+		if !strings.Contains(body, key) {
+			t.Errorf("JSON output missing required key %s; body: %s", key, body)
+		}
+	}
+
+	// claude-code adapter should appear by name in the array.
+	found := false
+	for _, s := range got {
+		if s.Adapter == "claude-code" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("claude-code adapter missing from JSON status: %+v", got)
+	}
+}
+
+// TestAgentsStatus_JSONSingleAdapter exercises the path where the
+// operator names a specific adapter together with --json: the
+// output should still be a single-element JSON array (not an
+// object), so jq one-liners stay uniform across both invocations.
+func TestAgentsStatus_JSONSingleAdapter(t *testing.T) {
+	_, cleanup := withTmpClaudeSettings(t)
+	defer cleanup()
+
+	app, out, _ := newAgentsApp(t)
+	if rc := app.Run([]string{"agents", "status", "claude-code", "--json"}); rc != 0 {
+		t.Fatalf("status claude-code --json rc=%d", rc)
+	}
+	var got []agents.Status
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not valid JSON: %v\nbody: %s", err, out.String())
+	}
+	if len(got) != 1 {
+		t.Fatalf("single-adapter --json should produce a 1-element array; got %d: %+v", len(got), got)
+	}
+	if got[0].Adapter != "claude-code" {
+		t.Errorf("Adapter=%q, want claude-code", got[0].Adapter)
 	}
 }
