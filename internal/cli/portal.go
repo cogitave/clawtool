@@ -158,21 +158,35 @@ func (a *App) loadPortals() (map[string]config.PortalConfig, string, error) {
 
 // PortalList prints the configured portals one per line — same
 // shape as `clawtool send --list` so the operator sees both
-// surfaces consistently.
+// surfaces consistently. Compile-time drivers (bifrost and other
+// gateway integrations registered via portal.RegisterDriver) are
+// merged into the same table with a STATUS column so operators
+// discover deferred / ready integrations alongside their
+// hand-saved web-UI portals.
 func (a *App) PortalList(format listfmt.Format) error {
 	portals, _, err := a.loadPortals()
 	if err != nil {
 		return err
 	}
 	cfg := config.Config{Portals: portals}
-	cols := listfmt.Cols{Header: []string{"NAME", "BASE_URL", "AUTH_COOKIES"}}
+	cols := listfmt.Cols{Header: []string{"NAME", "STATUS", "BASE_URL", "AUTH_COOKIES"}}
 	for _, name := range portal.Names(cfg) {
 		p := portals[name]
 		auth := strings.Join(p.AuthCookieNames, ",")
 		if auth == "" {
 			auth = "(none declared)"
 		}
-		cols.Rows = append(cols.Rows, []string{name, p.BaseURL, auth})
+		cols.Rows = append(cols.Rows, []string{name, "configured", p.BaseURL, auth})
+	}
+	// Drivers (compile-time integrations like bifrost) round out
+	// the listing. They never overlap with config stanzas because
+	// a config-defined portal with the same name takes precedence
+	// — drivers fill the gap when no stanza exists yet.
+	for _, d := range portal.Drivers() {
+		if _, configured := portals[d.Name()]; configured {
+			continue
+		}
+		cols.Rows = append(cols.Rows, []string{d.Name(), d.Status(), "(driver)", d.Description()})
 	}
 	// Empty-state contract codified in listfmt.RenderOrHint
 	// (sister of skill / source / sandbox / hooks list): table
@@ -368,6 +382,20 @@ func (a *App) PortalAsk(argv []string) error {
 	}
 	p, ok := portals[name]
 	if !ok {
+		// Compile-time driver fallback: bifrost (and future
+		// gateway integrations) register themselves in
+		// portal.driverRegistry without requiring a config
+		// stanza. Drivers route through Driver.Ask which (for
+		// phase-1 stubs) returns the canonical deferred-error
+		// sentinel — see internal/portal/bifrost.go.
+		if d := portal.LookupDriver(name); d != nil {
+			resp, err := d.Ask(context.Background(), prompt)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(a.Stdout, resp)
+			return nil
+		}
 		return fmt.Errorf("portal %q not in registry", name)
 	}
 	if err := portal.Validate(name, p); err != nil {
