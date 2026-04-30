@@ -449,6 +449,16 @@ func BuildManifest() *registry.Manifest {
 			RegisterAgentDetectTool(s)
 		},
 	})
+	m.Append(registry.ToolSpec{
+		Name:        "SourceCheck",
+		Description: "Probe configured MCP source instances and report which env vars resolve via the secrets store. Returns {entries: [{name, ready, missing[]}], ready}. Pass `instance` to filter to one source; omit to probe all. Same wire shape as `clawtool source check [<instance>] --json`. Read-only; emits env-var NAMES only, never values.",
+		Keywords:    []string{"source", "check", "probe", "ready", "secrets", "env", "credentials", "missing", "installer", "bootstrap", "introspect"},
+		Category:    registry.CategoryDiscovery,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterSourceCheckTool(s)
+		},
+	})
 
 	// ─── Version probe (CategoryDiscovery — read-only metadata) ─
 	m.Append(registry.ToolSpec{
