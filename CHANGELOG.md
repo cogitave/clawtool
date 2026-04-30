@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.66] - 2026-04-30
+## [0.22.67] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.66 [skip ci] (38db2ff)
+### Features
+
+- **playbooks:** Add Archon YAML workflow loader + recipe (phase 1, read-only) (1294ad8)## [0.22.66] - 2026-04-30
 
 ### Documentation
 
