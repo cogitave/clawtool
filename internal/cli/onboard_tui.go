@@ -725,7 +725,7 @@ func (m *onboardModel) renderHeader(w int) string {
 		"",
 		pillRow,
 	)
-	return lipgloss.NewStyle().Width(w).PaddingLeft(2).Render(body)
+	return lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(body)
 }
 
 // renderStep renders the active wizard step: indicator line +
@@ -794,7 +794,7 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 		Height(cardH).
 		Render(centred)
 
-	body := lipgloss.JoinVertical(lipgloss.Left,
+	body := lipgloss.JoinVertical(lipgloss.Center,
 		indicator,
 		"",
 		progress,
@@ -804,7 +804,7 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 	return lipgloss.NewStyle().
 		Width(w).
 		Height(bodyH).
-		PaddingLeft(2).
+		Align(lipgloss.Center).
 		Render(body)
 }
 
@@ -814,7 +814,7 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 // rules) which provides enough visual structure on its own.
 func (m *onboardModel) renderRunBody(w, bodyH int) string {
 	indicator := m.style.sectionTitle.Render("Setting things up …")
-	body := lipgloss.JoinVertical(lipgloss.Left,
+	body := lipgloss.JoinVertical(lipgloss.Center,
 		indicator,
 		"",
 		m.renderRunLog(),
@@ -822,7 +822,7 @@ func (m *onboardModel) renderRunBody(w, bodyH int) string {
 	return lipgloss.NewStyle().
 		Width(w).
 		Height(bodyH).
-		PaddingLeft(2).
+		Align(lipgloss.Center).
 		Render(body)
 }
 
@@ -831,7 +831,7 @@ func (m *onboardModel) renderRunBody(w, bodyH int) string {
 // (✓ / · / ✗) carry the visual weight.
 func (m *onboardModel) renderDoneBody(w, bodyH int) string {
 	indicator := m.style.tickOK.Render("✓ All set.")
-	body := lipgloss.JoinVertical(lipgloss.Left,
+	body := lipgloss.JoinVertical(lipgloss.Center,
 		indicator,
 		"",
 		m.renderSummary(),
@@ -839,7 +839,7 @@ func (m *onboardModel) renderDoneBody(w, bodyH int) string {
 	return lipgloss.NewStyle().
 		Width(w).
 		Height(bodyH).
-		PaddingLeft(2).
+		Align(lipgloss.Center).
 		Render(body)
 }
 
@@ -868,7 +868,7 @@ func (m *onboardModel) renderFooterCol(w int) string {
 	case phaseDone:
 		hint = m.style.dim.Render("press any key to exit")
 	}
-	return lipgloss.NewStyle().Width(w).PaddingLeft(2).Render(hint)
+	return lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(hint)
 }
 func (m *onboardModel) visibleStepNumber() int {
 	n := 0
