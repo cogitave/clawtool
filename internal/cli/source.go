@@ -60,6 +60,8 @@ func (a *App) runSource(argv []string) int {
 		return a.runSourceCheck(argv[1:])
 	case "registry":
 		return a.runSourceRegistry(argv[1:])
+	case "inspect":
+		return a.runSourceInspect(argv[1:])
 	default:
 		fmt.Fprintf(a.Stderr, "clawtool source: unknown subcommand %q\n\n%s", argv[0], sourceUsage)
 		return 2
@@ -551,6 +553,13 @@ const sourceUsage = `Usage:
                               'smithery' (registry.smithery.ai), or 'both'
                               to merge + dedupe by name. Read-only; doesn't
                               touch local config or secrets.
+  clawtool source inspect <instance> [--dry-run] [--format text|json]
+                              Audit a configured source's exposed tool
+                              surface by spawning the npm-published MCP
+                              Inspector against its stdio command.
+                              --dry-run previews the npx invocation; a
+                              JSON format passes the inspector's raw
+                              output through for pipelines.
 `
 
 // Look for runtime errors here as well as the App-level helpers.
