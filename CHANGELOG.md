@@ -4,7 +4,18 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.76] - 2026-04-30
+## [0.22.78] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.76 [skip ci] (eeae5a5)
+### Fixes
+
+- **ci:** Drop pre-goreleaser stash that swept BODY.md, breaking rich release notes (9721118)## [0.22.77] - 2026-04-30
+
+### Features
+
+- **ci:** Replace git-cliff release body with rich self-hosted release-notes script (fcf687c)## [0.22.76] - 2026-04-30
 
 ### Features
 
