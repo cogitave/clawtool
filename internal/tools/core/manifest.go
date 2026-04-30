@@ -439,6 +439,16 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
 	})
+	m.Append(registry.ToolSpec{
+		Name:        "AgentDetect",
+		Description: "Probe one host AI coding agent (claude-code, codex, …) and report whether it's detected on this host AND whether clawtool has claimed its native tools. Returns {adapter, detected, claimed, exit_code}; same exit-code contract as `clawtool agents detect` CLI (0=detected+claimed, 1=detected-not-claimed, 2=not-detected). Read-only.",
+		Keywords:    []string{"detect", "probe", "agent", "claimed", "claim", "host", "adapter", "installer", "bootstrap", "introspect"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterAgentDetectTool(s)
+		},
+	})
 
 	// ─── Version probe (CategoryDiscovery — read-only metadata) ─
 	m.Append(registry.ToolSpec{
