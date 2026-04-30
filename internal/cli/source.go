@@ -182,23 +182,6 @@ func (a *App) runSourceList(argv []string) int {
 		return 1
 	}
 	header := []string{"INSTANCE", "AUTH", "PACKAGE"}
-	if len(cfg.Sources) == 0 {
-		// Human/table mode keeps the actionable hint pointing
-		// at the most common next step. JSON / TSV consumers get
-		// the structured empty shape (`[]\n` and a header line
-		// respectively) so a `jq '. | length'` or
-		// `awk 'NR>1 {print}'` pipeline doesn't have to special-
-		// case the human banner.
-		if format == listfmt.FormatTable {
-			fmt.Fprintln(a.Stdout, "(no sources configured. try: clawtool source add github)")
-			return 0
-		}
-		if err := listfmt.Render(a.Stdout, format, listfmt.Cols{Header: header}); err != nil {
-			fmt.Fprintf(a.Stderr, "clawtool source list: %v\n", err)
-			return 1
-		}
-		return 0
-	}
 	store, _ := secrets.LoadOrEmpty(a.SecretsPath())
 
 	names := make([]string, 0, len(cfg.Sources))
@@ -232,7 +215,12 @@ func (a *App) runSourceList(argv []string) int {
 		}
 		cols.Rows = append(cols.Rows, []string{name, auth, pkg})
 	}
-	if err := listfmt.Render(a.Stdout, format, cols); err != nil {
+	// Empty-state contract codified in listfmt.RenderOrHint
+	// (sister of skill/sandbox/portal/hooks list): table mode
+	// emits the human hint, JSON + TSV route through Render so
+	// pipelines see `[]\n` / a header line.
+	hint := "(no sources configured. try: clawtool source add github)"
+	if err := listfmt.RenderOrHint(a.Stdout, format, cols, hint); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool source list: %v\n", err)
 		return 1
 	}
