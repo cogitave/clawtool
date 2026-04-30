@@ -181,8 +181,22 @@ func (a *App) runSourceList(argv []string) int {
 		fmt.Fprintf(a.Stderr, "clawtool source list: %v\n", err)
 		return 1
 	}
+	header := []string{"INSTANCE", "AUTH", "PACKAGE"}
 	if len(cfg.Sources) == 0 {
-		fmt.Fprintln(a.Stdout, "(no sources configured. try: clawtool source add github)")
+		// Human/table mode keeps the actionable hint pointing
+		// at the most common next step. JSON / TSV consumers get
+		// the structured empty shape (`[]\n` and a header line
+		// respectively) so a `jq '. | length'` or
+		// `awk 'NR>1 {print}'` pipeline doesn't have to special-
+		// case the human banner.
+		if format == listfmt.FormatTable {
+			fmt.Fprintln(a.Stdout, "(no sources configured. try: clawtool source add github)")
+			return 0
+		}
+		if err := listfmt.Render(a.Stdout, format, listfmt.Cols{Header: header}); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool source list: %v\n", err)
+			return 1
+		}
 		return 0
 	}
 	store, _ := secrets.LoadOrEmpty(a.SecretsPath())
@@ -193,7 +207,7 @@ func (a *App) runSourceList(argv []string) int {
 	}
 	sort.Strings(names)
 
-	cols := listfmt.Cols{Header: []string{"INSTANCE", "AUTH", "PACKAGE"}}
+	cols := listfmt.Cols{Header: header}
 	for _, name := range names {
 		src := cfg.Sources[name]
 		auth := "n/a"

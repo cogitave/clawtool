@@ -107,6 +107,48 @@ func TestSourceList_Empty(t *testing.T) {
 	}
 }
 
+// TestSourceList_EmptyJSON pins the structured empty-state
+// contract: `--format json` on a fresh config emits the empty
+// array `[]\n` so a pipeline like `clawtool source list
+// --format json | jq '. | length'` returns 0 instead of choking
+// on the human banner.
+func TestSourceList_EmptyJSON(t *testing.T) {
+	app, out, _, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "list", "--format", "json"}); rc != 0 {
+		t.Fatalf("list --format json exit = %d", rc)
+	}
+	body := strings.TrimSpace(out.String())
+	if body != "[]" {
+		t.Errorf("expected '[]' on empty-state JSON; got %q", body)
+	}
+	var arr []map[string]string
+	if err := json.Unmarshal([]byte(body), &arr); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
+	}
+	if len(arr) != 0 {
+		t.Errorf("expected empty array; got %d entries", len(arr))
+	}
+}
+
+// TestSourceList_EmptyTSV exercises the TSV path's empty-state.
+// A header-only line means `awk 'NR>1{...}'` consumers stop
+// cleanly without seeing the human banner mid-pipe.
+func TestSourceList_EmptyTSV(t *testing.T) {
+	app, out, _, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "list", "--format", "tsv"}); rc != 0 {
+		t.Fatalf("list --format tsv exit = %d", rc)
+	}
+	body := strings.TrimRight(out.String(), "\n")
+	lines := strings.Split(body, "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 header line on empty-state TSV; got %d: %q", len(lines), body)
+	}
+	cells := strings.Split(lines[0], "\t")
+	if len(cells) != 3 || cells[0] != "INSTANCE" || cells[1] != "AUTH" || cells[2] != "PACKAGE" {
+		t.Errorf("expected INSTANCE\\tAUTH\\tPACKAGE header; got %q", lines[0])
+	}
+}
+
 func TestSourceList_AuthStatus(t *testing.T) {
 	app, out, _, _, _ := newSrcApp(t)
 	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
