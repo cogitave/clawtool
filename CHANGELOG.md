@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.56] - 2026-04-30
+## [0.22.57] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.56 [skip ci] (92336d5)
+### Features
+
+- **rules:** Add rtk pre_tool_use rewrite rule + recipe for Bash token compression (8f4ed6f)## [0.22.56] - 2026-04-30
 
 ### Documentation
 
