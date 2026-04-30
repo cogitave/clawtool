@@ -51,16 +51,15 @@ jobs:
           head -40 BODY.md
           echo "--- /preview ---"
 
-      - name: Reset working tree before goreleaser
-        # Belt-and-braces: ensure BODY.md is the only artifact going
-        # into goreleaser. Anything else the rich script may have
-        # touched (it shouldn't, but be defensive) gets stashed +
-        # dropped so goreleaser's internal `git checkout` sees a
-        # clean tree at the tag's commit.
-        run: |
-          set -euo pipefail
-          git stash push --include-untracked -- ':!BODY.md' || true
-          git stash drop || true
+      # The previous "Reset working tree before goreleaser" step
+      # used `git stash push -u -- ':!BODY.md'` to scrub the tree.
+      # The exclude pathspec doesn't reliably exclude UNTRACKED
+      # files in older git versions, so the stash swept BODY.md
+      # away too — `--release-notes=BODY.md` then passed an empty
+      # body, and the release page showed only header + footer
+      # with no commit list. Removed: the rich-body step is the
+      # only thing producing untracked files at this point, and
+      # its sole output IS BODY.md, so there's nothing to clean.
 
       - uses: goreleaser/goreleaser-action@v6
         with:
