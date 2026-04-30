@@ -611,16 +611,33 @@ func sectionFor(k stepKind) string {
 	return ""
 }
 
-// onboardFixedCardWidth and onboardFixedCardHeight set the constant
-// silhouette of the step card. Every step renders inside the same
-// rectangle so the wizard's frame stays put as the operator
-// advances — no jarring resize from one step to the next. Sized
-// for ~74-col terminals; the card auto-clamps narrower if the
-// viewport is tighter.
-const (
-	onboardFixedCardWidth  = 70
-	onboardFixedCardHeight = 18
-)
+// clawtoolLogo is the multi-line ASCII brand mark shown in the
+// wizard banner. Box-drawing characters render as a chunky bold
+// logo on any modern terminal (Windows Terminal / iTerm / Kitty /
+// Alacritty / WezTerm all ship Unicode block fonts by default).
+const clawtoolLogo = `┏━╸╻  ┏━┓╻ ╻╺┳╸┏━┓┏━┓╻
+┃  ┃  ┣━┫┃╻┃ ┃ ┃ ┃┃ ┃┃
+┗━╸┗━╸╹ ╹┗┻┛ ╹ ┗━┛┗━┛┗━╸`
+
+// onboardFixedCardHeight pins the card's vertical silhouette so
+// short widgets (Confirm) and tall ones (multi-option Select) all
+// render inside the same rectangle. Width is computed dynamically
+// from the viewport so wide terminals get a generous frame.
+const onboardFixedCardHeight = 18
+
+// computeCardWidth picks the card's horizontal size from the
+// available viewport: most of the screen, with a soft ceiling for
+// readability and a soft floor for narrow terminals.
+func computeCardWidth(viewportWidth int) int {
+	w := viewportWidth - 12 // breathing room left + right
+	if w > 120 {
+		w = 120
+	}
+	if w < 60 {
+		w = 60
+	}
+	return w
+}
 
 // View renders the alt-screen payload as a responsive three-band
 // layout that uses the full viewport: header pinned at the top,
@@ -692,15 +709,43 @@ func (m *onboardModel) View() string {
 	return lipgloss.NewStyle().Padding(2, 1, 1, 1).Render(stack)
 }
 
-// renderHeader renders the inline app banner: a 1-line monogram
-// "logo" (clawtool brand mark in box-drawing) + tagline + credit
-// + host-detection pills. Stays compact (~4 lines) so the wizard
-// body owns the operator's vertical attention budget.
+// renderHeader renders the wizard banner: a 3-line ASCII logo on
+// the left, a stacked metadata column (tagline / credit / email)
+// on the right separated by a small gap, and a row of filled-
+// background detection pills below. Centred horizontally so it
+// shares an axis with the wizard card beneath it.
 func (m *onboardModel) renderHeader(w int) string {
-	monogram := m.style.headerTitle.Render("┏━╸  clawtool")
-	version := m.style.dim.Render(fmt.Sprintf("v%s  ·  first-run setup wizard", versionShortForOnboard()))
-	credit := m.style.dim.Render("from Cogitave  ·  @bahadirarda  ·  help@cogitave.com")
+	logo := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("212")).
+		Render(clawtoolLogo)
 
+	tagline := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("63")).
+		Render(fmt.Sprintf("first-run setup  ·  v%s", versionShortForOnboard()))
+	credit := m.style.dim.Render("from Cogitave  ·  by @bahadirarda")
+	email := m.style.dim.Render("help@cogitave.com")
+	metaCol := lipgloss.JoinVertical(lipgloss.Left,
+		"",
+		tagline,
+		credit,
+		email,
+	)
+	gap := lipgloss.NewStyle().Width(4).Render(" ")
+	brandRow := lipgloss.JoinHorizontal(lipgloss.Top, logo, gap, metaCol)
+
+	// Filled-background pills for detected hosts; dim text only
+	// for missing ones. Bright pill catches the eye without the
+	// operator having to scan labels.
+	pillOK := lipgloss.NewStyle().
+		Background(lipgloss.Color("212")).
+		Foreground(lipgloss.Color("230")).
+		Bold(true).
+		Padding(0, 1)
+	pillMiss := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Padding(0, 1)
 	families := []struct{ key, label string }{
 		{"claude", "claude-code"},
 		{"codex", "codex"},
@@ -708,20 +753,18 @@ func (m *onboardModel) renderHeader(w int) string {
 		{"opencode", "opencode"},
 		{"hermes", "hermes"},
 	}
-	var pills []string
+	pills := make([]string, 0, len(families))
 	for _, f := range families {
 		if m.state.Found[f.key] {
-			pills = append(pills, m.style.tickOK.Render("●")+" "+f.label)
+			pills = append(pills, pillOK.Render("✓ "+f.label))
 		} else {
-			pills = append(pills, m.style.dim.Render("○ "+f.label))
+			pills = append(pills, pillMiss.Render("· "+f.label))
 		}
 	}
-	sep := m.style.dim.Render("  ·  ")
-	pillRow := strings.Join(pills, sep)
+	pillRow := strings.Join(pills, " ")
 
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		monogram+"   "+version,
-		credit,
+	body := lipgloss.JoinVertical(lipgloss.Center,
+		brandRow,
 		"",
 		pillRow,
 	)
@@ -764,13 +807,7 @@ func (m *onboardModel) renderStep(w, bodyH int) string {
 	// frame each time it advances. Inside the card the widget's
 	// view is centred both axes via lipgloss.Place so a 4-row
 	// Confirm and a 12-row Select look equally polished.
-	cardW := onboardFixedCardWidth
-	if cardW > w-4 {
-		cardW = w - 4
-	}
-	if cardW < 50 {
-		cardW = 50
-	}
+	cardW := computeCardWidth(m.width)
 	cardH := onboardFixedCardHeight
 	// Padding(1, 3) eats 2 cols + 2 rows; border eats 2 cols + 2
 	// rows. Inner content area is cardW-8 by cardH-4.

@@ -177,7 +177,7 @@ func TestOnboardModel_View_ContainsHeaderAndStep(t *testing.T) {
 	out := m.View()
 	// Logo + tagline: ASCII banner uses box-drawing chars; the
 	// tagline text remains plain.
-	if !strings.Contains(out, "first-run setup wizard") {
+	if !strings.Contains(out, "first-run setup") {
 		t.Errorf("View should contain header tagline; got: %q", out)
 	}
 	if !strings.Contains(out, "from Cogitave") {
