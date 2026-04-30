@@ -4,7 +4,26 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.58] - 2026-04-30
+## [0.22.62] - 2026-04-30
+
+### Features
+
+- **tools:** Expose chat-driven Onboard + Init MCP tools (OnboardStatus / InitApply / OnboardWizard) (f7782dd)## [0.22.61] - 2026-04-30
+
+### Features
+
+- **tools:** Populate UsageHint on every registered tool + coverage test (86c27e4)## [0.22.60] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.58 [skip ci] (1f1a5ff)
+### Features
+
+- **cli:** Emit structured InitSummary + ChatRender for chat-driven onboarding (d9110db)## [0.22.59] - 2026-04-30
+
+### Tests
+
+- **cli:** Add smoke-test covering every verb's --help and read-only listings (4683988)## [0.22.58] - 2026-04-30
 
 ### Documentation
 
