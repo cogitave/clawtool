@@ -146,22 +146,8 @@ func (a *App) PortalList(format listfmt.Format) error {
 	if err != nil {
 		return err
 	}
-	header := []string{"NAME", "BASE_URL", "AUTH_COOKIES"}
-	if len(portals) == 0 {
-		// Empty-state contract (sister of source / sandbox
-		// list): table mode keeps the actionable hint, JSON /
-		// TSV consumers get the structured empty shape (`[]\n`
-		// and a header line) so a `clawtool portal list
-		// --format json | jq '. | length'` pipeline returns 0
-		// instead of choking on the human banner.
-		if format == listfmt.FormatTable {
-			fmt.Fprintln(a.Stdout, "(no portals configured — run `clawtool portal add <name>` to add one)")
-			return nil
-		}
-		return listfmt.Render(a.Stdout, format, listfmt.Cols{Header: header})
-	}
 	cfg := config.Config{Portals: portals}
-	cols := listfmt.Cols{Header: header}
+	cols := listfmt.Cols{Header: []string{"NAME", "BASE_URL", "AUTH_COOKIES"}}
 	for _, name := range portal.Names(cfg) {
 		p := portals[name]
 		auth := strings.Join(p.AuthCookieNames, ",")
@@ -170,7 +156,11 @@ func (a *App) PortalList(format listfmt.Format) error {
 		}
 		cols.Rows = append(cols.Rows, []string{name, p.BaseURL, auth})
 	}
-	return listfmt.Render(a.Stdout, format, cols)
+	// Empty-state contract codified in listfmt.RenderOrHint
+	// (sister of skill / source / sandbox / hooks list): table
+	// mode emits the human hint, JSON + TSV route through Render
+	// so pipelines see `[]\n` / a header line.
+	return listfmt.RenderOrHint(a.Stdout, format, cols, "(no portals configured — run `clawtool portal add <name>` to add one)")
 }
 
 // PortalWhich resolves the sticky-default portal. Same precedence
