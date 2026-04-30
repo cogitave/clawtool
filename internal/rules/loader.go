@@ -70,7 +70,7 @@ func validateRule(r Rule) error {
 		return errors.New("name is required")
 	}
 	if !IsValidEvent(r.When) {
-		return fmt.Errorf("invalid 'when': %q (allowed: pre_commit, post_edit, session_end, pre_send, pre_unattended)", r.When)
+		return fmt.Errorf("invalid 'when': %q (allowed: pre_commit, post_edit, session_end, pre_send, pre_unattended, pre_tool_use)", r.When)
 	}
 	if !IsValidSeverity(r.Severity) {
 		return fmt.Errorf("invalid 'severity': %q (allowed: off, warn, block)", r.Severity)
@@ -295,7 +295,8 @@ func saveRules(path string, rs []Rule) error {
 	var b strings.Builder
 	b.WriteString("# clawtool rules — predicate-based invariants enforced at\n")
 	b.WriteString("# lifecycle events (pre_commit, post_edit, session_end,\n")
-	b.WriteString("# pre_send, pre_unattended). See docs/rules.md for the schema.\n\n")
+	b.WriteString("# pre_send, pre_unattended, pre_tool_use). See docs/rules.md\n")
+	b.WriteString("# for the schema.\n\n")
 	for i, r := range rs {
 		if i > 0 {
 			b.WriteByte('\n')

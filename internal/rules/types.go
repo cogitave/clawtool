@@ -77,13 +77,19 @@ const (
 	// activate. Rules here are the safety brake before the
 	// agent loop runs without operator presence.
 	EventPreUnattended Event = "pre_unattended"
+	// EventPreToolUse fires before a tool dispatch (Bash, Read,
+	// etc.) is handed to the underlying tool. Rules here gate
+	// or rewrite tool invocations — e.g. the rtk token-filter
+	// rule prepends `rtk ` to allowlisted Bash commands so the
+	// proxy compresses output before it reaches the agent.
+	EventPreToolUse Event = "pre_tool_use"
 )
 
 // IsValidEvent guards against typos in TOML.
 func IsValidEvent(e Event) bool {
 	switch e {
 	case EventPreCommit, EventPostEdit, EventSessionEnd,
-		EventPreSend, EventPreUnattended:
+		EventPreSend, EventPreUnattended, EventPreToolUse:
 		return true
 	}
 	return false

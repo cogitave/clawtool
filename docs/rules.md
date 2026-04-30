@@ -26,7 +26,7 @@ are opt-in.
 [[rule]]
 name        = "no-coauthor"
 description = "Hard-block on AI attribution in commits."
-when        = "pre_commit"          # pre_commit | post_edit | session_end | pre_send | pre_unattended
+when        = "pre_commit"          # pre_commit | post_edit | session_end | pre_send | pre_unattended | pre_tool_use
 condition   = 'not commit_message_contains("Co-Authored-By")'
 severity    = "block"               # off | warn | block (default: warn)
 hint        = "Operator memory feedback — never attribute to AI."
@@ -85,6 +85,7 @@ also accepted). Parens group; precedence is `not` > `and` > `or`.
 | `session_end` | When the BIAM task / agent loop terminates. Last-chance gate. |
 | `pre_send` | Before `SendMessage` dispatches to a clawtool instance. |
 | `pre_unattended` | Before `--unattended` mode activates. The safety brake before unsupervised loops. |
+| `pre_tool_use` | Before a tool dispatch (Bash, Read, etc.) is handed off. Used by the rtk token-filter rewrite to compress allowlisted Bash output. |
 
 ## How agents call it
 
