@@ -26,7 +26,14 @@ func newPeersTestMux(t *testing.T, token string) (*http.ServeMux, *a2a.Registry,
 	authed := authMiddleware(token)
 	mux.Handle("/v1/peers", authed(http.HandlerFunc(handlePeers)))
 	mux.Handle("/v1/peers/", authed(http.HandlerFunc(handlePeers)))
-	cleanup := func() { a2a.SetGlobal(prev) }
+	cleanup := func() {
+		// Drain in-flight SaveAsync goroutines before letting
+		// t.TempDir's RemoveAll run. macOS's stricter unlinkat
+		// rejects the temp dir with "directory not empty" if a
+		// pending atomicfile.WriteFileMkdir hasn't finished yet.
+		reg.WaitForSaves()
+		a2a.SetGlobal(prev)
+	}
 	return mux, reg, cleanup
 }
 

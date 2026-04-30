@@ -103,6 +103,15 @@ type Registry struct {
 	// has its own per-peer locking inside Inbox.mu.
 	boxMu   sync.Mutex
 	inboxes *inboxes
+
+	// saves tracks in-flight SaveAsync goroutines so callers
+	// (notably tests using t.TempDir for the state path) can
+	// drain them deterministically before cleanup. Without this,
+	// the fire-and-forget save in the HTTP peers handler raced
+	// t.TempDir's RemoveAll on macOS — atomicfile.WriteFileMkdir
+	// leaves a brief temp file inside the dir that unlinkat
+	// rejects when the goroutine hasn't finished by cleanup time.
+	saves sync.WaitGroup
 }
 
 // NewRegistry constructs an empty registry, then attempts to load
@@ -391,6 +400,28 @@ func (r *Registry) findByIdentity(backend, path, session, pane string) *Peer {
 }
 
 func (r *Registry) markDirty() { r.dirty = true }
+
+// SaveAsync runs Save on a background goroutine and tracks it on
+// r.saves so test cleanup paths can drain in-flight writes via
+// WaitForSaves before the state path's directory is removed. Use
+// instead of `go r.Save()` from any handler that may execute under
+// a t.TempDir-rooted state path.
+func (r *Registry) SaveAsync() {
+	r.saves.Add(1)
+	go func() {
+		defer r.saves.Done()
+		_ = r.Save()
+	}()
+}
+
+// WaitForSaves blocks until every SaveAsync goroutine in flight
+// has finished its atomicfile write. Tests using t.TempDir for the
+// state path call this before letting the cleanup hook RemoveAll
+// the dir; otherwise macOS's stricter unlinkat fails with
+// "directory not empty" on the still-pending temp file.
+func (r *Registry) WaitForSaves() {
+	r.saves.Wait()
+}
 
 func (f ListFilter) match(p Peer) bool {
 	if f.Status != "" && p.Status != f.Status {

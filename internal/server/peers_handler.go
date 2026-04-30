@@ -194,7 +194,7 @@ func registerPeer(w http.ResponseWriter, r *http.Request, reg *a2a.Registry) {
 	// crash within seconds doesn't lose the row. List() also
 	// flushes via markDirty so a stale-sweep persistence catches
 	// up regardless.
-	go func() { _ = reg.Save() }()
+	reg.SaveAsync()
 	writeJSON(w, http.StatusOK, peer)
 }
 
@@ -219,7 +219,7 @@ func heartbeatPeer(w http.ResponseWriter, r *http.Request, reg *a2a.Registry, pe
 		})
 		return
 	}
-	go func() { _ = reg.Save() }()
+	reg.SaveAsync()
 	writeJSON(w, http.StatusOK, peer)
 }
 
@@ -236,7 +236,7 @@ func deregisterPeer(w http.ResponseWriter, r *http.Request, reg *a2a.Registry, p
 		})
 		return
 	}
-	go func() { _ = reg.Save() }()
+	reg.SaveAsync()
 	writeJSON(w, http.StatusOK, peer)
 }
 
