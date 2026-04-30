@@ -118,3 +118,70 @@ func TestSandboxDoctor_FormatJsonAlias(t *testing.T) {
 		t.Errorf("--format=json should also produce JSON; got %q", body)
 	}
 }
+
+// TestSandboxList_EmptyJSON pins the empty-state contract for
+// `sandbox list --format json`: a fresh config emits `[]\n` so
+// a `clawtool sandbox list --format json | jq '. | length'`
+// pipeline returns 0 instead of choking on the human banner.
+// Sister of TestSourceList_EmptyJSON (commit 18aed7e).
+func TestSandboxList_EmptyJSON(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+
+	if rc := app.Run([]string{"sandbox", "list", "--format", "json"}); rc != 0 {
+		t.Fatalf("list --format json rc=%d, stderr=%s", rc, errb.String())
+	}
+	body := strings.TrimSpace(out.String())
+	if body != "[]" {
+		t.Errorf("expected '[]' on empty-state JSON; got %q", body)
+	}
+	var arr []map[string]string
+	if err := json.Unmarshal([]byte(body), &arr); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
+	}
+	if len(arr) != 0 {
+		t.Errorf("expected empty array; got %d entries", len(arr))
+	}
+}
+
+// TestSandboxList_EmptyTSV exercises the TSV path's empty-state
+// — a header-only line means `awk 'NR>1{...}'` consumers stop
+// cleanly without seeing the human banner mid-pipe.
+func TestSandboxList_EmptyTSV(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+
+	if rc := app.Run([]string{"sandbox", "list", "--format", "tsv"}); rc != 0 {
+		t.Fatalf("list --format tsv rc=%d, stderr=%s", rc, errb.String())
+	}
+	body := strings.TrimRight(out.String(), "\n")
+	lines := strings.Split(body, "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 header line on empty-state TSV; got %d: %q", len(lines), body)
+	}
+	cells := strings.Split(lines[0], "\t")
+	if len(cells) != 3 || cells[0] != "PROFILE" || cells[1] != "ENGINE" || cells[2] != "DESCRIPTION" {
+		t.Errorf("expected PROFILE\\tENGINE\\tDESCRIPTION header; got %q", lines[0])
+	}
+}
+
+// TestSandboxList_EmptyTable preserves the actionable hint so
+// interactive shell users running `sandbox list` in a fresh
+// checkout still get the docs pointer instead of a bare header.
+func TestSandboxList_EmptyTable(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+
+	if rc := app.Run([]string{"sandbox", "list"}); rc != 0 {
+		t.Fatalf("list rc=%d, stderr=%s", rc, errb.String())
+	}
+	if !strings.Contains(out.String(), "no sandbox profiles configured") {
+		t.Errorf("expected human banner on empty-state table; got %q", out.String())
+	}
+	if !strings.Contains(out.String(), "docs/sandbox.md") {
+		t.Errorf("expected docs pointer in human banner; got %q", out.String())
+	}
+}
