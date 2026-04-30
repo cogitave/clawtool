@@ -9,11 +9,11 @@
 
 > **Tools. Agents. Wired.**
 >
-> One canonical tool layer for every AI coding agent. Install once, use everywhere — across Claude Code, Codex, Gemini, OpenCode, and Hermes.
+> One canonical tool layer for every AI coding agent. Install once, use everywhere — across Claude Code, Codex, Gemini, OpenCode, Hermes, and Aider.
 
 ## TL;DR — why would I install this?
 
-You probably already have one or more AI coding agents on your machine: Claude Code, Codex, Gemini CLI, OpenCode, Hermes. Each one ships its own slightly-different Bash tool, slightly-different Read/Edit/Write, its own MCP server list, its own sandbox story, its own way of "calling another agent". They don't share state, they don't share secrets, and adding a new tool means re-registering it everywhere.
+You probably already have one or more AI coding agents on your machine: Claude Code, Codex, Gemini CLI, OpenCode, Hermes, Aider. Each one ships its own slightly-different Bash tool, slightly-different Read/Edit/Write, its own MCP server list, its own sandbox story, its own way of "calling another agent". They don't share state, they don't share secrets, and adding a new tool means re-registering it everywhere.
 
 clawtool collapses that. **One binary** runs as a long-lived daemon. **Every host CLI** is wired to it as an MCP server (Claude Code via plugin, codex/gemini/opencode via `mcp add`). After that:
 
@@ -21,19 +21,19 @@ clawtool collapses that. **One binary** runs as a long-lived daemon. **Every hos
 - `SendMessage` lets any agent dispatch work to any other agent (`claude → codex`, `codex → gemini`, etc.) — async via the BIAM protocol with Ed25519-signed envelopes, edge-triggered fan-in, and a SQLite task store you can `clawtool task list` from a normal terminal.
 - A single sandbox profile (bwrap / sandbox-exec / docker / gVisor) governs every tool call, regardless of which agent triggered it.
 - Secrets live in one mode-0600 file, not scattered through five different `~/.config/<host>/` directories.
-- A 50+ tool catalog stays usable because models bind to schemas through `ToolSearch` (BM25) on demand.
+- A 60-tool catalog stays usable because models bind to schemas through `ToolSearch` (BM25) on demand.
 
 **One install, one daemon, one identity, one tool surface — across every agent.** That's the whole pitch.
 
 ## What clawtool is
 
 - **Canonical core tools.** Higher-quality replacements for native Bash, Read, Edit, Write, Grep, Glob, WebFetch — timeout-safe with process-group SIGKILL, structured JSON output (stdout/stderr/exit_code/duration_ms/timed_out/cwd), format-aware reads (PDF, Word, Excel, HTML, Jupyter), atomic writes, deterministic line cursors. Cross-platform parity (Linux, macOS, WSL2).
-- **Multi-agent dispatch.** A single `SendMessage` entry point routes prompts to Claude, Codex, Gemini, OpenCode, or Hermes. Async via the BIAM (Bidirectional Inter-Agent Messaging) protocol — Ed25519-signed envelopes, SQLite task store, edge-triggered `TaskNotify` fan-in. Per-instance secrets injection, per-call sandbox profiles, true async (`--async` returns immediately; `clawtool task cancel` aborts).
+- **Multi-agent dispatch.** A single `SendMessage` entry point routes prompts to **Claude, Codex, Gemini, OpenCode, Hermes, or Aider** (six BIAM peers). Async via the BIAM (Bidirectional Inter-Agent Messaging) protocol — Ed25519-signed envelopes, SQLite task store, edge-triggered `TaskNotify` fan-in. Per-instance secrets injection, per-call sandbox profiles, true async (`--async` returns immediately; `clawtool task cancel` aborts).
 - **Peer mesh (A2A Phase 1).** Live discovery + messaging across every claude-code / codex / gemini / opencode session on the host. Each runtime auto-registers via session hooks; the orchestrator TUI's Peers tab shows the live roster. `clawtool peer send <name> "..."` and `clawtool peer send --broadcast "..."` deliver inbox messages between sessions — three independent transports (CLI, raw HTTP, MCP) all backed by the same daemon registry. Wire shape mirrors Linux Foundation A2A's Agent Card.
 - **Sandbox parity with claude.ai.** Bash/Read/Edit/Write tool calls can route through a separate gVisor/docker container instead of the host process. The `clawtool sandbox-worker` binary mirrors claude.ai's `process_api` (PID 1, WebSocket :2024, bearer auth). The `clawtool egress` proxy mirrors claude.ai's allowlist gateway (HTTP/HTTPS, CONNECT tunnel, 403 with `x-deny-reason`). On-demand skill mount via `SkillList` + `SkillLoad` MCP tools mirrors `/mnt/skills/public`.
 - **Shared MCP fan-in.** A single persistent `clawtool serve --listen --mcp-http` daemon backs every host; codex / gemini / claude all dial it instead of spawning per-host stdio children. One BIAM identity, one task store, one bearer-auth'd endpoint.
 - **One orchestrator TUI.** `clawtool orch` (aliases: `dashboard`, `tui`, `orchestrator`) opens a Bubble Tea panel with three sidebar tabs — Active dispatches · Done dispatches · Peers — over the same watch socket. `--plain` / `--once` modes print stdout snapshots for chat-visible monitoring.
-- **Search-first discovery.** A 50+ tool catalog stays usable because models bind to schemas via `ToolSearch` (bleve BM25) instead of holding every JSON schema in context.
+- **Search-first discovery.** The 60-tool catalog stays usable because models bind to schemas via `ToolSearch` (bleve BM25) instead of holding every JSON schema in context.
 - **Marketplace plugin.** First-class Claude Code plugin: `claude plugin install clawtool@clawtool-marketplace` registers the MCP server, drops slash commands, and loads the routing skill — no manual `claude mcp add-json` editing.
 
 ## Quick install
@@ -100,7 +100,7 @@ Once onboarded, both Claude Code's SessionStart hook and the no-args TUI stay qu
 ## Architecture
 
 ```
-hosts (claude / codex / gemini / opencode / hermes)
+hosts (claude / codex / gemini / opencode / hermes / aider)
     │  MCP — stdio (Claude Code) or HTTP (codex/gemini via `mcp add --url`)
     ▼
 clawtool serve --listen --mcp-http (the daemon)
@@ -151,7 +151,7 @@ The project adheres to a **four-plane shipping contract** ([docs/feature-shippin
 
 | Tool | Capability | Reference |
 |---|---|---|
-| SendMessage | Forward prompts to claude / codex / gemini / opencode / hermes. `--async` for BIAM, `--unattended` injects the host's elevation flag (claude `--dangerously-skip-permissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini/opencode/hermes `--yolo`). | [internal/agents/supervisor.go](internal/agents/supervisor.go) |
+| SendMessage | Forward prompts to claude / codex / gemini / opencode / hermes / aider. `--async` for BIAM, `--unattended` injects the host's elevation flag (claude `--dangerously-skip-permissions`, codex `--dangerously-bypass-approvals-and-sandbox`, gemini/opencode/hermes `--yolo`, aider `--yes`). | [internal/agents/supervisor.go](internal/agents/supervisor.go) |
 | AgentList | Snapshot of the supervisor's agent registry. | [internal/tools/core/agents_tool.go](internal/tools/core/agents_tool.go) |
 | TaskGet · TaskWait · TaskList · TaskNotify | BIAM task introspection + edge-triggered fan-in completion. | [internal/agents/biam](internal/agents/biam) |
 
@@ -208,6 +208,51 @@ The runtime-side primitive is `clawtool peer`: every claude-code / codex / gemin
 | BridgeList · BridgeAdd · BridgeRemove · BridgeUpgrade | Install canonical bridges (codex-plugin-cc, gemini-plugin-cc, opencode acp, hermes-agent). | [internal/setup/recipes/bridges](internal/setup/recipes/bridges) |
 | RecipeList · RecipeStatus · RecipeApply | Project-setup recipes (license / codeowners / dependabot / release-please / brain / etc.). | [internal/setup](internal/setup) |
 
+The recipe catalog spans nine categories (governance / commits / release / ci / quality / supply-chain / knowledge / agents / runtime). Highlights beyond the basics: `mattpocock-skills`, `karpathy-llm-wiki`, `archon-template`, `bifrost-template`, `mcp-toolbox`, `semble`, `shell-mcp`, `clawtool-autonomous-loop`, `promptfoo-redteam`, `rtk-token-filter`, `mem0`, `superclaude`, `claude-flow`, `caveman`, `clawtool-relay`. Run `clawtool recipe list` for the full state matrix; `clawtool init --all` applies every Core-tagged recipe non-interactively (paired with `--summary-json` for scripted / chat-driven runs).
+
+### Source catalog
+
+`clawtool source catalog` lists all 19 built-in MCP source entries. As of v0.22.74:
+
+- **Reference servers** (anthropic-maintained): github, slack, postgres, sqlite, filesystem, fetch, brave-search, google-maps, memory, sequentialthinking, time, git.
+- **Productivity**: atlassian (Jira + Confluence), notion, exa (neural web search), context7 (live docs), playwright, desktop-commander.
+- **Database / search**: mcp-toolbox (Google's reference DB MCP — Postgres / MySQL / SQLite / BigQuery / Mongo / Redis / Spanner), semble (~98% fewer tokens than grep+read), shell-mcp (sandbox-aware shell execution).
+
+### Chat-driven setup
+
+clawtool exposes four MCP tools so an operator can drive the entire install-and-configure pipeline from a single chat message instead of context-switching to the CLI:
+
+| Tool | Capability | Reference |
+|---|---|---|
+| OnboardStatus | Read-only JSON: detected hosts, installed bridges, secrets readiness, daemon state. | [internal/tools/setup/onboard_status.go](internal/tools/setup/onboard_status.go) |
+| OnboardWizard | Runs `clawtool onboard --yes` end-to-end with per-step telemetry mirrored back to the model. | [internal/tools/setup/onboard_wizard.go](internal/tools/setup/onboard_wizard.go) |
+| InitApply | Applies recipes in the current repo (mirrors `clawtool init --all`); returns the `--summary-json` document. | [internal/tools/setup/init_apply.go](internal/tools/setup/init_apply.go) |
+| AutonomousRun | Kicks off `clawtool autonomous "<goal>"` and streams `tick-N.json` writes back as task frames. | [internal/tools/setup/autonomous_run.go](internal/tools/setup/autonomous_run.go) |
+
+Compose them as **one message, full pipeline**: detect → onboard → init → autonomous loop, no shell context-switch.
+
+### Autonomous mode
+
+```bash
+clawtool autonomous "Refactor the BIAM runner to use a fan-out scheduler"
+clawtool autonomous --resume .clawtool/autonomous/final.json
+clawtool autonomous --watch ./repo
+```
+
+The CLI builds a session prompt from the goal + iteration metadata, dispatches it to the chosen BIAM peer (default: claude), and ends when the agent emits `done: true` in `<workdir>/.clawtool/autonomous/tick-N.json`, `--max-iterations` is hit, or the operator sends SIGINT. `--resume` continues a prior run from its `final.json`; `--watch` tails an existing run's tick stream into the terminal. Pair with `OnboardStatus` + `InitApply` (above) for the "tek mesaj, tüm pipeline" loop.
+
+### Project setup verbs
+
+| Verb | Capability |
+|---|---|
+| `clawtool init [--all] [--summary-json] [--yes]` | Apply the per-category recipe wizard. `--all` non-interactively applies every Core recipe; `--summary-json` emits a single decodable JSON document so InitApply / chat-driven flows can parse the result. |
+| `clawtool apm import [<path>] [--dry-run] [--repo <p>]` | Import a microsoft/apm manifest (apm.yml). MCP servers register via `clawtool source add`; skills + playbooks land in `<repo>/.clawtool/apm-imported-manifest.toml`. |
+| `clawtool source registry [--backend mcp\|smithery\|both] [--limit N]` | Probe an upstream MCP catalog (registry.modelcontextprotocol.io and/or registry.smithery.ai) read-only — discovery before adopting a new server. |
+| `clawtool source inspect <instance> [--format text\|json]` | Audit a configured source's exposed tool surface by spawning the npm-published MCP Inspector against its stdio command. |
+| `clawtool playbook list-archon [--dir <p>] [--format <text\|json>]` | List Archon (coleam00/Archon) DAG workflows under `.archon/workflows/`. Read-only; phase 2 will wire execution. |
+
+The repo also ships a top-level `playbooks/` directory — a markdown layer (Zhixiang Luo's 10xProductivity-style) of agent-readable tool integration recipes that live alongside the MCP source-server layer. See [playbooks/README.md](playbooks/README.md).
+
 ## Configuration
 
 | Path | Purpose |
@@ -225,6 +270,7 @@ The runtime-side primitive is `clawtool peer`: every claude-code / codex / gemin
 | `~/.local/state/clawtool/daemon.log` | Daemon stdout/stderr log. |
 | `./.clawtool/rules.toml` | Project-scoped rules (predicate → verdict). |
 | `./.clawtool/<name>.toml` | Project markers (mcp / brain / etc.). |
+| `./wiki/` (gitignored) | Operator's local Obsidian vault for ADRs, source surveys, and daily logs. Cross-references the source code; never enters CI. Created by the `karpathy-llm-wiki` / `brain` recipes. |
 
 Diagnostic surfaces: `clawtool overview` (one-screen status), `clawtool doctor` (deep diagnostic with fix hints), `clawtool dashboard` (live Bubble Tea TUI), `clawtool sandbox doctor` (engine availability), `clawtool source check` (credential verification).
 
@@ -234,15 +280,16 @@ Diagnostic surfaces: `clawtool overview` (one-screen status), `clawtool doctor` 
 # 1. Generate the worker bearer token
 clawtool sandbox-worker --init-token
 
-# 2. Build the worker image (one-time)
-docker build -f Dockerfile.worker -t clawtool-worker:0.21 .
+# 2. Build the worker image (one-time). Use a moving tag — the binary inside
+#    is keyed to your local clawtool version, not a frozen 0.21 release.
+docker build -f Dockerfile.worker -t clawtool-worker:dev .
 
 # 3. Run the worker container
 docker run --rm \
     -v "$(pwd)":/workspace \
     -p 127.0.0.1:2024:2024 \
     -v "$XDG_CONFIG_HOME/clawtool/worker-token":/etc/worker-token:ro \
-    clawtool-worker:0.21 \
+    clawtool-worker:dev \
     sandbox-worker --token-file /etc/worker-token
 
 # 4. (Optional) Run the egress allowlist proxy
@@ -261,6 +308,10 @@ After this, every Bash tool call (from any host — claude / codex / gemini) exe
 
 ## Recently shipped
 
+- **Autonomous mode** (v0.22.71 + v0.22.74) — `clawtool autonomous "<goal>"` runs a self-paced single-message dev loop against the chosen BIAM peer; the agent emits `tick-N.json` after each iteration, the loop ends on `done: true`, `--max-iterations`, or SIGINT. v0.22.74 added `--resume <final.json>` to continue a prior run and `--watch <workdir>` to tail an existing run's tick stream into the terminal. Sister MCP tool `AutonomousRun` (v0.22.72) streams the same loop back to a chat-driving model.
+- **Chat-driven setup MCP tools** (v0.22.62) — `OnboardStatus`, `OnboardWizard`, `InitApply` so an operator can drive detect → onboard → recipe-apply from a single chat message instead of context-switching to the CLI. `init --all` (v0.22.56) and `init --summary-json` (v0.22.60) make the wizard scriptable.
+- **Catalog growth — DB / search / shell** (v0.22.63 → v0.22.70) — `mcp-toolbox` (Google's reference DB MCP), `semble` (~98% fewer tokens than grep+read), `shell-mcp` (sandbox-aware shell execution) joined the built-in source catalog. `clawtool source registry --backend mcp|smithery|both` (v0.22.50) lets the operator probe upstream catalogs read-only; `clawtool source inspect <instance>` (v0.22.52) audits a configured source's tool surface via the npm-published MCP Inspector.
+- **APM + Archon importers** (v0.22.64 + v0.22.67) — `clawtool apm import` ingests a microsoft/apm manifest (sources register via `source add`; skills + playbooks land in `.clawtool/apm-imported-manifest.toml`). `clawtool playbook list-archon` surfaces Archon DAG workflows under `.archon/workflows/` (read-only; phase 2 will wire execution).
 - **A2A Phase 1 — peer discovery + messaging** (v0.22.36) — every running claude-code / codex / gemini / opencode session registers into a shared peer registry through bundled SessionStart hooks. Three independent transports (CLI `clawtool peer send`, raw HTTP `POST /v1/peers/{id}/messages`, MCP `SendMessage`) deliver inbox messages between sessions; `clawtool a2a peers` and the orchestrator TUI's new Peers tab show the live roster. Status-fidelity hooks flip peers between `busy` (UserPromptSubmit) and `online` (Notification idle_prompt) so operators see actual activity, not just registration timestamps.
 - **Single TUI, four aliases** (v0.22.36) — `clawtool dashboard`, `tui`, `orchestrator`, `orch` all open the same Bubble Tea program. The legacy parallel dashboard implementation was retired; one window, three tabs (Active · Done · Peers), shared watch-socket reconnect policy. `--plain` / `--once` snapshot mode kept for chat-visible monitoring.
 - **Architecture audit pass** (v0.22.36) — `internal/xdg` package consolidates the `XDG_CONFIG_HOME` fallback chain across the tree (~17 inline copies), `tools/core/atomic` writeAtomic helper exposes a single temp+rename primitive, and a deadcode sweep removed ~290 LoC of speculative test seams while wiring two genuine ones (`Client.Read/Write` round-trip test, `FrameSubsCount` symmetry test). Tree's `deadcode -test ./...` now reports empty.
