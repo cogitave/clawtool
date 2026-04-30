@@ -169,6 +169,16 @@ auth_hint = "Create an integration at https://www.notion.so/my-integrations, sha
 homepage = "https://github.com/makenotion/notion-mcp-server"
 maintained = "notion"
 
+[entries.mcp-toolbox]
+description = "MCP Toolbox: Google's reference DB MCP server (Postgres, MySQL, SQLite, BigQuery, Mongo, Redis, Spanner). Apache-2.0."
+runtime = "binary"
+package = "toolbox"
+args = ["--tools-file", "${MCP_TOOLBOX_TOOLS_FILE}"]
+required_env = ["MCP_TOOLBOX_TOOLS_FILE"]
+auth_hint = "Install the toolbox binary from https://github.com/googleapis/mcp-toolbox/releases. Run `clawtool recipe apply mcp-toolbox` to scaffold .clawtool/mcp-toolbox/tools.yaml; set MCP_TOOLBOX_TOOLS_FILE to its absolute path."
+homepage = "https://github.com/googleapis/mcp-toolbox"
+maintained = "google"
+
 [entries.atlassian]
 description = "Atlassian: Jira + Confluence read/write (issues, pages, search)"
 runtime = "python"

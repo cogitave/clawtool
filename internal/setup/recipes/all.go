@@ -19,5 +19,6 @@ import (
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/quality"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/release"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/runtime"
+	_ "github.com/cogitave/clawtool/internal/setup/recipes/sources"
 	_ "github.com/cogitave/clawtool/internal/setup/recipes/supplychain"
 )

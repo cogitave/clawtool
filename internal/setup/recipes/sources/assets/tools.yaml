@@ -1,0 +1,52 @@
+# managed-by: clawtool
+# Starter tools.yaml for googleapis/mcp-toolbox (Apache-2.0).
+# Upstream: https://github.com/googleapis/mcp-toolbox
+#
+# This file is documentation-grade scaffolding. clawtool's recipe ships
+# the template; running mcp-toolbox itself is the operator's job:
+#   1. Install the toolbox binary per upstream README.
+#   2. Uncomment + fill the source connection strings below.
+#   3. Launch:  toolbox --tools-file .clawtool/mcp-toolbox/tools.yaml
+#   4. Wire it into clawtool as a `binary` source via `clawtool source add`.
+#
+# Two profile templates ship by default — Postgres and SQLite — because
+# they cover the common dev-DB cases. BigQuery / MySQL / Mongo / Redis /
+# Spanner are supported by the same upstream and can be added by hand
+# following the same shape.
+
+sources:
+  # ── Postgres ───────────────────────────────────────────────────
+  # my-postgres:
+  #   kind: postgres
+  #   host: 127.0.0.1
+  #   port: 5432
+  #   database: app_dev
+  #   user: ${POSTGRES_USER}
+  #   password: ${POSTGRES_PASSWORD}
+
+  # ── SQLite ─────────────────────────────────────────────────────
+  # my-sqlite:
+  #   kind: sqlite
+  #   database: ./var/app.sqlite
+
+tools:
+  # Example: a parameterised SELECT exposed as an MCP tool. Uncomment
+  # and adapt once at least one source above is filled in.
+  #
+  # search-users:
+  #   kind: postgres-sql
+  #   source: my-postgres
+  #   description: "Look up a user row by email."
+  #   parameters:
+  #     - name: email
+  #       type: string
+  #       description: "Email to search for."
+  #   statement: |
+  #     SELECT id, email, created_at
+  #     FROM users
+  #     WHERE email = $1;
+
+toolsets:
+  # Group tools into named bundles the agent can request.
+  # default:
+  #   - search-users

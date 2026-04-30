@@ -39,6 +39,29 @@ func TestBuiltin_HasGithub(t *testing.T) {
 	}
 }
 
+func TestBuiltin_HasMcpToolbox(t *testing.T) {
+	c, _ := Builtin()
+	e, ok := c.Lookup("mcp-toolbox")
+	if !ok {
+		t.Fatal("mcp-toolbox not in catalog")
+	}
+	if e.Description == "" {
+		t.Error("mcp-toolbox description must be set")
+	}
+	if e.Homepage == "" {
+		t.Error("mcp-toolbox homepage must be set")
+	}
+	if e.Runtime != "binary" {
+		t.Errorf("mcp-toolbox runtime = %q, want binary", e.Runtime)
+	}
+	if e.Maintained != "google" {
+		t.Errorf("mcp-toolbox maintained = %q, want google", e.Maintained)
+	}
+	if !strings.Contains(strings.ToLower(e.Description), "apache-2.0") {
+		t.Error("mcp-toolbox description should record the Apache-2.0 license")
+	}
+}
+
 func TestLookup_MissReturnsOkFalse(t *testing.T) {
 	c, _ := Builtin()
 	_, ok := c.Lookup("definitely-not-a-real-source")
