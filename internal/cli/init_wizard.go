@@ -36,12 +36,15 @@ const (
 func (a *App) runInit(argv []string) int {
 	yes := false
 	all := false
+	summaryJSON := false
 	for _, arg := range argv {
 		switch arg {
 		case "--yes", "-y":
 			yes = true
 		case "--all":
 			all = true
+		case "--summary-json":
+			summaryJSON = true
 		}
 	}
 
@@ -51,12 +54,16 @@ func (a *App) runInit(argv []string) int {
 		return 1
 	}
 
-	fmt.Fprintf(a.Stdout, "clawtool init — %s\n\n", cwd)
+	// Banner is decoration, not data — suppress under --summary-json
+	// so stdout is a single decodable JSON document.
+	if !summaryJSON {
+		fmt.Fprintf(a.Stdout, "clawtool init — %s\n\n", cwd)
+	}
 
 	// --all bypasses every prompt and applies every Core recipe
 	// (regardless of Stability) directly. Operator opt-OUT.
 	if all {
-		return a.runInitAll(cwd)
+		return a.runInitAll(cwd, summaryJSON)
 	}
 
 	noTTY := !isTTY(os.Stdin) || !isTTY(os.Stdout)
@@ -164,8 +171,21 @@ func (a *App) runInitRepoNonInteractive(cwd string) int {
 //
 // This is the operator-side "ship me everything clawtool considers
 // the curated default install" path — see RecipeMeta.Core.
-func (a *App) runInitAll(cwd string) int {
-	applied, skipped, failed := 0, 0, 0
+//
+// When summaryJSON is true the human-readable lines are suppressed
+// and stdout receives a single InitSummary JSON document instead;
+// the tail "Done — …" banner is also suppressed. Designed for the
+// chat-driven onboard flow that needs a deterministic payload.
+func (a *App) runInitAll(cwd string, summaryJSON bool) int {
+	summary := InitSummary{Generated: map[string]string{}}
+
+	emitf := func(format string, args ...any) {
+		if summaryJSON {
+			return
+		}
+		fmt.Fprintf(a.Stdout, format, args...)
+	}
+
 	for _, cat := range setup.Categories() {
 		for _, r := range setup.InCategory(cat) {
 			m := r.Meta()
@@ -176,14 +196,18 @@ func (a *App) runInitAll(cwd string) int {
 				// Core recipe that demands input — surface
 				// it as a skip so operators know to re-run
 				// the interactive flow for that one.
-				fmt.Fprintf(a.Stdout, "  ○ %s (needs options; run `clawtool init` interactively)\n", m.Name)
-				skipped++
+				emitf("  ○ %s (needs options; run `clawtool init` interactively)\n", m.Name)
+				summary.SkippedRecipes = append(summary.SkippedRecipes, RecipeSkip{
+					Name: m.Name, Reason: "missing-required-option",
+				})
 				continue
 			}
 			status, _, _ := r.Detect(context.Background(), cwd)
 			if status != setup.StatusAbsent {
-				fmt.Fprintf(a.Stdout, "  ○ %s already present\n", m.Name)
-				skipped++
+				emitf("  ○ %s already present\n", m.Name)
+				summary.AppliedRecipes = append(summary.AppliedRecipes, RecipeApply{
+					Name: m.Name, Category: string(m.Category), Status: RecipeStatusAlreadyPresent,
+				})
 				continue
 			}
 			res, err := setup.Apply(context.Background(), r, setup.ApplyOptions{
@@ -192,20 +216,52 @@ func (a *App) runInitAll(cwd string) int {
 			})
 			if err != nil {
 				if errors.Is(err, setup.ErrSkippedByUser) {
-					fmt.Fprintf(a.Stdout, "  ○ %s skipped — %s\n", m.Name, res.SkipReason)
-					skipped++
+					emitf("  ○ %s skipped — %s\n", m.Name, res.SkipReason)
+					summary.SkippedRecipes = append(summary.SkippedRecipes, RecipeSkip{
+						Name: m.Name, Reason: "operator-deselected",
+					})
 					continue
 				}
-				fmt.Fprintf(a.Stdout, "  ✗ %s failed: %v\n", m.Name, err)
-				failed++
+				emitf("  ✗ %s failed: %v\n", m.Name, err)
+				summary.AppliedRecipes = append(summary.AppliedRecipes, RecipeApply{
+					Name: m.Name, Category: string(m.Category), Status: RecipeStatusFailed, Error: err.Error(),
+				})
 				continue
 			}
-			fmt.Fprintf(a.Stdout, "  ✓ %s applied\n", m.Name)
-			applied++
+			emitf("  ✓ %s applied\n", m.Name)
+			summary.AppliedRecipes = append(summary.AppliedRecipes, RecipeApply{
+				Name: m.Name, Category: string(m.Category), Status: RecipeStatusApplied,
+			})
 		}
 	}
-	fmt.Fprintf(a.Stdout, "\nDone — applied %d, already-present/skipped %d, failed %d.\n", applied, skipped, failed)
-	if failed > 0 {
+
+	// Curated next-step bullets for the chat consumer. Kept short
+	// (≤2) and prompt-friendly.
+	if summary.AppliedCount() > 0 {
+		summary.NextSteps = append(summary.NextSteps,
+			"Run `clawtool recipe status` to confirm what landed.",
+		)
+	}
+	if summary.FailedCount() > 0 {
+		summary.NextSteps = append(summary.NextSteps,
+			"Re-run `clawtool init` interactively for failed recipes.",
+		)
+	}
+
+	if summaryJSON {
+		if err := summary.WriteJSON(a.Stdout); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool init: encode summary: %v\n", err)
+			return 1
+		}
+		if summary.FailedCount() > 0 {
+			return 1
+		}
+		return 0
+	}
+
+	fmt.Fprintf(a.Stdout, "\nDone — applied %d, already-present/skipped %d, failed %d.\n",
+		summary.AppliedCount(), summary.AlreadyPresentCount()+len(summary.SkippedRecipes), summary.FailedCount())
+	if summary.FailedCount() > 0 {
 		return 1
 	}
 	return 0

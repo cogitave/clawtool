@@ -287,7 +287,7 @@ func (a *App) maybeNudgeCoreDefaults(yes, noDefaults bool) {
 	if yes || !tty {
 		fmt.Fprintln(a.Stdout, "")
 		fmt.Fprintln(a.Stdout, "── core defaults ────────────────────────────")
-		_ = a.runInitAll(cwd)
+		_ = a.runInitAll(cwd, false)
 		return
 	}
 	// Interactive: ask once with Y default.
@@ -310,7 +310,7 @@ func (a *App) maybeNudgeCoreDefaults(yes, noDefaults bool) {
 	}
 	fmt.Fprintln(a.Stdout, "")
 	fmt.Fprintln(a.Stdout, "── core defaults ────────────────────────────")
-	_ = a.runInitAll(cwd)
+	_ = a.runInitAll(cwd, false)
 }
 
 // onboardTUI wraps the Bubble Tea wizard. The model owns the entire
