@@ -85,7 +85,7 @@ also accepted). Parens group; precedence is `not` > `and` > `or`.
 | `session_end` | When the BIAM task / agent loop terminates. Last-chance gate. |
 | `pre_send` | Before `SendMessage` dispatches to a clawtool instance. |
 | `pre_unattended` | Before `--unattended` mode activates. The safety brake before unsupervised loops. |
-| `pre_tool_use` | Before a tool dispatch (Bash, Read, etc.) is handed off. Used by the rtk token-filter rewrite to compress allowlisted Bash output. |
+| `pre_tool_use` | Before a tool dispatch (Bash, Read, etc.) is handed off. Used by the rtk token-filter rewrite to compress allowlisted Bash output. Alias: `interceptor:pre_tool_use` (per upstream MCP RFC; the loader normalizes). |
 
 ## How agents call it
 

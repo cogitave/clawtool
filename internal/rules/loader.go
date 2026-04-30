@@ -51,6 +51,14 @@ func ParseBytes(body []byte) ([]Rule, error) {
 		if f.Rule[i].Severity == "" {
 			f.Rule[i].Severity = SeverityWarn
 		}
+		// Normalize the upstream MCP RFC alias
+		// `interceptor:pre_tool_use` to the canonical
+		// `pre_tool_use` BEFORE validateRule runs — Evaluate
+		// keys off When string-equality, so a single canonical
+		// spelling keeps the dispatch path small.
+		if f.Rule[i].When == EventInterceptorPreToolUse {
+			f.Rule[i].When = EventPreToolUse
+		}
 	}
 	for i, r := range f.Rule {
 		if err := validateRule(r); err != nil {
@@ -69,8 +77,15 @@ func validateRule(r Rule) error {
 	if strings.TrimSpace(r.Name) == "" {
 		return errors.New("name is required")
 	}
+	// Accept the upstream MCP RFC alias `interceptor:pre_tool_use`
+	// as a synonym for `pre_tool_use`; ParseBytes already
+	// rewrote it, but allowing it here too keeps direct
+	// validateRule callers (CheckRuleAdd) honest.
+	if r.When == EventInterceptorPreToolUse {
+		r.When = EventPreToolUse
+	}
 	if !IsValidEvent(r.When) {
-		return fmt.Errorf("invalid 'when': %q (allowed: pre_commit, post_edit, session_end, pre_send, pre_unattended, pre_tool_use)", r.When)
+		return fmt.Errorf("invalid 'when': %q (allowed: pre_commit, post_edit, session_end, pre_send, pre_unattended, pre_tool_use, interceptor:pre_tool_use)", r.When)
 	}
 	if !IsValidSeverity(r.Severity) {
 		return fmt.Errorf("invalid 'severity': %q (allowed: off, warn, block)", r.Severity)

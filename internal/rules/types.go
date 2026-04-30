@@ -83,6 +83,13 @@ const (
 	// rule prepends `rtk ` to allowlisted Bash commands so the
 	// proxy compresses output before it reaches the agent.
 	EventPreToolUse Event = "pre_tool_use"
+	// EventInterceptorPreToolUse is the upstream MCP RFC spelling
+	// of EventPreToolUse — see SEP-1763 / modelcontextprotocol/
+	// experimental-ext-interceptors. Accepted as a synonym at
+	// load time; the loader normalizes occurrences to
+	// "pre_tool_use" so Evaluate sees a single canonical event
+	// name and predicates / dispatch keep one code path.
+	EventInterceptorPreToolUse Event = "interceptor:pre_tool_use"
 )
 
 // IsValidEvent guards against typos in TOML.
