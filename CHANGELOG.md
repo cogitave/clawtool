@@ -4,7 +4,26 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.50] - 2026-04-30
+## [0.22.54] - 2026-04-30
+
+### Features
+
+- **recipes:** Add mattpocock skills recipe for engineering daily-use playbook (db972aa)## [0.22.53] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.50 [skip ci] (18675f3)
+### Features
+
+- **agents:** Wire rules engine pre_send evaluation into dispatch path (dd38f88)## [0.22.52] - 2026-04-30
+
+### Features
+
+- **cli:** Add 'source inspect' verb wrapping MCP Inspector (d106334)## [0.22.51] - 2026-04-30
+
+### Features
+
+- **recipes:** Add promptfoo redteam recipe for BIAM dispatch eval (18cff98)## [0.22.50] - 2026-04-30
 
 ### Features
 
