@@ -813,14 +813,21 @@ func (m *onboardModel) renderHeader(w int) string {
 		Render(fmt.Sprintf("first-run setup  ·  v%s", versionShortForOnboard()))
 	credit := m.style.dim.Render("from Cogitave  ·  by @bahadirarda")
 	email := m.style.dim.Render("help@cogitave.com")
+	// metaCol holds 3 rows; the leading blank that used to pad
+	// it down to logo height has been removed because the brand
+	// row now uses JoinHorizontal(Center) — the shorter logo is
+	// vertically centred against the taller metaCol automatically.
 	metaCol := lipgloss.JoinVertical(lipgloss.Left,
-		"",
 		tagline,
 		credit,
 		email,
 	)
 	gap := lipgloss.NewStyle().Width(4).Render(" ")
-	brandRow := lipgloss.JoinHorizontal(lipgloss.Top, logo, gap, metaCol)
+	// Center vertically so the 2-row logo aligns with the
+	// 4-row metaCol's middle band — without this the logo
+	// sticks to the top edge while the credit/email lines
+	// extend below it, making the brand row look unbalanced.
+	brandRow := lipgloss.JoinHorizontal(lipgloss.Center, logo, gap, metaCol)
 
 	// Filled-background pills for detected hosts; dim text only
 	// for missing ones. Bright pill catches the eye without the
