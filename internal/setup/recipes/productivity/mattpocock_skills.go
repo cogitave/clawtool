@@ -113,6 +113,7 @@ func (mattpocockSkillsRecipe) Meta() setup.RecipeMeta {
 		Description: "Drops mattpocock's curated engineering Claude-Code skills (diagnose, tdd, to-prd, to-issues, triage, zoom-out, grill-with-docs, improve-codebase-architecture, setup) into .claude/skills/.",
 		Upstream:    "https://github.com/mattpocock/skills",
 		Stability:   setup.StabilityBeta,
+		Core:        true,
 	}
 }
 
