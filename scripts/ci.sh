@@ -12,8 +12,11 @@
 #   3. build       — go build ./... + the cmd binary into ./bin/
 #   4. test        — go test -race -count=1 ./...
 #   5. deadcode    — golang.org/x/tools/cmd/deadcode -test ./...
-#   6. e2e         — bash test/e2e/run.sh (stub-server roundtrip)
-#   7. e2e-docker  — onboard + upgrade + realinstall containers
+#   6. smoke       — go test -tags=smoke ./internal/cli/ (every verb's
+#                    --help + read-only listings; ~20s, skipped under
+#                    CLAWTOOL_CI_FAST=1).
+#   7. e2e         — bash test/e2e/run.sh (stub-server roundtrip)
+#   8. e2e-docker  — onboard + upgrade + realinstall containers
 #                    (skipped unless CLAWTOOL_E2E_DOCKER=1; opt-in
 #                    because each runs a fresh Alpine + go build inside
 #                    a container, ~3-5min per gate on a warm host).
@@ -143,8 +146,13 @@ else
 fi
 
 if [ "${CLAWTOOL_CI_FAST:-0}" = "1" ]; then
-    printf "${YELLOW}▶ e2e + docker stages skipped (CLAWTOOL_CI_FAST=1)${RESET}\n\n"
+    printf "${YELLOW}▶ smoke + e2e + docker stages skipped (CLAWTOOL_CI_FAST=1)${RESET}\n\n"
 else
+    # CLI smoke-test: every verb's --help + every read-only listing.
+    # Cheap (~20s) and gated behind the smoke build tag so the default
+    # `go test ./...` stage above doesn't run it twice.
+    run_stage smoke "$GO_BIN" test -tags=smoke -count=1 -timeout=120s ./internal/cli/ -run TestCLI_AllVerbs || true
+
     # Stub-server e2e: builds the stub MCP fixture + runs the bash
     # roundtrip script. Always-run (no Docker required); cheap and
     # exercises the full MCP stdio handshake.
