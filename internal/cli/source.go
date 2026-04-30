@@ -271,11 +271,18 @@ func (a *App) runSourceRemove(argv []string) int {
 }
 
 func (a *App) runSourceRename(argv []string) int {
-	if len(argv) != 2 {
-		fmt.Fprint(a.Stderr, "usage: clawtool source rename <old-instance> <new-instance>\n")
+	fs := flag.NewFlagSet("source rename", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	dryRun := fs.Bool("dry-run", false, "Print what would change without writing.")
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{})); err != nil {
 		return 2
 	}
-	oldName, newName := argv[0], argv[1]
+	rest := fs.Args()
+	if len(rest) != 2 {
+		fmt.Fprint(a.Stderr, "usage: clawtool source rename <old-instance> <new-instance> [--dry-run]\n")
+		return 2
+	}
+	oldName, newName := rest[0], rest[1]
 	if oldName == newName {
 		fmt.Fprintln(a.Stderr, "clawtool source rename: old and new instance are the same")
 		return 2
@@ -299,6 +306,23 @@ func (a *App) runSourceRename(argv []string) int {
 	if _, exists := cfg.Sources[newName]; exists {
 		fmt.Fprintf(a.Stderr, "clawtool source rename: instance %q already exists; remove it first or pick another name\n", newName)
 		return 1
+	}
+
+	if *dryRun {
+		// Symmetric with `source remove --dry-run` (b364ec6)
+		// and `rules remove --dry-run` (5824012): all pre-flight
+		// validation has already passed (kebab name, source
+		// exists, target name free), then preview the change
+		// without writing. Includes a peek at whether the
+		// secrets scope would also migrate, so the operator
+		// sees the full effect before committing.
+		fmt.Fprintf(a.Stdout, "(dry-run) would rename source %q → %q in %s\n", oldName, newName, cfgPath)
+		if store, sErr := secrets.LoadOrEmpty(a.SecretsPath()); sErr == nil && store != nil {
+			if scope, has := store.Scopes[oldName]; has && len(scope) > 0 {
+				fmt.Fprintf(a.Stdout, "    would migrate %d secret(s) under scope %q → %q in %s\n", len(scope), oldName, newName, a.SecretsPath())
+			}
+		}
+		return 0
 	}
 
 	cfg.Sources[newName] = src
@@ -504,12 +528,13 @@ const sourceUsage = `Usage:
   clawtool source remove <instance> [--dry-run]
                               Delete an instance from config (secrets retained).
                               --dry-run previews the change without writing.
-  clawtool source rename <old-instance> <new-instance>
+  clawtool source rename <old-instance> <new-instance> [--dry-run]
                               Rename an instance — moves the [sources.<old>]
                               block in config.toml AND the matching
                               [scopes."<old>"] block in secrets.toml to the
                               new name. Refuses when <new-instance> already
-                              exists. Alias: 'mv'.
+                              exists. --dry-run previews the rename + secrets
+                              migration without writing. Alias: 'mv'.
   clawtool source set-secret <instance> <KEY> [--value <value>]
                               Store a credential. If --value is omitted, the
                               value is read from stdin.

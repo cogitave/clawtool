@@ -425,6 +425,99 @@ func TestSourceRename_MigratesSecrets(t *testing.T) {
 	}
 }
 
+// TestSourceRename_DryRunPreservesConfig confirms `--dry-run`
+// previews the rename + secrets migration without writing to
+// either config.toml or secrets.toml. Symmetric with `source
+// remove --dry-run` (b364ec6) and the rest of the dry-run
+// uniformity series.
+func TestSourceRename_DryRunPreservesConfig(t *testing.T) {
+	app, out, errb, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatalf("add failed: %s", errb.String())
+	}
+	if rc := app.Run([]string{"source", "set-secret", "github", "GITHUB_TOKEN", "--value", "ghp_dryrun"}); rc != 0 {
+		t.Fatalf("set-secret failed: %s", errb.String())
+	}
+
+	out.Reset()
+	if rc := app.Run([]string{"source", "rename", "github", "github-personal", "--dry-run"}); rc != 0 {
+		t.Fatalf("dry-run rc = %d, stderr=%q", rc, errb.String())
+	}
+	body := out.String()
+	for _, want := range []string{"(dry-run)", "would rename source", "github", "github-personal"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dry-run output missing %q\n--- output ---\n%s", want, body)
+		}
+	}
+	// Secrets migration peek must surface (we set GITHUB_TOKEN
+	// above, so the dry-run should announce the move).
+	if !strings.Contains(body, "would migrate") {
+		t.Errorf("dry-run should peek at secrets migration; got: %q", body)
+	}
+	// Real-write success banner must NOT appear.
+	if strings.Contains(body, "✓ renamed") {
+		t.Errorf("dry-run leaked success verb: %q", body)
+	}
+
+	// Critical: old name should still be in config after dry-run.
+	out.Reset()
+	if rc := app.Run([]string{"source", "list"}); rc != 0 {
+		t.Fatalf("list after dry-run rc = %d", rc)
+	}
+	listOut := out.String()
+	if !strings.Contains(listOut, "github") {
+		t.Errorf("dry-run should have left 'github' in config; list: %q", listOut)
+	}
+	if strings.Contains(listOut, "github-personal") {
+		t.Errorf("dry-run should NOT have created 'github-personal'; list: %q", listOut)
+	}
+
+	// Sanity: the real rename still works after a dry-run.
+	out.Reset()
+	if rc := app.Run([]string{"source", "rename", "github", "github-personal"}); rc != 0 {
+		t.Fatalf("real rename after dry-run rc = %d", rc)
+	}
+	if !strings.Contains(out.String(), "✓ renamed") {
+		t.Errorf("real rename should succeed after dry-run: %q", out.String())
+	}
+}
+
+// TestSourceRename_DryRunUnknownInstance keeps the validation
+// errors intact on the dry-run path so typos surface at preview
+// time.
+func TestSourceRename_DryRunUnknownInstance(t *testing.T) {
+	app, _, errb, _, _ := newSrcApp(t)
+	rc := app.Run([]string{"source", "rename", "ghost", "ghost-renamed", "--dry-run"})
+	if rc != 1 {
+		t.Errorf("dry-run on absent instance rc = %d, want 1", rc)
+	}
+	if !strings.Contains(errb.String(), "no instance \"ghost\"") {
+		t.Errorf("expected not-found error, got: %q", errb.String())
+	}
+}
+
+// TestSourceRename_DryRunCollision pins the collision check on
+// the dry-run path: when the new name already exists, the dry-
+// run must refuse with the same exit-1 + stderr message as the
+// real path. Otherwise the operator could be misled into
+// committing a rename that would actually be rejected.
+func TestSourceRename_DryRunCollision(t *testing.T) {
+	app, _, errb, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatal("add github failed")
+	}
+	if rc := app.Run([]string{"source", "add", "github", "--as", "github-work"}); rc != 0 {
+		t.Fatal("add github-work failed")
+	}
+	rc := app.Run([]string{"source", "rename", "github", "github-work", "--dry-run"})
+	if rc != 1 {
+		t.Errorf("dry-run collision rc = %d, want 1", rc)
+	}
+	if !strings.Contains(errb.String(), "already exists") {
+		t.Errorf("expected 'already exists' error, got: %q", errb.String())
+	}
+}
+
 func TestSourceRename_AliasMv(t *testing.T) {
 	app, out, errb, _, _ := newSrcApp(t)
 	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
