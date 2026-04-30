@@ -40,6 +40,7 @@ import (
 	"github.com/cogitave/clawtool/internal/tools/core"
 	"github.com/cogitave/clawtool/internal/tools/registry"
 	"github.com/cogitave/clawtool/internal/version"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
 	// Pull every recipe subpackage's init() so the setup registry
@@ -341,11 +342,26 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	// older const value to every host. Caught at v0.22.23 during a
 	// Docker e2e probe (host saw "0.21.7" in /v1/health while CLI
 	// said 0.22.23).
+	// Manifest is built up-front so we can install the
+	// AfterListTools hook (which closes over its UsageHints map)
+	// at NewMCPServer time. The hook mutates each tools/list
+	// response in place so per-tool curated guidance flows out
+	// under `_meta.clawtool.usage_hint` — see
+	// internal/tools/registry/usage_hint.go for the rationale.
+	manifest := core.BuildManifest()
+	usageHints := manifest.UsageHints()
+
+	mcpHooks := &server.Hooks{}
+	mcpHooks.AddAfterListTools(func(_ context.Context, _ any, _ *mcp.ListToolsRequest, result *mcp.ListToolsResult) {
+		registry.EnrichListToolsResult(result, usageHints)
+	})
+
 	s := server.NewMCPServer(
 		version.Name,
 		version.Resolved(),
 		server.WithToolCapabilities(true),
 		server.WithLogging(),
+		server.WithHooks(mcpHooks),
 	)
 
 	// Manifest-driven registration (#173 Step 4). The 28 hand-
@@ -361,7 +377,6 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	// registers the whole bundle; companion specs (RecipeStatus
 	// after RecipeList, etc.) have Register=nil and Apply skips
 	// them silently.
-	manifest := core.BuildManifest()
 	manifest.Apply(s, registry.Runtime{Index: idx, Secrets: sec},
 		func(name string) bool { return cfg.IsEnabled(name).Enabled })
 

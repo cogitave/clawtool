@@ -76,6 +76,21 @@ type ToolSpec struct {
 	// tool is documented in the manifest but registered through
 	// a legacy direct path — useful during incremental migration.
 	Register RegisterFn
+
+	// UsageHint is curated guidance for calling agents — one to
+	// three sentences answering "when do I pick this tool over a
+	// similar one", "what's a common mistake", and (optionally)
+	// "one concrete example". Distinct from Description: the
+	// description is the WHAT (one-paragraph action summary),
+	// the hint is the HOW (decision-time pointer). Empty value =
+	// no hint surfaced; serializer skips the annotation.
+	//
+	// Surface: clawtool's tools/list response carries the hint
+	// under each tool's `_meta.clawtool.usage_hint` — `_meta` is
+	// the MCP-spec-defined extension envelope, so strict clients
+	// ignore it gracefully and tolerant clients (Claude Code,
+	// Codex 0.125+) can surface it as an inline guidance line.
+	UsageHint string
 }
 
 // Runtime carries the cross-cutting dependencies a register fn
@@ -254,5 +269,25 @@ func (m *Manifest) SortedNames() []string {
 	sort.Slice(out, func(i, j int) bool {
 		return strings.ToLower(out[i]) < strings.ToLower(out[j])
 	})
+	return out
+}
+
+// UsageHints returns a {tool name → curated usage hint} map for
+// every spec whose UsageHint is non-empty. Used by the MCP
+// server's tools/list post-processor to inject per-tool guidance
+// under `_meta.clawtool.usage_hint`. Specs without a hint don't
+// appear in the map — callers can range freely without nil-check
+// noise per tool.
+func (m *Manifest) UsageHints() map[string]string {
+	if m == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, s := range m.specs {
+		if s.UsageHint == "" {
+			continue
+		}
+		out[s.Name] = s.UsageHint
+	}
 	return out
 }

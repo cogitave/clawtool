@@ -197,6 +197,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"find", "match", "files", "pattern", "wildcard", "ls", "list"},
 		Category:    registry.CategoryFile,
 		Gate:        "Glob",
+		UsageHint:   "Pick Glob when you need a file LIST by name/path; pick Grep when you need to search file CONTENTS. Common mistake: using Glob with a substring like `config` — that won't match anything; the pattern is a glob, so use `**/*config*` instead. Honors .gitignore by default.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterGlob(s)
 		},
@@ -227,6 +228,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"create", "save", "overwrite", "tee", "echo", "new", "file"},
 		Category:    registry.CategoryFile,
 		Gate:        "Write",
+		UsageHint:   "Use Write only for brand-new files or when replacing the whole file is genuinely intended. To change a few lines in an existing file, prefer Edit — it's safer (refuses ambiguous matches) and clearer in diffs. The Read-before-Write guardrail will refuse an overwrite the agent has not Read this session; that is intentional, not a bug.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterWrite(s)
 		},
@@ -419,6 +421,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"upgrade", "update", "bridge", "plugin", "refresh"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Use BridgeUpgrade when the operator already has a bridge installed and you want to refresh to the latest plugin version; use BridgeAdd for the initial install. Common mistake: calling BridgeUpgrade as a way to fix a broken bridge — it just re-runs the same install path, so if BridgeAdd failed, Upgrade will fail the same way. Run BridgeList first to confirm the family is installed.",
 	})
 
 	// ─── Agent* bundle (SendMessage + AgentList) ───────────────
@@ -500,6 +503,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"task", "biam", "wait", "block", "result", "terminal"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Use TaskWait for ONE specific task_id when you can't proceed without its result; use TaskNotify for several in-flight tasks when you want the first finisher; use TaskGet for a non-blocking snapshot. Common mistake: calling TaskWait in a loop — that's a polling re-implementation; TaskNotify already pushes on completion.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "TaskList",
@@ -597,6 +601,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"mcp", "build", "compile", "package", "docker"},
 		Category:    registry.CategoryAuthoring,
 		Gate:        "",
+		UsageHint:   "Use McpBuild to produce a release artifact for distribution; use McpRun for the in-place dev loop and McpInstall to register the project as a clawtool source on this host. Common mistake: running McpBuild before McpInstall — Install does its own build, so calling Build first just doubles the work.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "McpInstall",
