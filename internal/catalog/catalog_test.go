@@ -86,7 +86,6 @@ func TestBuiltin_HasSemble(t *testing.T) {
 	if e.Package != "uvx" {
 		t.Errorf("semble package = %q, want uvx (operator-installed runner)", e.Package)
 	}
-	// uvx invocation must pass the [mcp] extras + the semble entrypoint.
 	wantArgs := []string{"--from", "semble[mcp]", "semble"}
 	if len(e.Args) != len(wantArgs) {
 		t.Fatalf("semble args = %v, want %v", e.Args, wantArgs)
@@ -95,6 +94,42 @@ func TestBuiltin_HasSemble(t *testing.T) {
 		if e.Args[i] != w {
 			t.Errorf("semble args[%d] = %q, want %q", i, e.Args[i], w)
 		}
+	}
+}
+
+func TestBuiltin_HasShellMcp(t *testing.T) {
+	c, _ := Builtin()
+	e, ok := c.Lookup("shell-mcp")
+	if !ok {
+		t.Fatal("shell-mcp not in catalog")
+	}
+	if e.Description == "" {
+		t.Error("shell-mcp description must be set")
+	}
+	if e.Homepage == "" {
+		t.Error("shell-mcp homepage must be set")
+	}
+	if e.Runtime != "binary" {
+		t.Errorf("shell-mcp runtime = %q, want binary", e.Runtime)
+	}
+	if e.Package != "shell-mcp" {
+		t.Errorf("shell-mcp package = %q, want shell-mcp", e.Package)
+	}
+	if !strings.Contains(strings.ToLower(e.Description), "sandbox-aware") {
+		t.Error("shell-mcp description should mention sandbox-aware shell execution")
+	}
+	if !strings.Contains(strings.ToLower(e.Description), "denylist") {
+		t.Error("shell-mcp description should call out the hard denylist")
+	}
+	if !strings.Contains(strings.ToLower(e.Description), "mit") {
+		t.Error("shell-mcp description should record the MIT license")
+	}
+	wantEnv := []string{"SHELL_MCP_ROOT"}
+	if len(e.RequiredEnv) != len(wantEnv) || e.RequiredEnv[0] != wantEnv[0] {
+		t.Errorf("shell-mcp required_env = %v, want %v", e.RequiredEnv, wantEnv)
+	}
+	if e.AuthHint == "" {
+		t.Error("shell-mcp auth_hint must be present")
 	}
 }
 

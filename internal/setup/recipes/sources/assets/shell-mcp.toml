@@ -1,0 +1,66 @@
+# managed-by: clawtool
+# Starter shell-mcp.toml for devrelopers/shell-mcp (MIT).
+# Upstream: https://github.com/devrelopers/shell-mcp
+#
+# shell-mcp is a sandbox-aware shell MCP server. Read commands ship in a
+# curated default allowlist; write commands require an explicit per-
+# directory allow rule that walks up the tree like git does. Shell
+# metacharacters (`; && || | $() backticks > < >>`) are rejected before
+# parsing — write a script and allowlist the script if you need a
+# pipeline. A small hard denylist runs first and cannot be overridden.
+#
+# This file ships as a curated starter only. The operator:
+#   1. Installs the binary:  cargo install shell-mcp
+#   2. Edits the allow list below to fit the project's write surface.
+#   3. Wires it as a `binary` source via `clawtool source add shell-mcp`
+#      (catalog entry passes --root via SHELL_MCP_ROOT).
+#
+# Pair with the rtk_rewrite pre_tool_use rule for a defense-in-depth
+# layer: rtk rewrites loose Bash invocations into structured shell-mcp
+# requests; shell-mcp then enforces sandbox + allowlist.
+
+# Keep the upstream curated read-only allowlist on. Disable only when
+# you want a fully closed allowlist driven by `allow` below.
+include_defaults = true
+
+# ── Allowlist starter ─────────────────────────────────────────────────
+# Mirrors clawtool's rtk-allowed read-only command set. Adjust per repo.
+# Pattern syntax (one entry = one shell-tokenized pattern):
+#   `cargo build`        → exact match
+#   `cargo build *`      → exactly one extra arg
+#   `cargo build **`     → any number of extra args (only as final token)
+allow = [
+  "git **",
+  "ls **",
+  "grep **",
+  "cat **",
+  "head **",
+  "tail **",
+  "find **",
+  "tree **",
+  "diff **",
+  "stat **",
+  "wc **",
+  # Add write-side commands explicitly. Examples to uncomment + adapt:
+  # "cargo build **",
+  # "cargo test **",
+  # "go build ./**",
+  # "go test ./**",
+  # "./scripts/deploy.sh **",
+]
+
+# ── Hard denylist (defense in depth) ──────────────────────────────────
+# shell-mcp ships its own non-overridable hard denylist (sudo, rm -rf /,
+# fork bombs). The entries below are documentation: they are what you
+# would re-list in a project-local policy review. The actual block lives
+# upstream and cannot be relaxed by this file.
+#
+#   "rm -rf /"                  catastrophic recursive delete
+#   ":(){ :|:& };:"             classic fork bomb
+#   "sudo **"                   privilege escalation
+#   "curl ** | sh"              metachar block already kills this; listed
+#                               for review-completeness
+#   "wget ** | sh -c **"        same — piping network input into sh -c
+#
+# If a project needs to extend the denylist further, do it by tightening
+# `allow` (allowlist-first). shell-mcp has no `deny` key by design.

@@ -197,3 +197,13 @@ required_env = []
 auth_hint = "Install uv per https://docs.astral.sh/uv/getting-started/installation/ — uvx will fetch the semble[mcp] extras on first run. No API keys; runs fully on CPU. Optional: `clawtool recipe apply semble` drops a starter .clawtool/semble/config.yaml documenting the workflow for sub-agents."
 homepage = "https://github.com/MinishLab/semble"
 maintained = "minishlab"
+
+[entries.shell-mcp]
+description = "shell-mcp: sandbox-aware shell execution (per-dir TOML config, denies shell metachars, hard denylist). MIT."
+runtime = "binary"
+package = "shell-mcp"
+args = ["--root", "${SHELL_MCP_ROOT}"]
+required_env = ["SHELL_MCP_ROOT"]
+auth_hint = "Install the binary: cargo install shell-mcp. Run `clawtool recipe apply shell-mcp` to scaffold .clawtool/shell-mcp.toml; set SHELL_MCP_ROOT to the absolute path of the directory you want shell access scoped to."
+homepage = "https://github.com/devrelopers/shell-mcp"
+maintained = "community"
