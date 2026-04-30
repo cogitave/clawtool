@@ -19,12 +19,30 @@
 package cli
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/cogitave/clawtool/internal/rules"
 )
+
+// ruleListEntry is the JSON shape produced by `rules list --json`.
+// snake_case keys mirror the project's wire convention (matches
+// agentListEntry, agents.Status, version.BuildInfo). Source is
+// the rules.toml path the rule was loaded from — same value
+// `rules path` prints, surfaced here so a script can correlate
+// "which file has rule X" without a second invocation.
+type ruleListEntry struct {
+	Name        string `json:"name"`
+	When        string `json:"when"`
+	Severity    string `json:"severity"`
+	Description string `json:"description,omitempty"`
+	Condition   string `json:"condition"`
+	Hint        string `json:"hint,omitempty"`
+	Source      string `json:"source"`
+}
 
 const rulesUsage = `Usage:
   clawtool rules list                              List every loaded rule with its source path.
@@ -95,12 +113,50 @@ func resolveScope(argv []string) (path string, fromFlag string, err error) {
 	return rules.LocalRulesPath(), "local", nil
 }
 
-func (a *App) runRulesList(_ []string) int {
+func (a *App) runRulesList(argv []string) int {
+	fs := flag.NewFlagSet("rules list", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	asJSON := fs.Bool("json", false, "Emit machine-readable JSON instead of the human table.")
+	if err := fs.Parse(argv); err != nil {
+		return 2
+	}
+	if len(fs.Args()) > 0 {
+		fmt.Fprint(a.Stderr, "usage: clawtool rules list [--json]\n")
+		return 2
+	}
+
 	loaded, path, ok, err := rules.LoadDefault()
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool rules list: %v\n", err)
 		return 1
 	}
+
+	if *asJSON {
+		// Always emit a JSON array (possibly empty) — shape stays
+		// uniform whether rules.toml exists or not, so `jq '.[]'`
+		// pipelines don't have to special-case the no-config
+		// branch.
+		entries := make([]ruleListEntry, 0, len(loaded))
+		for _, r := range loaded {
+			entries = append(entries, ruleListEntry{
+				Name:        r.Name,
+				When:        string(r.When),
+				Severity:    string(r.Severity),
+				Description: r.Description,
+				Condition:   r.Condition,
+				Hint:        r.Hint,
+				Source:      path,
+			})
+		}
+		body, err := json.MarshalIndent(entries, "", "  ")
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool rules list: marshal: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(a.Stdout, string(body))
+		return 0
+	}
+
 	if !ok {
 		fmt.Fprintln(a.Stdout, "(no rules configured — try `clawtool rules new <name> --when pre_commit --condition '...'`)")
 		return 0
