@@ -4,7 +4,18 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.40] - 2026-04-30
+## [0.22.42] - 2026-04-30
+
+### Features
+
+- **catalog:** Add MCP Registry probe foundation (bcfb0c3)## [0.22.41] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.40 [skip ci] (c131a2a)
+### Features
+
+- **cli:** Add `--dry-run` to `agent new` (2ec79b9)## [0.22.40] - 2026-04-30
 
 ### Documentation
 
