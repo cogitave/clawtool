@@ -6,6 +6,7 @@
 [![Go](https://img.shields.io/github/go-mod/go-version/cogitave/clawtool?logo=go)](go.mod)
 [![License](https://img.shields.io/github/license/cogitave/clawtool?color=brightgreen)](LICENSE)
 [![Conventional Commits](https://img.shields.io/badge/conventional--commits-1.0.0-yellow)](https://www.conventionalcommits.org)
+[![SafeSkill 50/100](https://img.shields.io/badge/SafeSkill-50%2F100_Use%20with%20Caution-orange)](https://safeskill.dev/scan/cogitave-clawtool)
 
 > **Tools. Agents. Wired.**
 >
