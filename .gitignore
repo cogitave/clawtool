@@ -188,3 +188,10 @@ logs/
 # `git-cliff --output BODY.md` runs would otherwise leave it as
 # untracked and trip GoReleaser's "git is in a dirty state" check.
 /BODY.md
+
+# `playbooks/_personal/` is the user-private playbook drawer per
+# the 10xProductivity-style markdown layer (see playbooks/README.md).
+# Internal-tool playbooks live there and never enter the public
+# repo. The .gitkeep stays so a fresh clone has the directory.
+/playbooks/_personal/*
+!/playbooks/_personal/.gitkeep

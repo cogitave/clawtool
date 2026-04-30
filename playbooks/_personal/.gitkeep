@@ -1,0 +1,3 @@
+# Placeholder — keeps `playbooks/_personal/` in the tree so a
+# fresh clone has the directory to drop user-private playbooks
+# into. Everything else under this directory is .gitignored.
