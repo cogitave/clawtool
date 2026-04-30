@@ -440,6 +440,18 @@ func BuildManifest() *registry.Manifest {
 		Gate:        "",
 	})
 
+	// ─── Version probe (CategoryDiscovery — read-only metadata) ─
+	m.Append(registry.ToolSpec{
+		Name:        "Version",
+		Description: "Snapshot of the running clawtool binary's identity: name, semver, Go runtime, GOOS/GOARCH, VCS commit + modified flag. Same shape as `clawtool version --json` and the `build` field of GET /v1/health. Read-only.",
+		Keywords:    []string{"version", "build", "info", "go", "platform", "commit", "identity", "introspect"},
+		Category:    registry.CategoryDiscovery,
+		Gate:        "",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterVersionTool(s)
+		},
+	})
+
 	// ─── Task* bundle (TaskGet + TaskWait + TaskList; TaskNotify
 	//     already shipped above as its own RegisterTaskNotify) ──
 	m.Append(registry.ToolSpec{
