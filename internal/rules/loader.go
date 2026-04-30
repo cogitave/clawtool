@@ -227,13 +227,9 @@ func AppendRule(path string, r Rule) error {
 // ok=false when no rule with that name exists; the file stays
 // untouched.
 func RemoveRule(path, name string) (bool, error) {
-	body, err := os.ReadFile(path)
+	existing, err := loadForRemove(path)
 	if err != nil {
 		return false, err
-	}
-	existing, err := ParseBytes(body)
-	if err != nil {
-		return false, fmt.Errorf("rules: parse %s: %w", path, err)
 	}
 	out := existing[:0]
 	found := false
@@ -248,6 +244,43 @@ func RemoveRule(path, name string) (bool, error) {
 		return false, nil
 	}
 	return true, saveRules(path, out)
+}
+
+// LookupRule reads path and returns the rule named `name` (if
+// present) without modifying the file. Used by `clawtool rules
+// remove --dry-run` to preview the delete: the same lookup
+// RemoveRule does, just without the saveRules write afterwards.
+// ok=false when no rule with that name exists in the file.
+//
+// Returns (zero Rule, false, err) on parse / read errors so
+// callers can distinguish "rule absent" from "couldn't read".
+func LookupRule(path, name string) (Rule, bool, error) {
+	existing, err := loadForRemove(path)
+	if err != nil {
+		return Rule{}, false, err
+	}
+	for _, e := range existing {
+		if e.Name == name {
+			return e, true, nil
+		}
+	}
+	return Rule{}, false, nil
+}
+
+// loadForRemove is the shared read+parse path used by RemoveRule
+// and LookupRule. Kept private — callers go through the named
+// helpers so the path/name semantics stay self-explaining at the
+// call site.
+func loadForRemove(path string) ([]Rule, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := ParseBytes(body)
+	if err != nil {
+		return nil, fmt.Errorf("rules: parse %s: %w", path, err)
+	}
+	return parsed, nil
 }
 
 // saveRules emits the canonical TOML representation. Each rule

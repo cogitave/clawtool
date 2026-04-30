@@ -352,7 +352,7 @@ func (a *App) runRulesNew(argv []string) int {
 
 func (a *App) runRulesRemove(argv []string) int {
 	if len(argv) < 1 {
-		fmt.Fprint(a.Stderr, "usage: clawtool rules remove <name> [--user|--local]\n")
+		fmt.Fprint(a.Stderr, "usage: clawtool rules remove <name> [--user|--local] [--dry-run]\n")
 		return 2
 	}
 	name := argv[0]
@@ -360,14 +360,15 @@ func (a *App) runRulesRemove(argv []string) int {
 	// Try the explicit scope first; fall back to walking both
 	// roots if the operator didn't specify.
 	candidates := []string{}
+	dryRun := false
 	for _, a := range rest {
-		if a == "--user" {
+		switch a {
+		case "--user":
 			candidates = []string{rules.UserRulesPath()}
-			break
-		}
-		if a == "--local" {
+		case "--local":
 			candidates = []string{rules.LocalRulesPath()}
-			break
+		case "--dry-run":
+			dryRun = true
 		}
 	}
 	if len(candidates) == 0 {
@@ -376,6 +377,31 @@ func (a *App) runRulesRemove(argv []string) int {
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err != nil {
 			continue
+		}
+		if dryRun {
+			// Preview path: locate the rule in this file
+			// without writing. Symmetric with `rules new
+			// --dry-run` — same kind of validate-only pass
+			// before a mutation.
+			r, ok, err := rules.LookupRule(p, name)
+			if err != nil {
+				fmt.Fprintf(a.Stderr, "clawtool rules remove: %v\n", err)
+				return 1
+			}
+			if !ok {
+				continue
+			}
+			fmt.Fprintf(a.Stdout, "(dry-run) would remove rule %q from %s\n", name, p)
+			fmt.Fprintf(a.Stdout, "  when:      %s\n", string(r.When))
+			fmt.Fprintf(a.Stdout, "  severity:  %s\n", string(r.Severity))
+			fmt.Fprintf(a.Stdout, "  condition: %s\n", r.Condition)
+			if r.Description != "" {
+				fmt.Fprintf(a.Stdout, "  description: %s\n", r.Description)
+			}
+			if r.Hint != "" {
+				fmt.Fprintf(a.Stdout, "  hint:      %s\n", r.Hint)
+			}
+			return 0
 		}
 		gone, err := rules.RemoveRule(p, name)
 		if err != nil {

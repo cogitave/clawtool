@@ -371,6 +371,63 @@ func TestRulesNew_DryRunDetectsDuplicate(t *testing.T) {
 	}
 }
 
+// TestRulesRemove_DryRunDoesNotWrite confirms `--dry-run` prints
+// the would-be-removed rule's metadata without mutating the
+// rules.toml on disk. Symmetric pair with `rules new --dry-run`.
+func TestRulesRemove_DryRunDoesNotWrite(t *testing.T) {
+	rulesFile := withTmpRulesFile(t, sampleRulesTOML)
+	beforeBody, err := os.ReadFile(rulesFile)
+	if err != nil {
+		t.Fatalf("read rules.toml: %v", err)
+	}
+
+	app, out, _ := newRulesApp(t)
+	rc := app.Run([]string{"rules", "remove", "gofmt-clean", "--dry-run"})
+	if rc != 0 {
+		t.Fatalf("dry-run rc=%d, stdout=%s", rc, out.String())
+	}
+	body := out.String()
+	for _, want := range []string{
+		"(dry-run)",
+		"would remove",
+		"gofmt-clean",
+		"pre_commit",
+		"warn",
+		`changed("**/*.go")`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("output missing %q\n--- output ---\n%s", want, body)
+		}
+	}
+
+	// rules.toml must be byte-identical after dry-run.
+	afterBody, err := os.ReadFile(rulesFile)
+	if err != nil {
+		t.Fatalf("re-read rules.toml: %v", err)
+	}
+	if string(afterBody) != string(beforeBody) {
+		t.Errorf("rules.toml mutated during dry-run\n--- before ---\n%s\n--- after ---\n%s",
+			beforeBody, afterBody)
+	}
+}
+
+// TestRulesRemove_DryRunNotFound exits 1 with a "not found"
+// error when the named rule isn't in any configured rules file
+// — same exit code as the non-dry-run path so CI scripts that
+// gate on it work uniformly.
+func TestRulesRemove_DryRunNotFound(t *testing.T) {
+	withTmpRulesFile(t, sampleRulesTOML)
+
+	app, _, errb := newRulesApp(t)
+	rc := app.Run([]string{"rules", "remove", "no-such-rule", "--dry-run"})
+	if rc != 1 {
+		t.Errorf("rc=%d, want 1", rc)
+	}
+	if !strings.Contains(errb.String(), "not found") {
+		t.Errorf("expected 'not found' in stderr; got %q", errb.String())
+	}
+}
+
 // TestRulesShow_JSONNoConfig emits an error object (not an
 // empty result) when no rules.toml exists — the script-side
 // failure mode mirrors `not found`, so pipelines can branch on
