@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +129,115 @@ func TestSkillList_EnumeratesInstalled(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("list output missing %q\n---\n%s", want, got)
 		}
+	}
+}
+
+// TestSkillList_JSONOutput emits a parseable JSON array of
+// {skill, root} objects when `--format json` is set. Continues
+// the JSON wire-contract series alongside `agents list --json`,
+// `rules list --json`, etc.
+func TestSkillList_JSONOutput(t *testing.T) {
+	dir := withFakeClaudeHomeForCLI(t)
+	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	for _, n := range []string{"alpha", "bravo"} {
+		if rc := app.runSkillNew([]string{n, "--description", "x"}); rc != 0 {
+			t.Fatalf("seeding %s: rc=%d", n, rc)
+		}
+	}
+
+	out := &bytes.Buffer{}
+	app.Stdout = out
+	if rc := app.runSkillList([]string{"--format", "json"}); rc != 0 {
+		t.Fatalf("list --format json rc = %d", rc)
+	}
+
+	body := strings.TrimSpace(out.String())
+	if len(body) == 0 || body[0] != '[' {
+		t.Fatalf("expected JSON array; got: %q", body)
+	}
+	var got []struct {
+		Skill string `json:"skill"`
+		Root  string `json:"root"`
+	}
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 entries, got %d: %+v", len(got), got)
+	}
+	wantRoot := filepath.Join(dir, "skills")
+	names := map[string]string{}
+	for _, e := range got {
+		names[e.Skill] = e.Root
+	}
+	for _, n := range []string{"alpha", "bravo"} {
+		if names[n] != wantRoot {
+			t.Errorf("skill %q root = %q, want %q", n, names[n], wantRoot)
+		}
+	}
+}
+
+// TestSkillList_JSONNoSkills emits an empty array (NOT the human
+// "(no skills installed)" hint) when the JSON path runs against
+// a fresh box. Pipelines must see the same shape across
+// configured / unconfigured machines.
+func TestSkillList_JSONNoSkills(t *testing.T) {
+	withFakeClaudeHomeForCLI(t)
+	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	out := &bytes.Buffer{}
+	app.Stdout = out
+	if rc := app.runSkillList([]string{"--format", "json"}); rc != 0 {
+		t.Fatalf("rc = %d", rc)
+	}
+	got := strings.TrimSpace(out.String())
+	if got != "[]" {
+		t.Errorf("output = %q, want %q (empty JSON array)", got, "[]")
+	}
+}
+
+// TestSkillList_TSVOutput confirms the tab-separated path also
+// works — same listfmt machinery as the JSON path.
+func TestSkillList_TSVOutput(t *testing.T) {
+	withFakeClaudeHomeForCLI(t)
+	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	if rc := app.runSkillNew([]string{"alpha", "--description", "x"}); rc != 0 {
+		t.Fatalf("seeding rc=%d", rc)
+	}
+
+	out := &bytes.Buffer{}
+	app.Stdout = out
+	if rc := app.runSkillList([]string{"--format", "tsv"}); rc != 0 {
+		t.Fatalf("list --format tsv rc = %d", rc)
+	}
+	body := out.String()
+	// First line is header `SKILL\tROOT`, second line is the
+	// data row.
+	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected header + ≥1 data row; got %q", body)
+	}
+	if !strings.Contains(lines[0], "SKILL") || !strings.Contains(lines[0], "ROOT") {
+		t.Errorf("header line wrong: %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "alpha") || !strings.Contains(lines[1], "\t") {
+		t.Errorf("data row missing alpha or tab: %q", lines[1])
+	}
+}
+
+// TestSkillList_HumanNoSkills preserves the "(no skills
+// installed)" hint when the table path runs against a fresh
+// box — interactive operators shouldn't suddenly see just a
+// header line.
+func TestSkillList_HumanNoSkills(t *testing.T) {
+	withFakeClaudeHomeForCLI(t)
+	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	out := &bytes.Buffer{}
+	app.Stdout = out
+	if rc := app.runSkillList(nil); rc != 0 {
+		t.Fatalf("rc = %d", rc)
+	}
+	if !strings.Contains(out.String(), "no skills installed") {
+		t.Errorf("missing hint; got %q", out.String())
 	}
 }
 

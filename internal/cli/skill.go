@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cogitave/clawtool/internal/cli/listfmt"
 	"github.com/cogitave/clawtool/internal/skillgen"
 )
 
@@ -164,9 +165,18 @@ func (a *App) runSkillNew(argv []string) int {
 
 // ── list ───────────────────────────────────────────────────────────
 
-func (a *App) runSkillList(_ []string) int {
-	w := a.Stdout
-	any := false
+func (a *App) runSkillList(argv []string) int {
+	format, residual, err := listfmt.ExtractFlag(argv)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool skill list: %v\n", err)
+		return 2
+	}
+	if len(residual) > 0 {
+		fmt.Fprint(a.Stderr, "usage: clawtool skill list [--format table|tsv|json]\n")
+		return 2
+	}
+
+	cols := listfmt.Cols{Header: []string{"SKILL", "ROOT"}}
 	for _, root := range skillRoots() {
 		entries, err := os.ReadDir(root)
 		if err != nil {
@@ -181,20 +191,25 @@ func (a *App) runSkillList(_ []string) int {
 				names = append(names, e.Name())
 			}
 		}
-		if len(names) == 0 {
-			continue
-		}
 		sort.Strings(names)
-		any = true
-		fmt.Fprintf(w, "[%s]\n", root)
 		for _, n := range names {
-			fmt.Fprintf(w, "  %s\n", n)
+			cols.Rows = append(cols.Rows, []string{n, root})
 		}
-		fmt.Fprintln(w)
 	}
-	if !any {
-		fmt.Fprintln(w, "(no skills installed)")
-		fmt.Fprintln(w, "Try: clawtool skill new my-first-skill --description \"...\"")
+
+	// Empty case: JSON path always emits an array (`[]`) so
+	// pipelines see the same shape across configured /
+	// unconfigured machines. table/tsv get the human hint —
+	// an interactive `clawtool skill list` on a fresh box should
+	// nudge toward `skill new` rather than print just a header.
+	if len(cols.Rows) == 0 && format != listfmt.FormatJSON {
+		fmt.Fprintln(a.Stdout, "(no skills installed)")
+		fmt.Fprintln(a.Stdout, "Try: clawtool skill new my-first-skill --description \"...\"")
+		return 0
+	}
+	if err := listfmt.Render(a.Stdout, format, cols); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool skill list: %v\n", err)
+		return 1
 	}
 	return 0
 }
