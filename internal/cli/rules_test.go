@@ -182,3 +182,128 @@ func TestRulesList_HumanNoConfig(t *testing.T) {
 		t.Errorf("missing hint line; output: %q", out.String())
 	}
 }
+
+// TestRulesShow_JSONOutput renders a single rule object (not an
+// array — show is a single-result query). Asserts every relevant
+// field comes through with snake_case keys + the source path is
+// surfaced so a script can correlate.
+func TestRulesShow_JSONOutput(t *testing.T) {
+	wantSource := withTmpRulesFile(t, sampleRulesTOML)
+	app, out, _ := newRulesApp(t)
+	if rc := app.Run([]string{"rules", "show", "gofmt-clean", "--json"}); rc != 0 {
+		t.Fatalf("rules show --json rc=%d, stderr=%s", rc, out.String())
+	}
+	body := out.String()
+	for _, lit := range []string{`"name":`, `"when":`, `"severity":`, `"condition":`, `"source":`, `"hint":`} {
+		if !strings.Contains(body, lit) {
+			t.Errorf("JSON missing literal %s; body: %s", lit, body)
+		}
+	}
+	var got ruleListEntry
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
+	}
+	if got.Name != "gofmt-clean" {
+		t.Errorf("Name = %q, want gofmt-clean", got.Name)
+	}
+	if got.When != "pre_commit" {
+		t.Errorf("When = %q, want pre_commit", got.When)
+	}
+	if got.Severity != "warn" {
+		t.Errorf("Severity = %q, want warn", got.Severity)
+	}
+	if got.Hint != "Run gofmt -w ." {
+		t.Errorf("Hint = %q, want exact 'Run gofmt -w .'", got.Hint)
+	}
+	if got.Source != wantSource {
+		t.Errorf("Source = %q, want %q", got.Source, wantSource)
+	}
+}
+
+// TestRulesShow_JSONStableShape confirms the JSON path produces
+// an object (single result), NOT an array — show is a singular
+// query, list is the array form. Pipelines that pipe show output
+// into `jq '.name'` rely on object shape.
+func TestRulesShow_JSONStableShape(t *testing.T) {
+	withTmpRulesFile(t, sampleRulesTOML)
+	app, out, _ := newRulesApp(t)
+	if rc := app.Run([]string{"rules", "show", "gofmt-clean", "--json"}); rc != 0 {
+		t.Fatalf("rc=%d", rc)
+	}
+	body := strings.TrimSpace(out.String())
+	if len(body) == 0 || body[0] != '{' {
+		t.Errorf("expected object (starts with '{'); got: %q", body)
+	}
+}
+
+// TestRulesShow_JSONNotFound emits a structured error object on
+// stdout so a JSON-driven pipeline can detect "rule not found"
+// without inspecting stderr. Exit code stays 1 to match the
+// human path.
+func TestRulesShow_JSONNotFound(t *testing.T) {
+	withTmpRulesFile(t, sampleRulesTOML)
+	app, out, errb := newRulesApp(t)
+	rc := app.Run([]string{"rules", "show", "no-such-rule", "--json"})
+	if rc != 1 {
+		t.Errorf("rc=%d, want 1", rc)
+	}
+	body := strings.TrimSpace(out.String())
+	if !strings.HasPrefix(body, "{") {
+		t.Errorf("expected JSON object on stdout; got %q", body)
+	}
+	if !strings.Contains(body, `"error"`) {
+		t.Errorf("expected 'error' field in JSON; got %q", body)
+	}
+	if !strings.Contains(body, "no-such-rule") {
+		t.Errorf("expected the missing rule name in error; got %q", body)
+	}
+	// Human stderr should be silent on the JSON path so scripts
+	// aren't fed a duplicate human banner.
+	if errb.String() != "" {
+		t.Errorf("stderr should be empty on --json path; got %q", errb.String())
+	}
+}
+
+// TestRulesShow_HumanOutput preserves the existing key:value
+// block (no --json flag) so the unscripted operator workflow
+// keeps working.
+func TestRulesShow_HumanOutput(t *testing.T) {
+	withTmpRulesFile(t, sampleRulesTOML)
+	app, out, _ := newRulesApp(t)
+	if rc := app.Run([]string{"rules", "show", "gofmt-clean"}); rc != 0 {
+		t.Fatalf("rc=%d", rc)
+	}
+	body := out.String()
+	for _, want := range []string{
+		"name:        gofmt-clean",
+		"when:        pre_commit",
+		"severity:    warn",
+		"hint:        Run gofmt -w .",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q\n--- output ---\n%s", want, body)
+		}
+	}
+}
+
+// TestRulesShow_JSONNoConfig emits an error object (not an
+// empty result) when no rules.toml exists — the script-side
+// failure mode mirrors `not found`, so pipelines can branch on
+// the structured error field.
+func TestRulesShow_JSONNoConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	app, out, _ := newRulesApp(t)
+	rc := app.Run([]string{"rules", "show", "anything", "--json"})
+	if rc != 1 {
+		t.Errorf("rc=%d, want 1", rc)
+	}
+	body := strings.TrimSpace(out.String())
+	if !strings.Contains(body, `"error"`) {
+		t.Errorf("expected 'error' field on stdout; got %q", body)
+	}
+	if !strings.Contains(body, "no rules configured") {
+		t.Errorf("expected 'no rules configured' message in error; got %q", body)
+	}
+}

@@ -175,37 +175,78 @@ func (a *App) runRulesList(argv []string) int {
 }
 
 func (a *App) runRulesShow(argv []string) int {
-	if len(argv) < 1 {
-		fmt.Fprint(a.Stderr, "usage: clawtool rules show <name>\n")
+	fs := flag.NewFlagSet("rules show", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	asJSON := fs.Bool("json", false, "Emit machine-readable JSON instead of the human key:value block.")
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{})); err != nil {
 		return 2
 	}
-	target := argv[0]
+	rest := fs.Args()
+	if len(rest) != 1 {
+		fmt.Fprint(a.Stderr, "usage: clawtool rules show <name> [--json]\n")
+		return 2
+	}
+	target := rest[0]
 	loaded, path, ok, err := rules.LoadDefault()
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool rules show: %v\n", err)
 		return 1
 	}
 	if !ok {
-		fmt.Fprintln(a.Stderr, "no rules configured")
+		// JSON path emits an error object so a script can
+		// distinguish "no rules configured" from "rule not
+		// found" via the structured `error` field; both still
+		// exit 1.
+		if *asJSON {
+			fmt.Fprintln(a.Stdout, `{"error":"no rules configured"}`)
+		} else {
+			fmt.Fprintln(a.Stderr, "no rules configured")
+		}
 		return 1
 	}
 	for _, r := range loaded {
-		if r.Name == target {
-			fmt.Fprintf(a.Stdout, "name:        %s\n", r.Name)
-			fmt.Fprintf(a.Stdout, "source:      %s\n", path)
-			fmt.Fprintf(a.Stdout, "when:        %s\n", string(r.When))
-			fmt.Fprintf(a.Stdout, "severity:    %s\n", string(r.Severity))
-			if r.Description != "" {
-				fmt.Fprintf(a.Stdout, "description: %s\n", r.Description)
+		if r.Name != target {
+			continue
+		}
+		if *asJSON {
+			body, marshalErr := json.MarshalIndent(ruleListEntry{
+				Name:        r.Name,
+				When:        string(r.When),
+				Severity:    string(r.Severity),
+				Description: r.Description,
+				Condition:   r.Condition,
+				Hint:        r.Hint,
+				Source:      path,
+			}, "", "  ")
+			if marshalErr != nil {
+				fmt.Fprintf(a.Stderr, "clawtool rules show: marshal: %v\n", marshalErr)
+				return 1
 			}
-			fmt.Fprintf(a.Stdout, "condition:   %s\n", r.Condition)
-			if r.Hint != "" {
-				fmt.Fprintf(a.Stdout, "hint:        %s\n", r.Hint)
-			}
+			fmt.Fprintln(a.Stdout, string(body))
 			return 0
 		}
+		fmt.Fprintf(a.Stdout, "name:        %s\n", r.Name)
+		fmt.Fprintf(a.Stdout, "source:      %s\n", path)
+		fmt.Fprintf(a.Stdout, "when:        %s\n", string(r.When))
+		fmt.Fprintf(a.Stdout, "severity:    %s\n", string(r.Severity))
+		if r.Description != "" {
+			fmt.Fprintf(a.Stdout, "description: %s\n", r.Description)
+		}
+		fmt.Fprintf(a.Stdout, "condition:   %s\n", r.Condition)
+		if r.Hint != "" {
+			fmt.Fprintf(a.Stdout, "hint:        %s\n", r.Hint)
+		}
+		return 0
 	}
-	fmt.Fprintf(a.Stderr, "rule %q not found in %s\n", target, path)
+	if *asJSON {
+		body, _ := json.Marshal(map[string]string{
+			"error":  fmt.Sprintf("rule %q not found", target),
+			"source": path,
+		})
+		fmt.Fprintln(a.Stdout, string(body))
+	} else {
+		fmt.Fprintf(a.Stderr, "rule %q not found in %s\n", target, path)
+	}
 	return 1
 }
 
