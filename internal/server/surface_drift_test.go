@@ -21,9 +21,12 @@
 package server
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -321,6 +324,87 @@ func TestSurfaceDrift_SkillAllowedToolsCoversManifest(t *testing.T) {
 				"with the `mcp__clawtool__` prefix, OR add an exemption to\n"+
 				"skillAllowlistExempt with a justification.",
 			len(missing), missing)
+	}
+}
+
+// TestSurfaceDrift_SlashCommandBodiesReferenceKnownTools walks
+// every `commands/clawtool-*.md` file and grep-matches every
+// `mcp__clawtool__<Name>` reference (in body + allowed-tools
+// frontmatter). Each matched name must:
+//   - exist in `core.CoreToolDocs()` (a real shipped tool), or
+//   - be a sourced-tool wire form `<instance>__<tool>` — two
+//     underscores between instance and tool — which can't be
+//     verified statically because the catalog is user-extended.
+//
+// Today's surface-drift suite only validates filename → tool;
+// stale verb references in doc bodies (e.g. a doc renamed
+// `Foo` → `Bar` upstream but still saying `mcp__clawtool__Foo`)
+// would slip through. This test closes that gap.
+//
+// When this fails, the fix is mechanical: rename the reference
+// in the slash-command body OR rename the upstream tool to
+// match. Both planes update in the same commit per the
+// shipping contract.
+func TestSurfaceDrift_SlashCommandBodiesReferenceKnownTools(t *testing.T) {
+	root := repoRoot(t)
+	matches, err := filepath.Glob(filepath.Join(root, "commands", "clawtool-*.md"))
+	if err != nil {
+		t.Fatalf("glob commands: %v", err)
+	}
+
+	known := map[string]bool{}
+	for _, doc := range core.CoreToolDocs() {
+		known[doc.Name] = true
+	}
+
+	// Match `mcp__clawtool__<Name>` where <Name> is one or more
+	// word chars. Captures the bare name so we can validate it.
+	re := regexp.MustCompile(`mcp__clawtool__([A-Za-z0-9_]+)`)
+
+	type miss struct {
+		file string
+		name string
+	}
+	var missing []miss
+	for _, p := range matches {
+		body, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		hits := re.FindAllStringSubmatch(string(body), -1)
+		for _, h := range hits {
+			name := h[1]
+			if known[name] {
+				continue
+			}
+			// Sourced-tool wire form: <instance>__<tool>.
+			// Two underscores inside the suffix means it's a
+			// per-source tool the operator added; we can't
+			// validate it statically.
+			if strings.Contains(name, "__") {
+				continue
+			}
+			missing = append(missing, miss{file: filepath.Base(p), name: name})
+		}
+	}
+	if len(missing) > 0 {
+		// Group by name for a readable diagnostic — same name
+		// referenced in multiple docs is one bug, not N.
+		seen := map[string][]string{}
+		for _, m := range missing {
+			seen[m.name] = append(seen[m.name], m.file)
+		}
+		var lines []string
+		for name, files := range seen {
+			lines = append(lines, fmt.Sprintf("  - mcp__clawtool__%s referenced by %v", name, files))
+		}
+		sort.Strings(lines)
+		t.Errorf(
+			"%d slash-command doc body reference(s) name a tool not in CoreToolDocs:\n%s\n"+
+				"Either rename the reference, ship the tool, or — if it's a\n"+
+				"sourced/aliased tool — verify the name uses the `<instance>__<tool>`\n"+
+				"two-underscore wire form (those are skipped here by design).",
+			len(missing), strings.Join(lines, "\n"))
 	}
 }
 
