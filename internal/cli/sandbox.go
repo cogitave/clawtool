@@ -7,6 +7,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -16,6 +17,22 @@ import (
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/sandbox"
 )
+
+// sandboxDoctorJSON is the wire shape produced by `sandbox doctor
+// --json`. Mirrors the rest of the project's snake_case wire
+// convention (matches agentListEntry, agents.Status, BuildInfo).
+// Defined locally instead of tagging sandbox.EngineStatus
+// directly so the MCP tool path's pre-existing PascalCase wire
+// shape isn't perturbed — that's a separate audit/migration.
+type sandboxDoctorJSON struct {
+	Engines  []sandboxEngineEntry `json:"engines"`
+	Selected string               `json:"selected"`
+}
+
+type sandboxEngineEntry struct {
+	Name      string `json:"name"`
+	Available bool   `json:"available"`
+}
 
 const sandboxUsage = `Usage:
   clawtool sandbox list             List configured profiles.
@@ -56,7 +73,13 @@ func (a *App) runSandbox(argv []string) int {
 		}
 		return dispatchPlainErr(a.Stderr, "sandbox show", a.SandboxShow(argv[1]))
 	case "doctor":
-		return dispatchPlainErr(a.Stderr, "sandbox doctor", a.SandboxDoctor())
+		asJSON := false
+		for _, x := range argv[1:] {
+			if x == "--json" || x == "--format=json" {
+				asJSON = true
+			}
+		}
+		return dispatchPlainErr(a.Stderr, "sandbox doctor", a.SandboxDoctor(asJSON))
 	case "run":
 		fmt.Fprintln(a.Stderr, "clawtool sandbox run: surface only — engine enforcement is wired through `clawtool send --sandbox <profile>`.")
 		fmt.Fprintln(a.Stderr, "  This verb validates the profile but doesn't run the command.")
@@ -148,8 +171,32 @@ func (a *App) SandboxShow(name string) error {
 }
 
 // SandboxDoctor reports every registered engine's availability.
-func (a *App) SandboxDoctor() error {
+// JSON path emits a stable {engines, selected} shape — automation
+// pipelines that gate on `selected == "noop"` to flag missing
+// enforcement can branch on it without parsing the human table.
+func (a *App) SandboxDoctor(asJSON bool) error {
 	statuses := sandbox.AvailableEngines()
+	chosen := sandbox.SelectEngine().Name()
+
+	if asJSON {
+		entries := make([]sandboxEngineEntry, 0, len(statuses))
+		for _, st := range statuses {
+			entries = append(entries, sandboxEngineEntry{
+				Name:      st.Name,
+				Available: st.Available,
+			})
+		}
+		body, err := json.MarshalIndent(sandboxDoctorJSON{
+			Engines:  entries,
+			Selected: chosen,
+		}, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(a.Stdout, string(body))
+		return nil
+	}
+
 	fmt.Fprintf(a.Stdout, "%-16s %s\n", "ENGINE", "AVAILABLE")
 	for _, st := range statuses {
 		marker := "no"
@@ -158,7 +205,6 @@ func (a *App) SandboxDoctor() error {
 		}
 		fmt.Fprintf(a.Stdout, "%-16s %s\n", st.Name, marker)
 	}
-	chosen := sandbox.SelectEngine().Name()
 	fmt.Fprintf(a.Stdout, "\nselected: %s\n", chosen)
 	if chosen == "noop" {
 		fmt.Fprintln(a.Stdout, "  install bubblewrap (Linux) / sandbox-exec (macOS, built-in) / Docker for real enforcement")
