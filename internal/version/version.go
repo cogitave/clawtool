@@ -1,5 +1,11 @@
 // Package version exposes the clawtool build version.
 //
+// `Info()` and `InfoJSON()` extend the surface for shell-pipeline
+// consumers that want a structured snapshot (`clawtool version
+// --json`) instead of the human banner. Single source of truth so
+// telemetry / health-probe / version-gate scripts all read the
+// same shape.
+//
 // Three layers, picked in order:
 //
 //  1. ldflags override — `go build -ldflags='-X
@@ -23,6 +29,8 @@
 package version
 
 import (
+	"encoding/json"
+	"runtime"
 	"runtime/debug"
 	"sync"
 )
@@ -98,4 +106,61 @@ func strip(v string) string {
 // String is the formatted "clawtool X.Y.Z" banner the CLI prints.
 func String() string {
 	return Name + " " + Resolved()
+}
+
+// BuildInfo is the structured snapshot emitted by `clawtool version
+// --json`. Single source of truth for any external probe (telemetry,
+// /v1/health, monitoring scripts) that wants to reason about the
+// running binary's identity. snake_case JSON tags follow the
+// project's convention (mirrors the agents.Status / agentListEntry
+// shape from earlier ticks).
+type BuildInfo struct {
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+	GoVersion string `json:"go_version"`
+	Platform  string `json:"platform"` // GOOS/GOARCH
+	// Commit is the git revision baked in by `go build` via
+	// debug.ReadBuildInfo. Empty when the binary was built without
+	// VCS info (e.g. via the goreleaser pipeline that strips it).
+	Commit string `json:"commit,omitempty"`
+	// Modified reports whether the working tree was dirty when the
+	// binary was built. Best-effort — only populated when the build
+	// captured VCS info.
+	Modified bool `json:"modified,omitempty"`
+}
+
+// Info returns a structured snapshot of the running binary.
+// Wraps Resolved() so the version string respects the same
+// ldflags / debug.BuildInfo / fallback hierarchy.
+func Info() BuildInfo {
+	bi := BuildInfo{
+		Name:      Name,
+		Version:   Resolved(),
+		GoVersion: runtime.Version(),
+		Platform:  runtime.GOOS + "/" + runtime.GOARCH,
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				bi.Commit = s.Value
+			case "vcs.modified":
+				bi.Modified = s.Value == "true"
+			}
+		}
+	}
+	return bi
+}
+
+// InfoJSON renders Info() as indented JSON, ready to print. The
+// indented form is the same shape Marshal would emit; we use
+// MarshalIndent because operators inspecting the output by eye
+// expect a pretty document, and shell pipelines (`jq`) handle
+// either form transparently.
+func InfoJSON() (string, error) {
+	body, err := json.MarshalIndent(Info(), "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
 }

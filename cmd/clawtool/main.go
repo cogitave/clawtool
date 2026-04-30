@@ -48,6 +48,21 @@ func run(argv []string) int {
 	case "serve":
 		return runServe(argv[1:])
 	case "version", "--version", "-v":
+		// `--json` (or `--format=json`) emits the structured
+		// BuildInfo snapshot for shell pipelines. Default stays
+		// the human banner so existing scripts that pattern-match
+		// on "clawtool 0.x.y" don't break.
+		for _, a := range argv[1:] {
+			if a == "--json" || a == "--format=json" {
+				body, err := version.InfoJSON()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "clawtool version: %v\n", err)
+					return 1
+				}
+				fmt.Println(body)
+				return 0
+			}
+		}
 		fmt.Println(version.String())
 		return 0
 	default:
