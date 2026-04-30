@@ -252,7 +252,7 @@ func (a *App) runRulesShow(argv []string) int {
 
 func (a *App) runRulesNew(argv []string) int {
 	if len(argv) < 1 {
-		fmt.Fprint(a.Stderr, "usage: clawtool rules new <name> --when <event> --condition '<expr>' [options]\n")
+		fmt.Fprint(a.Stderr, "usage: clawtool rules new <name> --when <event> --condition '<expr>' [options] [--dry-run]\n")
 		return 2
 	}
 	name := argv[0]
@@ -263,6 +263,7 @@ func (a *App) runRulesNew(argv []string) int {
 		severity    = "warn"
 		description string
 		hint        string
+		dryRun      bool
 	)
 	for i := 0; i < len(rest); i++ {
 		switch rest[i] {
@@ -291,6 +292,8 @@ func (a *App) runRulesNew(argv []string) int {
 				hint = rest[i+1]
 				i++
 			}
+		case "--dry-run":
+			dryRun = true
 		case "--user", "--local":
 			// handled by resolveScope
 		default:
@@ -316,6 +319,28 @@ func (a *App) runRulesNew(argv []string) int {
 		Condition:   cond,
 		Severity:    rules.Severity(severity),
 		Hint:        hint,
+	}
+	if dryRun {
+		// Run every check AppendRule would run (shape, condition
+		// syntax, duplicate-name) without writing rules.toml.
+		// Operators preview a complex condition before
+		// committing; CI can validate-only without mutating
+		// the project's rules file.
+		if err := rules.CheckRuleAdd(path, rule); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool rules new: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(a.Stdout, "(dry-run) would add rule %q (scope=%s, path=%s)\n", name, scope, path)
+		fmt.Fprintf(a.Stdout, "  when:      %s\n", when)
+		fmt.Fprintf(a.Stdout, "  severity:  %s\n", severity)
+		fmt.Fprintf(a.Stdout, "  condition: %s\n", cond)
+		if description != "" {
+			fmt.Fprintf(a.Stdout, "  description: %s\n", description)
+		}
+		if hint != "" {
+			fmt.Fprintf(a.Stdout, "  hint:      %s\n", hint)
+		}
+		return 0
 	}
 	if err := rules.AppendRule(path, rule); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool rules new: %v\n", err)

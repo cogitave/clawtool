@@ -286,6 +286,91 @@ func TestRulesShow_HumanOutput(t *testing.T) {
 	}
 }
 
+// TestRulesNew_DryRunDoesNotWrite confirms `--dry-run` prints
+// the would-be-added rule without persisting to rules.toml.
+// Operators preview a complex condition; CI gates can validate
+// without mutating the project's rules file.
+func TestRulesNew_DryRunDoesNotWrite(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	app, out, _ := newRulesApp(t)
+	rc := app.Run([]string{
+		"rules", "new", "preview-rule",
+		"--when", "pre_commit",
+		"--condition", `changed("**/*.go")`,
+		"--severity", "warn",
+		"--description", "preview only",
+		"--hint", "won't be written",
+		"--dry-run",
+	})
+	if rc != 0 {
+		t.Fatalf("dry-run rc=%d, stdout=%s", rc, out.String())
+	}
+	body := out.String()
+	for _, want := range []string{
+		"(dry-run)",
+		"preview-rule",
+		"pre_commit",
+		"warn",
+		`changed("**/*.go")`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("output missing %q\n--- output ---\n%s", want, body)
+		}
+	}
+	// rules.toml must NOT have been created.
+	rulesFile := filepath.Join(dir, ".clawtool", "rules.toml")
+	if _, err := os.Stat(rulesFile); err == nil {
+		t.Errorf("rules.toml should not exist after dry-run; got file at %s", rulesFile)
+	}
+}
+
+// TestRulesNew_DryRunValidatesCondition rejects a malformed
+// condition before claiming success — the whole point of
+// dry-run is catching syntax errors without committing them.
+func TestRulesNew_DryRunValidatesCondition(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	app, _, errb := newRulesApp(t)
+	rc := app.Run([]string{
+		"rules", "new", "bad-rule",
+		"--when", "pre_commit",
+		"--condition", "this is not a valid expression",
+		"--dry-run",
+	})
+	if rc != 1 {
+		t.Errorf("rc=%d, want 1 (validation should fail)", rc)
+	}
+	if !strings.Contains(errb.String(), "condition") {
+		t.Errorf("expected condition-error mention in stderr; got %q", errb.String())
+	}
+}
+
+// TestRulesNew_DryRunDetectsDuplicate flags an attempt to add a
+// rule with the same Name as an existing one — same check
+// AppendRule runs, surfaced before any write so CI can fail
+// loud.
+func TestRulesNew_DryRunDetectsDuplicate(t *testing.T) {
+	withTmpRulesFile(t, sampleRulesTOML)
+
+	app, _, errb := newRulesApp(t)
+	rc := app.Run([]string{
+		"rules", "new", "gofmt-clean", // exists in sampleRulesTOML
+		"--when", "pre_commit",
+		"--condition", `changed("**/*.go")`,
+		"--dry-run",
+	})
+	if rc != 1 {
+		t.Errorf("rc=%d, want 1 on duplicate", rc)
+	}
+	if !strings.Contains(errb.String(), "already exists") {
+		t.Errorf("expected duplicate error in stderr; got %q", errb.String())
+	}
+}
+
 // TestRulesShow_JSONNoConfig emits an error object (not an
 // empty result) when no rules.toml exists — the script-side
 // failure mode mirrors `not found`, so pipelines can branch on

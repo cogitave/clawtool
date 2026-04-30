@@ -162,31 +162,61 @@ func UserRulesPath() string {
 	return filepath.Join(xdg.ConfigDir(), "rules.toml")
 }
 
-// AppendRule writes one new rule to the file at path, creating
-// the file (and parent dirs) when missing. Validates the rule's
-// shape and condition syntax BEFORE persisting so a malformed
-// add never corrupts the existing rules. Returns ErrDuplicate
-// when a rule with the same Name already exists in the file.
-func AppendRule(path string, r Rule) error {
+// CheckRuleAdd runs every check `AppendRule` would run BEFORE
+// persisting — shape validation, condition-syntax parse, and
+// duplicate-name detection against the existing rules file at
+// path. Returns nil when `AppendRule(path, r)` would succeed.
+//
+// Used by `clawtool rules new --dry-run` to preview an add
+// without writing the file. AppendRule itself calls this first
+// so the validation logic stays single-source.
+func CheckRuleAdd(path string, r Rule) error {
 	if err := validateRule(r); err != nil {
 		return fmt.Errorf("rules: append %q: %w", r.Name, err)
 	}
 	if _, err := parseExpr(r.Condition); err != nil {
 		return fmt.Errorf("rules: append %q condition: %w", r.Name, err)
 	}
-	// Read existing rules (if any) — we'll re-emit them all so
-	// the file stays in canonical TOML shape (no dangling
-	// fragments from hand-edits, ordering preserved).
+	body, err := os.ReadFile(path)
+	if err != nil {
+		// Missing file is fine — first rule in a fresh project.
+		// Other read errors (permission denied, EISDIR) bubble.
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("rules: read existing %s: %w", path, err)
+	}
+	existing, err := ParseBytes(body)
+	if err != nil {
+		return fmt.Errorf("rules: parse existing %s: %w", path, err)
+	}
+	for _, e := range existing {
+		if e.Name == r.Name {
+			return fmt.Errorf("rules: append: rule %q already exists in %s", r.Name, path)
+		}
+	}
+	return nil
+}
+
+// AppendRule writes one new rule to the file at path, creating
+// the file (and parent dirs) when missing. Pre-flight checks
+// (shape, condition syntax, duplicate name) run via
+// CheckRuleAdd so a malformed add never corrupts the existing
+// rules file. Returns the same error CheckRuleAdd would when
+// the rule wouldn't be appendable.
+func AppendRule(path string, r Rule) error {
+	if err := CheckRuleAdd(path, r); err != nil {
+		return err
+	}
+	// Re-read the existing file so we can re-emit canonical
+	// TOML (no dangling fragments from hand-edits, ordering
+	// preserved). CheckRuleAdd already verified the parse
+	// succeeds, so any error here is genuinely new.
 	var existing []Rule
 	if body, err := os.ReadFile(path); err == nil {
 		existing, err = ParseBytes(body)
 		if err != nil {
 			return fmt.Errorf("rules: parse existing %s: %w", path, err)
-		}
-	}
-	for _, e := range existing {
-		if e.Name == r.Name {
-			return fmt.Errorf("rules: append: rule %q already exists in %s", r.Name, path)
 		}
 	}
 	all := append(existing, r)
