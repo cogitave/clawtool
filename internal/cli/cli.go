@@ -324,6 +324,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runClaudeBootstrap(argv[1:])
 	case "apm":
 		return a.runApm(argv[1:])
+	case "playbook":
+		return a.runPlaybook(argv[1:])
 	case "version", "--version", "-v":
 		// Version printed by caller (it owns the version package import to
 		// avoid an import cycle with cli — keeps cli a leaf package).
@@ -581,6 +583,11 @@ Usage:
                             skills + playbooks are recorded in
                             <repo>/.clawtool/apm-imported-manifest.toml for
                             phase-2 recipe wiring.
+  clawtool playbook list-archon [--dir <p>] [--format <text|json>]
+                            List Archon (coleam00/Archon) DAG workflows
+                            under <p>/.archon/workflows/. Read-only:
+                            phase 1 parses and surfaces, phase 2 will
+                            wire execution.
   clawtool recipe apply <name> [key=value ...]
                             Inject the recipe into the current working
                             directory. Examples:
