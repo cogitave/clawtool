@@ -197,6 +197,68 @@ func TestSourceRemove(t *testing.T) {
 	}
 }
 
+// TestSourceRemove_DryRunPreservesConfig confirms `--dry-run`
+// previews the removal without writing — symmetric with `rules
+// remove --dry-run` and `agents claim/release --dry-run`. After
+// the dry-run, a subsequent `source list` must still see the
+// instance: the operator gets the preview banner before
+// committing the real removal.
+func TestSourceRemove_DryRunPreservesConfig(t *testing.T) {
+	app, out, errb, _, _ := newSrcApp(t)
+	if rc := app.Run([]string{"source", "add", "github"}); rc != 0 {
+		t.Fatalf("add failed: %s", errb.String())
+	}
+
+	out.Reset()
+	if rc := app.Run([]string{"source", "remove", "github", "--dry-run"}); rc != 0 {
+		t.Fatalf("dry-run rc = %d, stderr=%q", rc, errb.String())
+	}
+	body := out.String()
+	for _, want := range []string{"(dry-run)", "would remove source", "github"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dry-run output missing %q\n--- output ---\n%s", want, body)
+		}
+	}
+	// The success banner from the real-write path must NOT
+	// appear — would imply the disk got touched.
+	if strings.Contains(body, "✓ removed") {
+		t.Errorf("dry-run leaked success verb: %q", body)
+	}
+
+	// Critical: instance must still be there after the dry-run.
+	out.Reset()
+	if rc := app.Run([]string{"source", "list"}); rc != 0 {
+		t.Fatalf("list after dry-run rc = %d", rc)
+	}
+	if !strings.Contains(out.String(), "github") {
+		t.Errorf("dry-run should have left github in config; list output: %q", out.String())
+	}
+
+	// Sanity check: the real removal still works after a dry-run.
+	out.Reset()
+	if rc := app.Run([]string{"source", "remove", "github"}); rc != 0 {
+		t.Fatalf("real remove after dry-run rc = %d", rc)
+	}
+	if !strings.Contains(out.String(), "✓ removed") {
+		t.Errorf("real remove after dry-run should succeed: %q", out.String())
+	}
+}
+
+// TestSourceRemove_DryRunUnknownInstance keeps the not-found
+// error path intact when --dry-run is in play. The validate-only
+// behaviour should still surface "no instance <name>" so the
+// operator catches typos at preview time.
+func TestSourceRemove_DryRunUnknownInstance(t *testing.T) {
+	app, _, errb, _, _ := newSrcApp(t)
+	rc := app.Run([]string{"source", "remove", "ghost", "--dry-run"})
+	if rc != 1 {
+		t.Errorf("dry-run on absent instance rc = %d, want 1", rc)
+	}
+	if !strings.Contains(errb.String(), "no instance \"ghost\"") {
+		t.Errorf("expected not-found error, got: %q", errb.String())
+	}
+}
+
 func TestSourceSetSecret_PersistsAcrossLoad(t *testing.T) {
 	app, out, _, _, secPath := newSrcApp(t)
 	if rc := app.Run([]string{"source", "set-secret", "github", "GITHUB_TOKEN", "--value", "ghp_round_trip"}); rc != 0 {

@@ -228,11 +228,18 @@ func (a *App) runSourceList(argv []string) int {
 }
 
 func (a *App) runSourceRemove(argv []string) int {
-	if len(argv) != 1 {
-		fmt.Fprint(a.Stderr, "usage: clawtool source remove <instance>\n")
+	fs := flag.NewFlagSet("source remove", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	dryRun := fs.Bool("dry-run", false, "Print what would be removed without writing.")
+	if err := fs.Parse(reorderFlagsFirst(argv, map[string]bool{})); err != nil {
 		return 2
 	}
-	instance := argv[0]
+	rest := fs.Args()
+	if len(rest) != 1 {
+		fmt.Fprint(a.Stderr, "usage: clawtool source remove <instance> [--dry-run]\n")
+		return 2
+	}
+	instance := rest[0]
 	cfgPath := a.Path()
 	cfg, err := config.LoadOrDefault(cfgPath)
 	if err != nil {
@@ -242,6 +249,16 @@ func (a *App) runSourceRemove(argv []string) int {
 	if _, ok := cfg.Sources[instance]; !ok {
 		fmt.Fprintf(a.Stderr, "clawtool source remove: no instance %q\n", instance)
 		return 1
+	}
+	if *dryRun {
+		// Symmetric with `rules remove --dry-run` (5824012)
+		// and `agents claim/release --dry-run`: validate the
+		// instance exists, then print the preview banner
+		// without touching disk. Operators can sanity-check the
+		// target before committing.
+		fmt.Fprintf(a.Stdout, "(dry-run) would remove source %q from %s\n", instance, cfgPath)
+		fmt.Fprintf(a.Stdout, "  secrets at %s would be left in place (config-only removal)\n", a.SecretsPath())
+		return 0
 	}
 	delete(cfg.Sources, instance)
 	if err := cfg.Save(cfgPath); err != nil {
@@ -484,8 +501,9 @@ const sourceUsage = `Usage:
   clawtool source catalog     Browse the built-in catalog of MCP servers
                               (alias: 'available'). Pick a name from the
                               output and run 'clawtool source add <name>'.
-  clawtool source remove <instance>
+  clawtool source remove <instance> [--dry-run]
                               Delete an instance from config (secrets retained).
+                              --dry-run previews the change without writing.
   clawtool source rename <old-instance> <new-instance>
                               Rename an instance — moves the [sources.<old>]
                               block in config.toml AND the matching
