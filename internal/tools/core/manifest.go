@@ -51,6 +51,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"commit", "git", "save", "conventional", "conventional-commits", "checkpoint", "no-coauthor", "stage", "push"},
 		Category:    registry.CategoryCheckpoint,
 		Gate:        "", // always-on; the value of the tool IS the policy enforcement, not a feature toggle
+		UsageHint:   "Always use Commit, never `Bash git commit -m ...` — only Commit enforces the operator's pre_commit rules.toml gate, Conventional Commits shape, and Co-Authored-By block. The subject MUST start with a Conventional Commits type (`feat:`, `fix:`, `docs:`, `chore:`, …) or the call refuses. If the rules gate blocks the commit, read the violation list and fix the underlying problem rather than retrying.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterCommit(s)
 		},
@@ -61,6 +62,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"rules", "policy", "guard", "invariant", "lint", "gate", "check", "validate", "pre-commit", "session-end", "doc-sync"},
 		Category:    registry.CategoryCheckpoint,
 		Gate:        "",
+		UsageHint:   "Run RulesCheck before Commit (or before a dispatch / session-end) to surface invariant violations without actually committing — Commit calls the same gate internally, but a dry-run via RulesCheck lets you fix the file shape first. Pass the event matching the imminent action (`pre_commit`, `pre_send`, `session_end`); a wrong event silently produces zero verdicts.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterRulesCheck(s)
 		},
@@ -71,6 +73,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"rules", "add", "new", "create", "policy", "invariant", "lint", "gate", "doc-sync", "pre-commit", "scope", "user", "local"},
 		Category:    registry.CategoryCheckpoint,
 		Gate:        "",
+		UsageHint:   "Pick RulesAdd when the operator describes a repeating bug or policy as 'don't ship this again' — encode it as a rule rather than relying on Claude-side memory. Choose `local` scope for repo-specific invariants, `user` scope only when the operator explicitly wants the rule to follow them across every project on the host.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterRulesAdd(s)
 		},
@@ -83,6 +86,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"agent", "subagent", "persona", "scaffold", "new", "create", "dispatcher", "claude-agent"},
 		Category:    registry.CategoryAuthoring,
 		Gate:        "",
+		UsageHint:   "Use AgentNew to author a NEW Claude Code subagent persona file; do not confuse with AgentList (snapshot of running peer agents) or SendMessage (dispatching a prompt). Default to project scope (`./.claude/agents/`) so the persona ships with the repo; only choose user scope when the operator explicitly asks for cross-project availability.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterAgentNew(s)
 		},
@@ -97,6 +101,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"bash", "background", "poll", "tail", "output", "task", "async", "long-running"},
 		Category:    registry.CategoryShell,
 		Gate:        "Bash",
+		UsageHint:   "Only useful when paired with a `Bash background=true` call — call BashOutput with that returned task_id to read the latest stdout/stderr without blocking. Common mistake: polling in a tight loop; space calls a few seconds apart, or use TaskWait if blocking is fine.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterBashOutput(s)
 		},
@@ -107,6 +112,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"bash", "background", "kill", "cancel", "stop", "abort", "task", "async"},
 		Category:    registry.CategoryShell,
 		Gate:        "Bash",
+		UsageHint:   "Use BashKill when a backgrounded `Bash` task is hung or no longer needed — it sends SIGKILL to the whole process group, so child processes die too. Calling it on an already-terminal task is a safe no-op; do NOT use it to clean up a foreground (non-background) Bash call, which has already returned.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterBashKill(s)
 		},
@@ -119,6 +125,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"task", "biam", "notify", "wait", "any", "fan-in", "fan-out", "race", "first", "completion", "push", "subscribe"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Reach for TaskNotify when you have several BIAM tasks in flight and want to act on the FIRST finisher — it's edge-triggered, so there's no polling overhead. Use TaskWait instead when you only care about one specific task. Pass every relevant task_id; an empty list returns immediately with no event.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterTaskNotify(s)
 		},
@@ -135,6 +142,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"context", "editor", "ambient", "session", "scratchpad", "intent", "file", "selection", "cursor", "set", "store"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Use SetContext when an IDE / wrapper integration wants to deposit 'operator is on file X line Y with intent Z' so dispatched peer agents (codex / gemini / opencode) can read it via GetContext without re-asking. Storage is process-local; a daemon restart wipes it, so don't treat it as durable. Updates merge — passing one field doesn't clobber the others.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterSetContext(s)
 		},
@@ -145,6 +153,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"context", "editor", "ambient", "session", "scratchpad", "intent", "file", "selection", "cursor", "get", "read"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Use GetContext to read whatever an editor / wrapper integration deposited via SetContext for the current session. Returns an empty struct when nothing has been stored — that's expected for fresh sessions, not an error. Pair every read with the same `session` value the writer used.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			// RegisterSetContext registers BOTH SetContext and
 			// GetContext on the same MCP server. The second
@@ -167,6 +176,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"shell", "execute", "run", "command", "terminal", "background", "async", "long-running"},
 		Category:    registry.CategoryShell,
 		Gate:        "Bash",
+		UsageHint:   "Bash runs commands via `/bin/bash -c`, so shell builtins and pipes work out of the box; structured JSON is returned for stdout/stderr/exit_code/duration_ms. For long-running work (build, test, server), pass `background=true` and poll with BashOutput / cancel with BashKill instead of letting the 2-minute default timeout kill it. To target a Linux mount path on WSL, set `cwd` explicitly — relative paths default to $HOME.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterBash(s)
 		},
@@ -177,6 +187,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"search", "find", "regex", "ripgrep", "rg", "match", "pattern"},
 		Category:    registry.CategoryFile,
 		Gate:        "Grep",
+		UsageHint:   "Pick Grep when you need to search file CONTENTS by regex; pick Glob when you only need filenames. By default it honors .gitignore via ripgrep — pass `path` to a directory outside the repo or set `glob` to broaden the search. Mistake to avoid: searching a literal `.` or `(` without escaping; the pattern is a regex.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterGrep(s)
 		},
@@ -187,6 +198,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"file", "open", "cat", "view", "pdf", "docx", "word", "xlsx", "excel", "spreadsheet", "csv", "tsv", "html", "json", "yaml", "toml", "xml", "ipynb", "notebook", "office"},
 		Category:    registry.CategoryFile,
 		Gate:        "Read",
+		UsageHint:   "Read returns clean text WITHOUT line numbers by default — pass `with_line_numbers=true` only when the agent's next step is an Edit and it needs to count lines. The Read-before-Write guardrail tracks whether this tool was called against a path before allowing Write to overwrite it. For binaries Read refuses with a typed error; use Glob to discover, then a format-aware engine inside Read for PDFs / .docx / .xlsx / .ipynb.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterRead(s)
 		},
@@ -208,6 +220,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"http", "https", "url", "fetch", "download", "web", "page", "article", "scrape", "readability"},
 		Category:    registry.CategoryWeb,
 		Gate:        "WebFetch",
+		UsageHint:   "Pick WebFetch for static HTML / text endpoints; if the page is React / Next / hydrated SPA shell and comes back nearly empty, switch to BrowserFetch which renders via a real headless browser. WebFetch refuses binary MIME types and caps the body at 10 MB — that's intentional, not a bug. Returns Mozilla-Readability-extracted prose, not raw HTML.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterWebFetch(s)
 		},
@@ -218,6 +231,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"replace", "modify", "change", "patch", "substitute", "search-and-replace", "sed", "fix"},
 		Category:    registry.CategoryFile,
 		Gate:        "Edit",
+		UsageHint:   "Use Edit for surgical line-level changes to an existing file; use Write only when replacing the whole file. Edit refuses ambiguous matches (old_string appearing more than once) by default — fix that by adding more surrounding context to the match string, NOT by setting `replace_all=true` unless you genuinely want every occurrence replaced. Whitespace counts: copy the indentation byte-for-byte.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterEdit(s)
 		},
@@ -241,6 +255,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"verify", "test", "tests", "check", "ci", "make", "pnpm", "npm", "go-test", "pytest", "cargo", "just", "validate"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Use Verify when the operator wants 'just run the tests' across whichever runner the repo declares (Make, pnpm, go, pytest, cargo, just) — it auto-detects and returns one structured pass/fail per check. Output is buffered into a single payload, so for streaming logs of one specific suite use Bash directly. A fast smoke pass typically takes seconds; full e2e gates can run minutes.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterVerify(s)
 		},
@@ -251,6 +266,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"semantic", "embeddings", "vector", "concept", "intent", "find-code", "rag", "search-code", "discover", "where"},
 		Category:    registry.CategoryDiscovery,
 		Gate:        "",
+		UsageHint:   "Use SemanticSearch when the question is conceptual ('where do we rotate auth tokens?', 'how is caching wired?') — Grep stays the literal-regex tool. The first call builds the index lazily; expect a slow first response, then fast follow-ups. Don't waste it on identifiers that grep would find immediately.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterSemanticSearch(s)
 		},
@@ -261,6 +277,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"browser", "headless", "spa", "javascript", "render", "obscura", "puppeteer", "playwright", "fetch", "scrape", "react", "next", "hydrated", "cdp"},
 		Category:    registry.CategoryWeb,
 		Gate:        "",
+		UsageHint:   "Reach for BrowserFetch when WebFetch returns a near-empty SPA shell — it renders the page through a real headless browser (Obscura) and waits for hydration. More expensive than WebFetch (CDP boot + a render budget) so use WebFetch first. Pass a `js` expression to extract a specific value; otherwise it returns the cleaned innerText.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterBrowserFetch(s)
 		},
@@ -271,6 +288,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"browser", "headless", "scrape", "bulk", "parallel", "spa", "obscura", "crawler", "harvest"},
 		Category:    registry.CategoryWeb,
 		Gate:        "",
+		UsageHint:   "Use BrowserScrape when you need to extract one JS-evaluated value from many SPA URLs in parallel; for a single page use BrowserFetch, for static pages WebFetch is cheaper. Configurable concurrency means 10+ URLs per call is reasonable; running it sequentially over a Bash loop defeats the purpose.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterBrowserScrape(s)
 		},
@@ -281,6 +299,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"skill", "scaffold", "new", "create", "agentskills", "skill-md", "claude-skill"},
 		Category:    registry.CategoryAuthoring,
 		Gate:        "",
+		UsageHint:   "Use SkillNew to scaffold a fresh agentskills.io-format skill (SKILL.md + scripts/ + references/ + assets/); use SkillList to discover what's already installed, SkillLoad to read one. Default frontmatter `description` is the trigger phrase the model sees — write it as 'use when X', not as a marketing tagline.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterSkillNew(s)
 		},
@@ -296,6 +315,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"skill", "list", "enumerate", "discover", "agentskills", "claude-skill", "available", "installed"},
 		Category:    registry.CategoryDiscovery,
 		Gate:        "",
+		UsageHint:   "Call SkillList first when the operator references a skill by approximate name or asks 'what skills are available' — it returns name + scope + description + path so you can pick the right one before SkillLoad pulls its body. Lookup precedence is project > user > catalog; a skill in `./.claude/skills` shadows a same-named user-level entry.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterSkillList(s)
 		},
@@ -306,6 +326,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"skill", "load", "read", "fetch", "view", "agentskills", "claude-skill", "on-demand", "mount"},
 		Category:    registry.CategoryDiscovery,
 		Gate:        "",
+		UsageHint:   "Use SkillLoad after SkillList narrows the candidate — it returns the full SKILL.md body plus frontmatter ready to mount into the current turn. Common mistake: SkillLoad-ing a skill the operator never installed; if the name isn't in SkillList output, suggest installing it via the relevant authoring path rather than guessing.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterSkillLoad(s)
 		},
@@ -336,6 +357,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"discover", "find", "search", "query", "tools"},
 		Category:    registry.CategoryDiscovery,
 		Gate:        "ToolSearch",
+		UsageHint:   "Reach for ToolSearch FIRST when the catalog is large or you only know roughly what you want — BM25 ranking surfaces the right tool from a fuzzy query like 'commit changes' or 'long-running shell'. If you already know the exact tool name, call it directly; ToolSearch is for discovery, not as a wrapper for every call.",
 		Register: func(s *server.MCPServer, rt registry.Runtime) {
 			RegisterToolSearch(s, rt.Index)
 		},
@@ -351,6 +373,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"search", "web", "google", "brave", "tavily", "duckduckgo", "results", "query", "engine"},
 		Category:    registry.CategoryWeb,
 		Gate:        "WebSearch",
+		UsageHint:   "Use WebSearch for general 'what's the current state of X' lookups; the result is ranked {title, url, snippet} from the configured backend (default Brave). It needs an API key configured under secrets[scope=websearch] — if calls fail with auth errors, the fix is configuration, not retry. For follow-up content extraction, hand the chosen URL to WebFetch or BrowserFetch.",
 		Register: func(s *server.MCPServer, rt registry.Runtime) {
 			// rt.Secrets is `any`; the caller (server.go) always
 			// passes *secrets.Store, so a nil assertion here would
@@ -368,6 +391,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"recipe", "recipes", "list", "init", "setup", "scaffold", "release-please", "dependabot", "codeowners", "license"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Call RecipeList when the operator wants to know what project-setup bundles are available (governance, commits, release, CI, supply-chain, …) before applying any. Pair with RecipeStatus to see which are already in place; RecipeApply does the actual install. Each recipe is a curated config slice, not a free-form generator.",
 		// First spec in bundle invokes the wrapper.
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterRecipeTools(s)
@@ -379,6 +403,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"recipe", "status", "detect", "absent", "applied", "drift"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Run RecipeStatus before RecipeApply to avoid re-installing a recipe that's already applied or to surface drift (the recipe was applied once, but a file has since been hand-edited away). For a single repo it's a quick read-only probe; safe to call freely.",
 		// Register=nil — companion to RecipeList; the bundle
 		// is registered exactly once by RecipeList's spec.
 	})
@@ -388,6 +413,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"recipe", "apply", "install", "init", "setup", "scaffold"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Use RecipeApply to install one named recipe (license, codeowners, conventional-commits, release-please, dependabot, brain, …). Idempotent — re-applying is safe and surfaces no diff when nothing changed. Common mistake: applying recipes ad-hoc when the operator wanted a bundle; check the recipe catalog with RecipeList first.",
 	})
 
 	// ─── Bridge* bundle ────────────────────────────────────────
@@ -397,6 +423,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"bridges", "plugins", "install", "available", "codex", "opencode", "gemini", "hermes", "list"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Run BridgeList first to see which AI-coding-agent bridges (codex / opencode / gemini / hermes) are installed and which are available. Pair with BridgeAdd to install a missing one; SendMessage will refuse to dispatch to a family without an installed bridge.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterBridgeTools(s)
 		},
@@ -407,6 +434,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"install", "bridge", "plugin", "add", "codex", "opencode", "gemini", "hermes", "setup"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Use BridgeAdd to install a bridge for the FIRST time; use BridgeUpgrade to refresh an existing install. Idempotent — re-running on an already-installed family produces no diff. Common mistake: BridgeAdd does NOT configure the upstream's auth (codex CLI login, gemini API key); that's a separate operator step the bridge documentation describes.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "BridgeRemove",
@@ -414,6 +442,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"uninstall", "remove", "bridge", "plugin"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Use BridgeRemove to uninstall a previously-added bridge family. v0.10 ships as a manual hint (it tells you which files to delete) rather than running the uninstall itself — so plan to do the removal yourself for now.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "BridgeUpgrade",
@@ -431,6 +460,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"dispatch", "delegate", "forward", "prompt", "agent", "claude", "codex", "opencode", "gemini", "hermes", "relay", "ask", "ai"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Use SendMessage to dispatch a prompt to a peer AI coding agent (claude / codex / opencode / gemini / hermes); the bridge plugin must be installed first via BridgeAdd. Routing rule: code-writing or structured spec → codex or gemini; opencode is research-only (read-only investigation), so re-dispatch tiny opencode replies to gemini if you need code. Pass `bidi=true` when you want a task_id back so you can pair with TaskWait or TaskNotify.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterAgentTools(s)
 		},
@@ -441,6 +471,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"list", "agents", "instances", "registry", "available", "callable"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Use AgentList to see every configured peer agent and whether each is currently callable (bridge installed, auth ready). Run it before SendMessage when the operator says 'ask the codex / gemini one' — it confirms the instance exists and is healthy rather than dispatching blind.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "AgentDetect",
@@ -448,6 +479,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"detect", "probe", "agent", "claimed", "claim", "host", "adapter", "installer", "bootstrap", "introspect"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Run AgentDetect to learn whether a specific host AI agent (claude-code, codex, …) is installed AND whether clawtool has claimed its native tools; the exit codes mirror the CLI (0=detected+claimed, 1=detected-not-claimed, 2=not-detected). Use this when an installer or onboarding flow needs to branch on host state; AgentList is for the registry of CONFIGURED peer instances, not host-installed agents.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterAgentDetectTool(s)
 		},
@@ -458,6 +490,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"source", "check", "probe", "ready", "secrets", "env", "credentials", "missing", "installer", "bootstrap", "introspect"},
 		Category:    registry.CategoryDiscovery,
 		Gate:        "",
+		UsageHint:   "Use SourceCheck to verify configured MCP source instances have all their required env vars resolvable — returns env-var NAMES only (never values), so it's safe to surface in logs. Pass `instance` to scope to one source; omit to probe all. Run it before debugging a 'why isn't this source working' moment.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterSourceCheckTool(s)
 		},
@@ -468,6 +501,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"source", "registry", "mcp", "discover", "catalog", "ecosystem", "servers", "available", "browse", "remote", "introspect"},
 		Category:    registry.CategoryDiscovery,
 		Gate:        "",
+		UsageHint:   "Use SourceRegistry to browse the official MCP Registry (registry.modelcontextprotocol.io) for ecosystem-published servers BEFORE falling back to clawtool's embedded catalog. Tunable `limit` (1..50, default 10) controls page size; the call is anonymous, so no auth setup is needed. Pair with `clawtool source add` once you find the right server.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterSourceRegistryTool(s)
 		},
@@ -480,6 +514,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"version", "build", "info", "go", "platform", "commit", "identity", "introspect"},
 		Category:    registry.CategoryDiscovery,
 		Gate:        "",
+		UsageHint:   "Use Version to confirm exactly which clawtool binary the daemon is running — semver, Go runtime, GOOS/GOARCH, VCS commit + modified flag. The same data lives in `clawtool version --json` and the GET /v1/health `build` field; choose Version inside MCP flows and the CLI form when answering an operator at the shell.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterVersionTool(s)
 		},
@@ -493,6 +528,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"task", "biam", "async", "poll", "result", "snapshot"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Use TaskGet for a non-blocking SNAPSHOT of a BIAM task's status + persisted messages; use TaskWait when you can't proceed without the result; use TaskNotify when racing several tasks. Output includes everything the dispatched peer pushed via TaskReply, so it's the right tool for 'show me what codex has said so far'.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterTaskTools(s)
 		},
@@ -511,6 +547,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"task", "biam", "list", "recent", "history"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Use TaskList when the caller forgot a task_id mid-conversation or wants the most-recent dispatches. Default page is 50; if the operator dispatched dozens, ask whether they want the latest or a specific time window before assuming. It's a read-only history probe — safe to call freely.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "TaskReply",
@@ -518,6 +555,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"task", "biam", "reply", "respond", "append", "callback", "fan-in", "peer"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
+		UsageHint:   "Only call TaskReply when running AS a dispatched peer agent — read CLAWTOOL_TASK_ID + CLAWTOOL_FROM_INSTANCE from the process env to know what to fill in. It's how peer agents push chunked findings back to their caller; calling it from the parent agent makes no sense and will produce orphan replies.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterTaskReply(s)
 		},
@@ -530,6 +568,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"portal", "portals", "list", "browser", "target", "saved", "config", "registry"},
 		Category:    registry.CategoryWeb,
 		Gate:        "",
+		UsageHint:   "Use PortalList to see configured browser-portal targets (saved authenticated web UIs like Deepseek / Perplexity / Phind chat). Pair with PortalAsk to drive one; PortalUse to set a sticky default so subsequent PortalAsk calls don't need an explicit name. A bare clawtool install starts with zero portals — the operator configures them.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterPortalTools(s)
 		},
@@ -540,6 +579,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"portal", "ask", "browser", "chat", "deepseek", "perplexity", "phind", "send", "drive", "automate", "cdp"},
 		Category:    registry.CategoryWeb,
 		Gate:        "",
+		UsageHint:   "Use PortalAsk to drive a configured portal with a prompt and capture the rendered response — clawtool drives the page through Obscura (CDP), seeds cookies, fills the input, and polls until the response-done predicate fires. Slow (real browser) compared to WebFetch; only worth it for portals where there's no public API. Pass `portal` explicitly or rely on PortalUse's sticky default.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "PortalUse",
@@ -547,6 +587,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"portal", "use", "sticky", "default", "set"},
 		Category:    registry.CategoryWeb,
 		Gate:        "",
+		UsageHint:   "Use PortalUse to set a sticky-default portal so subsequent PortalAsk calls without an explicit `portal` field route to the chosen one. Pair with PortalWhich to confirm which portal is currently sticky; PortalUnset clears it. Stickiness is operator-scoped, not session-scoped — it persists across daemon restarts via the sticky file.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "PortalWhich",
@@ -554,6 +595,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"portal", "which", "default", "sticky"},
 		Category:    registry.CategoryWeb,
 		Gate:        "",
+		UsageHint:   "Use PortalWhich to resolve the current sticky-default portal: env var > sticky file > single-configured fallback. Run it before PortalAsk-without-portal-arg if you want to be sure WHICH portal is about to receive the prompt. Read-only.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "PortalUnset",
@@ -561,6 +603,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"portal", "unset", "clear", "sticky"},
 		Category:    registry.CategoryWeb,
 		Gate:        "",
+		UsageHint:   "Use PortalUnset to clear the sticky-default portal — after this PortalAsk requires an explicit `portal` argument until the operator runs PortalUse again. Idempotent; safe to call when no default is set.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "PortalRemove",
@@ -568,6 +611,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"portal", "remove", "delete", "config"},
 		Category:    registry.CategoryWeb,
 		Gate:        "",
+		UsageHint:   "Use PortalRemove to delete a portal stanza from config.toml entirely; PortalUnset only clears the STICKY DEFAULT and leaves all configurations intact. Cookies under [scopes.\"portal.<name>\"] in secrets.toml are NOT deleted automatically — clean those out separately if you don't want stale credentials lingering.",
 	})
 
 	// ─── Mcp* bundle (RegisterMcpTools registers 5) ────────────
@@ -577,6 +621,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"mcp", "scaffold", "author", "list", "projects", "server", "build"},
 		Category:    registry.CategoryAuthoring,
 		Gate:        "",
+		UsageHint:   "Use McpList to find MCP server projects under a directory (detects via the `.clawtool/mcp.toml` marker the v0.17 generator writes). Sister of `clawtool skill list` for MCP authoring. Default cwd; pass an explicit root when scanning a different workspace.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterMcpTools(s)
 		},
@@ -587,6 +632,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"mcp", "scaffold", "new", "create", "generate", "author", "go", "python", "typescript"},
 		Category:    registry.CategoryAuthoring,
 		Gate:        "",
+		UsageHint:   "Use McpNew to scaffold a brand-new MCP server project — the wizard asks for description / language (Go via mcp-go, Python via FastMCP, TypeScript via @modelcontextprotocol/sdk) / transport / packaging / tools. Use McpList afterwards to confirm it's discoverable. For an existing project hand-rolled without the marker, copy `.clawtool/mcp.toml` from a fresh scaffold.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "McpRun",
@@ -594,6 +640,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"mcp", "run", "dev", "stdio"},
 		Category:    registry.CategoryAuthoring,
 		Gate:        "",
+		UsageHint:   "Use McpRun for the in-place dev loop on an MCP project (stdio transport, no packaging). Use McpBuild to produce a release artifact, McpInstall to register the project as a clawtool source. Common mistake: running McpRun expecting a long-lived server — it's a foreground process; if you need to keep it running while doing other work, dispatch it via Bash background=true.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "McpBuild",
@@ -609,6 +656,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"mcp", "install", "register", "source", "local"},
 		Category:    registry.CategoryAuthoring,
 		Gate:        "",
+		UsageHint:   "Use McpInstall to register a local MCP server project as a clawtool source — it reads the project's `.clawtool/mcp.toml` to auto-discover the launch command, builds the project, and writes the [sources.<instance>] stanza. Equivalent to `clawtool source add` for a local checkout; for a published npm/pypi/binary use that surface instead.",
 	})
 
 	// ─── Sandbox* bundle (RegisterSandboxTools registers 3) ────
@@ -618,6 +666,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"sandbox", "list", "profiles", "isolation", "security", "bwrap", "sandbox-exec", "docker"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Use SandboxList to see configured sandbox profiles before recommending one for `clawtool send`. Each profile constrains paths, network, env, and resource limits; the engine that runs them depends on host (bwrap on Linux, sandbox-exec on macOS, docker as fallback). Pair with SandboxDoctor to confirm an engine is installed.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterSandboxTools(s)
 		},
@@ -628,6 +677,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"sandbox", "show", "profile", "isolation", "constraints"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Use SandboxShow before recommending a sandbox profile so the constraints are explicit — it renders parsed paths, network policy, env allow/deny, resource limits, and the engine that would actually run them on this host. SandboxList for the inventory; SandboxShow for the details of one profile.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "SandboxDoctor",
@@ -635,6 +685,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"sandbox", "doctor", "engine", "diagnostic", "bwrap", "sandbox-exec", "docker"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
+		UsageHint:   "Run SandboxDoctor to detect which sandbox engines are available on this host (bwrap / sandbox-exec / docker) BEFORE recommending a sandbox profile that needs one. Returns a per-engine status; use it to suggest the right install command when none is available rather than guessing.",
 	})
 
 	return m
