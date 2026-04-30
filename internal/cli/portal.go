@@ -146,12 +146,22 @@ func (a *App) PortalList(format listfmt.Format) error {
 	if err != nil {
 		return err
 	}
+	header := []string{"NAME", "BASE_URL", "AUTH_COOKIES"}
 	if len(portals) == 0 {
-		fmt.Fprintln(a.Stdout, "(no portals configured — run `clawtool portal add <name>` to add one)")
-		return nil
+		// Empty-state contract (sister of source / sandbox
+		// list): table mode keeps the actionable hint, JSON /
+		// TSV consumers get the structured empty shape (`[]\n`
+		// and a header line) so a `clawtool portal list
+		// --format json | jq '. | length'` pipeline returns 0
+		// instead of choking on the human banner.
+		if format == listfmt.FormatTable {
+			fmt.Fprintln(a.Stdout, "(no portals configured — run `clawtool portal add <name>` to add one)")
+			return nil
+		}
+		return listfmt.Render(a.Stdout, format, listfmt.Cols{Header: header})
 	}
 	cfg := config.Config{Portals: portals}
-	cols := listfmt.Cols{Header: []string{"NAME", "BASE_URL", "AUTH_COOKIES"}}
+	cols := listfmt.Cols{Header: header}
 	for _, name := range portal.Names(cfg) {
 		p := portals[name]
 		auth := strings.Join(p.AuthCookieNames, ",")
