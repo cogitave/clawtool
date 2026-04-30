@@ -274,6 +274,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runSend(argv[1:])
 	case "autonomous":
 		return a.runAutonomous(argv[1:])
+	case "fanout":
+		return a.runFanout(argv[1:])
 	case "worktree":
 		return a.runWorktree(argv[1:])
 	case "task":
@@ -568,6 +570,17 @@ Usage:
                             --max-iterations is hit, or Ctrl-C. Hint: pair
                             with OnboardStatus + InitApply for "one
                             message, full pipeline".
+  clawtool fanout "<sub-1> ;; <sub-2> ;; ..." [--agent <i>] [--max-concurrent N]
+                            [--cooldown <d>] [--max-iterations-per-sub N] [--dry-run]
+  clawtool fanout --plan <plan.json> [flags]
+                            Parallel-subgoal orchestrator. Spawns each
+                            subgoal in its own git worktree under
+                            .clawtool/fanout/wt-N, dispatches in parallel
+                            (max-concurrent bounded), then sequentially
+                            ff-merges + pushes each ready sub back into
+                            main with --cooldown between merges. Hint:
+                            host-agnostic alternative to Claude Code's
+                            built-in Agent tool fan-out.
   clawtool bootstrap [--agent <family>] [--workdir <path>] [--dry-run]
                             Zero-click onboarding. Spawns the chosen BIAM
                             peer's CLI with its elevation flag, pipes a

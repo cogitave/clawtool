@@ -740,6 +740,17 @@ func BuildManifest() *registry.Manifest {
 			setuptools.RegisterAutonomousRun(s)
 		},
 	})
+	m.Append(registry.ToolSpec{
+		Name:        "Fanout",
+		Description: "Spawn N parallel subgoals — each in its own git worktree under .clawtool/fanout/wt-N — dispatch each to a BIAM peer as a mini autonomous loop, then sequentially fast-forward-merge each ready sub back into main with cooldown. Host-agnostic alternative to Claude Code's built-in Agent fan-out.",
+		Keywords:    []string{"fanout", "parallel", "subgoals", "worktree", "branch", "merge", "cooldown", "autonomous", "biam", "dispatch", "chat", "ai-driven"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		UsageHint:   "Use when the operator's goal can be split into independent subgoals (\"add 3 catalog entries\", \"refactor 4 unrelated modules\"). Each subgoal runs in an isolated git worktree under .clawtool/fanout/. Sequential ff-merge with cooldown matches the autodev cron's pacing memory. Pair with OnboardStatus + InitApply if repo isn't initialized.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			setuptools.RegisterFanout(s)
+		},
+	})
 
 	return m
 }
