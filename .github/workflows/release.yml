@@ -26,28 +26,40 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      # git-cliff for CHANGELOG.md generation as part of release. We pin
-      # via the official action so the Rust binary is downloaded from a
-      # known source, not implicitly trusted. v4+ uses a non-EOL base
-      # image; v3 broke when Debian buster's apt repos went 404.
-      - uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --latest --strip header
-        env:
-          OUTPUT: BODY.md
+      # Per-release BODY.md is now produced by our own script — see
+      # scripts/release-notes-rich.sh. The previous git-cliff-action
+      # rendered a flat preamble with no grouped commits / scope
+      # callouts; the rich script groups by feat/fix scope, surfaces
+      # BREAKING CHANGE blocks, and tacks on commit / contributor /
+      # +X/-Y stats. The full-history CHANGELOG.md is still generated
+      # by git-cliff later in this same workflow (see "Regenerate
+      # CHANGELOG.md (full history, not just --latest)" step) — only
+      # the per-release body producer changed.
+      - name: Generate rich release body
+        run: |
+          set -euo pipefail
+          PREV_TAG="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          if [ -z "$PREV_TAG" ]; then
+            echo "no previous tag; rendering full history" >&2
+            bash scripts/release-notes-rich.sh --to "${GITHUB_REF_NAME}" >BODY.md
+          else
+            bash scripts/release-notes-rich.sh \
+              --from "${PREV_TAG}" \
+              --to "${GITHUB_REF_NAME}" >BODY.md
+          fi
+          echo "--- BODY.md preview (first 40 lines) ---"
+          head -40 BODY.md
+          echo "--- /preview ---"
 
       - name: Reset working tree before goreleaser
-        # The git-cliff-action above runs `git-cliff --bump --output CHANGELOG.md`
-        # under the hood when OUTPUT env is set, leaving CHANGELOG.md dirty.
-        # Goreleaser does an internal `git checkout` and refuses on dirty trees.
-        # Stash + drop everything except BODY.md so the tag's commit is the
-        # exact source of truth.
+        # Belt-and-braces: ensure BODY.md is the only artifact going
+        # into goreleaser. Anything else the rich script may have
+        # touched (it shouldn't, but be defensive) gets stashed +
+        # dropped so goreleaser's internal `git checkout` sees a
+        # clean tree at the tag's commit.
         run: |
           set -euo pipefail
           git stash push --include-untracked -- ':!BODY.md' || true
-          # Drop the stash — we only needed it gone before goreleaser ran.
-          # CHANGELOG regen later in this workflow re-derives it from cliff.
           git stash drop || true
 
       - uses: goreleaser/goreleaser-action@v6
