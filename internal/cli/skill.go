@@ -96,6 +96,7 @@ func (a *App) runSkillNew(argv []string) int {
 		triggers    string
 		root        = skillgen.UserSkillsRoot()
 		force       bool
+		dryRun      bool
 	)
 	rest := argv[1:]
 	for i := 0; i < len(rest); i++ {
@@ -120,6 +121,8 @@ func (a *App) runSkillNew(argv []string) int {
 			root = skillgen.LocalSkillsRoot()
 		case "--force", "-f":
 			force = true
+		case "--dry-run":
+			dryRun = true
 		default:
 			fmt.Fprintf(a.Stderr, "clawtool skill new: unknown flag %q\n", rest[i])
 			return 2
@@ -134,9 +137,38 @@ func (a *App) runSkillNew(argv []string) int {
 	skillDir := filepath.Join(root, name)
 	skillFile := filepath.Join(skillDir, "SKILL.md")
 
-	if _, err := os.Stat(skillFile); err == nil && !force {
+	exists := false
+	if _, err := os.Stat(skillFile); err == nil {
+		exists = true
+	}
+	if exists && !force {
 		fmt.Fprintf(a.Stderr, "clawtool skill new: %s already exists (pass --force to overwrite)\n", skillFile)
 		return 1
+	}
+
+	if dryRun {
+		// Validation has already passed (name + description +
+		// existing-file check). Print the same preview the
+		// non-dry-run path would print on success — minus the
+		// "✓ created" verb — so operators can sanity-check the
+		// scaffold before committing the writes. Symmetric with
+		// `rules new --dry-run` (5824012) and `agents claim
+		// --dry-run` (pre-existing).
+		verb := "would create"
+		if exists && force {
+			verb = "would overwrite"
+		}
+		fmt.Fprintf(a.Stdout, "(dry-run) %s skill %q at %s\n", verb, name, skillDir)
+		fmt.Fprintln(a.Stdout, "  ├── SKILL.md")
+		fmt.Fprintln(a.Stdout, "  ├── scripts/   (executable helpers)")
+		fmt.Fprintln(a.Stdout, "  ├── references/ (reference docs)")
+		fmt.Fprintln(a.Stdout, "  └── assets/    (templates / fixtures)")
+		fmt.Fprintln(a.Stdout)
+		fmt.Fprintf(a.Stdout, "  description: %s\n", description)
+		if t := strings.TrimSpace(triggers); t != "" {
+			fmt.Fprintf(a.Stdout, "  triggers:    %s\n", t)
+		}
+		return 0
 	}
 
 	body := skillgen.Render(name, description, skillgen.ParseTriggers(triggers))

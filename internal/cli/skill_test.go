@@ -241,6 +241,122 @@ func TestSkillList_HumanNoSkills(t *testing.T) {
 	}
 }
 
+// TestSkillNew_DryRunDoesNotWrite confirms `--dry-run` previews
+// the scaffold without creating SKILL.md or the subdirectories.
+// Symmetric with `rules new --dry-run` (5824012). Operators can
+// sanity-check the scaffold layout before committing the writes.
+func TestSkillNew_DryRunDoesNotWrite(t *testing.T) {
+	dir := withFakeClaudeHomeForCLI(t)
+
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+	rc := app.runSkillNew([]string{
+		"preview-skill",
+		"--description", "preview only",
+		"--triggers", "do x, do y",
+		"--dry-run",
+	})
+	if rc != 0 {
+		t.Fatalf("dry-run rc=%d, stderr=%s", rc, errb.String())
+	}
+	body := out.String()
+	for _, want := range []string{
+		"(dry-run)",
+		"would create",
+		"preview-skill",
+		"SKILL.md",
+		"scripts/",
+		"references/",
+		"assets/",
+		"description: preview only",
+		"do x, do y",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("output missing %q\n--- output ---\n%s", want, body)
+		}
+	}
+
+	// Nothing should have been created on disk.
+	skillDir := filepath.Join(dir, "skills", "preview-skill")
+	if _, err := os.Stat(skillDir); err == nil {
+		t.Errorf("skill dir should not exist after dry-run; got %s", skillDir)
+	}
+}
+
+// TestSkillNew_DryRunRefusesExistingWithoutForce preserves the
+// exit-1 + "already exists" behaviour even on the dry-run path
+// — operators discover the conflict at preview time.
+func TestSkillNew_DryRunRefusesExistingWithoutForce(t *testing.T) {
+	withFakeClaudeHomeForCLI(t)
+	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+
+	// Seed an existing skill (real write).
+	if rc := app.runSkillNew([]string{"existing-skill", "--description", "first"}); rc != 0 {
+		t.Fatalf("seed rc=%d", rc)
+	}
+
+	// Dry-run a re-create without --force.
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app2 := &App{Stdout: out, Stderr: errb}
+	rc := app2.runSkillNew([]string{
+		"existing-skill",
+		"--description", "second",
+		"--dry-run",
+	})
+	if rc != 1 {
+		t.Errorf("rc=%d, want 1 on existing-without-force", rc)
+	}
+	if !strings.Contains(errb.String(), "already exists") {
+		t.Errorf("expected 'already exists' in stderr; got %q", errb.String())
+	}
+}
+
+// TestSkillNew_DryRunWithForceWouldOverwrite confirms `--dry-run
+// --force` against an existing skill prints "would overwrite"
+// (verb differs from the fresh-create case) and still doesn't
+// touch the file. The verb change is the operator-visible signal
+// that the actual run would mutate, not just create.
+func TestSkillNew_DryRunWithForceWouldOverwrite(t *testing.T) {
+	dir := withFakeClaudeHomeForCLI(t)
+	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+
+	// Seed an existing skill.
+	if rc := app.runSkillNew([]string{"clobber-test", "--description", "original"}); rc != 0 {
+		t.Fatalf("seed rc=%d", rc)
+	}
+	skillFile := filepath.Join(dir, "skills", "clobber-test", "SKILL.md")
+	beforeBody, err := os.ReadFile(skillFile)
+	if err != nil {
+		t.Fatalf("read seed SKILL.md: %v", err)
+	}
+
+	// Dry-run with --force.
+	out := &bytes.Buffer{}
+	app.Stdout = out
+	rc := app.runSkillNew([]string{
+		"clobber-test",
+		"--description", "replacement",
+		"--force",
+		"--dry-run",
+	})
+	if rc != 0 {
+		t.Fatalf("rc=%d, want 0", rc)
+	}
+	if !strings.Contains(out.String(), "would overwrite") {
+		t.Errorf("expected 'would overwrite' verb on dry-run --force; got %q", out.String())
+	}
+
+	// SKILL.md must be byte-identical (unchanged).
+	afterBody, err := os.ReadFile(skillFile)
+	if err != nil {
+		t.Fatalf("re-read SKILL.md: %v", err)
+	}
+	if string(afterBody) != string(beforeBody) {
+		t.Errorf("SKILL.md mutated during --dry-run --force\n--- before ---\n%s\n--- after ---\n%s",
+			beforeBody, afterBody)
+	}
+}
+
 func TestSkillPath_FindsByName(t *testing.T) {
 	dir := withFakeClaudeHomeForCLI(t)
 	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
