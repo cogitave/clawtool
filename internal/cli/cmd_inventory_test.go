@@ -61,6 +61,7 @@ var inventoryFallbackVerbs = []string{
 	"egress",
 	"claude-bootstrap",
 	"bootstrap",
+	"spawn",
 	"version",
 	"help",
 }

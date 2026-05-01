@@ -330,6 +330,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runBootstrap(argv[1:])
 	case "install", "first-run":
 		return a.runInstall(argv[1:])
+	case "spawn":
+		return a.runSpawn(argv[1:])
 	case "apm":
 		return a.runApm(argv[1:])
 	case "playbook":
@@ -601,6 +603,16 @@ Usage:
                             with a single one-line summary on stdout.
                             Idempotent: running twice does no extra work.
                             Alias: 'clawtool first-run'.
+
+  clawtool spawn <backend> [--display-name <n>] [--cwd <p>] [--prompt "<t>"]
+                  [--terminal <tmux|screen|wt|gnome-terminal|konsole|kitty>]
+                  [--dry-run]
+                            Open a NEW terminal window/pane running the
+                            requested agent CLI (claude-code | codex |
+                            gemini | opencode), register it as a peer in
+                            the local BIAM registry, and print the assigned
+                            peer_id. Pair with 'clawtool peer send' or
+                            SendMessage to dispatch to the spawned agent.
   clawtool agent use <i>    Set the sticky default agent (singular
                             'agent' = relay runtime; plural 'agents' =
                             adapter ownership for native tool replacement).

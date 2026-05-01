@@ -741,6 +741,17 @@ func BuildManifest() *registry.Manifest {
 		},
 	})
 	m.Append(registry.ToolSpec{
+		Name:        "Spawn",
+		Description: "Open a NEW terminal window/pane running the requested agent backend (claude-code|codex|gemini|opencode), auto-register it in the BIAM peer registry, and return the assigned peer_id. Pair with SendMessage / PeerSend to talk to the spawned agent. The spawned agent's hooks fire as if the operator opened it manually.",
+		Keywords:    []string{"spawn", "open", "terminal", "window", "pane", "tmux", "screen", "wt", "wsl", "agent", "backend", "claude-code", "codex", "gemini", "opencode", "register", "peer", "biam"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		UsageHint:   "Open a NEW terminal window running the requested agent backend (claude-code/codex/gemini/opencode), auto-register it in the BIAM peer registry, and return its peer_id. Pair with SendMessage / PeerSend to talk to the spawned agent. The spawned agent's hooks fire as if the operator opened it manually.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			setuptools.RegisterSpawn(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
 		Name:        "AutonomousRun",
 		Description: "Drive clawtool's autonomous self-paced dev loop from chat: dispatch a goal to a BIAM peer, iterate until done or max-iterations, return the final summary. Loop runs inside clawtool's binary — host-agnostic.",
 		Keywords:    []string{"autonomous", "loop", "biam", "dispatch", "goal", "self-paced", "chat", "ai-driven", "iterate"},
