@@ -4,7 +4,18 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.113] - 2026-05-01
+## [0.22.115] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.113 [skip ci] (e5000df)
+### Features
+
+- **mcp:** Name-sorted tools/list + alwaysLoad hot tools + ToolSearch detail_level (faf2703)## [0.22.114] - 2026-05-01
+
+### Features
+
+- **send:** --no-auto-close CLI flag for per-task pane preservation (c16bac3)## [0.22.113] - 2026-05-01
 
 ### Fixes
 
