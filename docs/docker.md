@@ -1,9 +1,15 @@
 # clawtool in Docker
 
-clawtool ships as a multi-stage Docker image based on
+clawtool ships as a single multi-stage `Dockerfile.unified` at the
+repo root. The default `clawtool` target lands on
 `gcr.io/distroless/static-debian12:nonroot`. Final image is ~7 MB
 — the entire Go binary, ca-certificates, and nothing else. No
 shell, no package manager, no glibc.
+
+The same file also produces the `worker` (sandbox-worker on
+ubuntu:24.04) and `relay` (HTTP gateway with the upstream coding-agent
+CLIs on debian-slim) images via `--target=worker` /
+`--target=relay`. One source of truth, one shared build cache.
 
 ## Quick start
 
@@ -33,13 +39,15 @@ make docker-smoke    # builds + runs the MCP initialize handshake check
 Or by hand:
 
 ```sh
-docker build -t cogitave/clawtool:dev .
+docker build -f Dockerfile.unified --target clawtool -t cogitave/clawtool:dev .
 ```
 
-The Dockerfile is a two-stage build: `golang:1.26-alpine` compiles
-the static binary with `CGO_ENABLED=0`, then it gets copied into
-`distroless/static-debian12:nonroot`. No source paths in the
-runtime image (build uses `-trimpath`).
+`Dockerfile.unified` is a multi-stage build: a shared `base` +
+`builder` stage on `golang:1.26-bookworm` compiles the static
+binary with `CGO_ENABLED=0` + `-trimpath`, and the `clawtool`
+target stage copies it into `distroless/static-debian12:nonroot`.
+The same file's `worker` and `relay` targets reuse the `builder`
+stage so all three images share one compile cache.
 
 ## Running modes
 
@@ -165,8 +173,13 @@ asserts the response carries `serverInfo`.
 
 ## Cross-references
 
-- `Dockerfile` — multi-stage build definition.
-- `docker-compose.yml` + `Caddyfile` — HTTP gateway stack.
+- `Dockerfile.unified` — single multi-stage build definition for
+  `clawtool` / `worker` / `relay` (and an `e2e-base` foundation
+  the test fixtures FROM).
+- `docker-compose.yml` + `Caddyfile` — HTTP gateway stack
+  (builds the `clawtool` target).
+- `docker/compose.relay.yml` — relay variant
+  (builds the `relay` target).
 - `docs/http-api.md` — `/v1` endpoint reference.
 - `internal/setup/recipes/runtime/clawtool_relay.go` — drops a
   similar Compose file into a project repo via `clawtool init`.

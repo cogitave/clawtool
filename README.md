@@ -282,7 +282,7 @@ clawtool sandbox-worker --init-token
 
 # 2. Build the worker image (one-time). Use a moving tag — the binary inside
 #    is keyed to your local clawtool version, not a frozen 0.21 release.
-docker build -f Dockerfile.worker -t clawtool-worker:dev .
+docker build -f Dockerfile.unified --target worker -t clawtool-worker:dev .
 
 # 3. Run the worker container
 docker run --rm \

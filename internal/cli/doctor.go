@@ -226,7 +226,7 @@ func (a *App) doctorSandboxWorker(w io.Writer, rep *doctorReport) {
 	mode := cfg.SandboxWorker.Mode
 	if mode == "" || mode == "off" {
 		rep.info(w, "mode=off — Bash/Read/Edit/Write run on the host (default)")
-		fmt.Fprintln(w, "      → build Dockerfile.worker and set [sandbox_worker] mode = \"container\" to opt into container isolation")
+		fmt.Fprintln(w, "      → build Dockerfile.unified --target=worker and set [sandbox_worker] mode = \"container\" to opt into container isolation")
 		fmt.Fprintln(w)
 		return
 	}
@@ -257,7 +257,7 @@ func (a *App) doctorSandboxWorker(w io.Writer, rep *doctorReport) {
 	if err := c.Ping(pingCtx); err != nil {
 		rep.warn(w,
 			fmt.Sprintf("mode=%s, url=%s — worker not reachable (%v)", mode, url, err),
-			"docker run … clawtool-worker:0.21 sandbox-worker …  (or check Dockerfile.worker)")
+			"docker run … clawtool-worker:dev sandbox-worker …  (or rebuild via Dockerfile.unified --target=worker)")
 		fmt.Fprintln(w)
 		return
 	}
