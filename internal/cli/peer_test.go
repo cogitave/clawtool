@@ -272,6 +272,178 @@ func TestPeer_ListUnknownFormat(t *testing.T) {
 	}
 }
 
+// drainStub stands up a fake daemon for the drain-verb tests:
+// GET /v1/peers/<id>/messages dequeues the inbox and returns it
+// (consume semantics mirror the real daemon — once drained, the
+// next call returns empty); GET /v1/peers returns the seeded peer
+// table so display_name resolution works for --format context.
+//
+// `inbox` is captured by-reference so tests can seed it BEFORE
+// the registered peers.d/<session>.id pointer is written, and
+// the second drain call sees an empty queue (atomic-consume
+// invariant).
+type drainStub struct {
+	peers []a2a.Peer
+	inbox []a2a.Message
+}
+
+func newDrainStub(t *testing.T, session, peerID string, peers []a2a.Peer, inbox []a2a.Message) *drainStub {
+	t.Helper()
+	st := &drainStub{peers: peers, inbox: append([]a2a.Message(nil), inbox...)}
+	stubDaemonForPeers(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/peers":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"peers": st.peers,
+				"count": len(st.peers),
+				"as_of": time.Now().UTC(),
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/peers/"+peerID+"/messages":
+			peek := r.URL.Query().Get("peek") == "1"
+			out := append([]a2a.Message(nil), st.inbox...)
+			if !peek {
+				st.inbox = nil
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"peer_id":  peerID,
+				"messages": out,
+				"count":    len(out),
+				"peek":     peek,
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "unexpected", http.StatusBadRequest)
+		}
+	})
+	// stubDaemonForPeers already redirected XDG_CONFIG_HOME to
+	// a tmp dir; write the session→peer_id pointer into it so
+	// runPeerDrain finds the registered peer without going
+	// through `peer register`.
+	if err := os.MkdirAll(a2a.PeersStateDir(), 0o700); err != nil {
+		t.Fatalf("mkdir peers.d: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(a2a.PeersStateDir(), session+".id"), []byte(peerID+"\n"), 0o600); err != nil {
+		t.Fatalf("write session pointer: %v", err)
+	}
+	return st
+}
+
+// TestPeer_DrainConsumes — write 2 messages, drain → both appear
+// → second drain reports empty (no rebuffering, no replay). This
+// pins the atomic-consume invariant: once the daemon hands a
+// message to the CLI, that message must not reappear on the
+// next session-tick.
+func TestPeer_DrainConsumes(t *testing.T) {
+	const session = "sess-drain"
+	const peerID = "peer-drain"
+	now := time.Now().UTC()
+	msgs := []a2a.Message{
+		{ID: "m1", FromPeer: "peer-other", Type: a2a.MsgNotification, Text: "first", Timestamp: now},
+		{ID: "m2", FromPeer: "peer-other", Type: a2a.MsgNotification, Text: "second", Timestamp: now.Add(time.Second)},
+	}
+	newDrainStub(t, session, peerID, nil, msgs)
+
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+	rc := app.Run([]string{"peer", "drain", "--session", session})
+	if rc != 0 {
+		t.Fatalf("first drain rc=%d, stderr=%s", rc, errb.String())
+	}
+	body := out.String()
+	if !strings.Contains(body, "first") || !strings.Contains(body, "second") {
+		t.Errorf("first drain missing payloads: %q", body)
+	}
+
+	// Second drain: server-side queue is now empty — the verb
+	// must produce no stdout and exit 0.
+	out.Reset()
+	errb.Reset()
+	rc = app.Run([]string{"peer", "drain", "--session", session})
+	if rc != 0 {
+		t.Fatalf("second drain rc=%d, stderr=%s", rc, errb.String())
+	}
+	if out.Len() != 0 {
+		t.Errorf("second drain expected silent empty; got %q", out.String())
+	}
+}
+
+// TestPeer_DrainContextFormat — --format context emits each
+// message wrapped in the system-prompt-shaped block so a hook
+// can splice it directly into the live agent's turn. Asserts:
+//   - leading newline
+//   - "[clawtool peer message from <display_name>]:" prefix
+//     (display_name resolved via /v1/peers, not raw peer_id)
+//   - message text body
+//   - trailing newline
+func TestPeer_DrainContextFormat(t *testing.T) {
+	const session = "sess-ctx"
+	const peerID = "peer-ctx"
+	const senderID = "peer-sender"
+	now := time.Now().UTC()
+	peers := []a2a.Peer{
+		{PeerID: senderID, DisplayName: "alice@host/codex", Backend: "codex"},
+		{PeerID: peerID, DisplayName: "bob@host/claude-code", Backend: "claude-code"},
+	}
+	msgs := []a2a.Message{
+		{ID: "m1", FromPeer: senderID, Type: a2a.MsgNotification, Text: "claude'a erişebiliyor musun?", Timestamp: now},
+	}
+	newDrainStub(t, session, peerID, peers, msgs)
+
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+	rc := app.Run([]string{"peer", "drain", "--session", session, "--format", "context"})
+	if rc != 0 {
+		t.Fatalf("rc=%d, stderr=%s", rc, errb.String())
+	}
+	body := out.String()
+	want := "\n[clawtool peer message from alice@host/codex]: claude'a erişebiliyor musun?\n"
+	if !strings.Contains(body, want) {
+		t.Errorf("missing context block.\nwant substring: %q\ngot: %q", want, body)
+	}
+	if !strings.HasPrefix(body, "\n") {
+		t.Errorf("context output should start with a newline; got %q", body)
+	}
+}
+
+// TestPeer_DrainEmpty — a session-tick hook chains drain's stdout
+// into the agent's context; an empty inbox must produce no output
+// and exit 0 so quiet turns stay quiet. Regression guard for the
+// "(inbox empty)" placeholder leaking from the inbox verb.
+func TestPeer_DrainEmpty(t *testing.T) {
+	const session = "sess-empty"
+	const peerID = "peer-empty"
+	newDrainStub(t, session, peerID, nil, nil)
+
+	for _, format := range []string{"text", "context", "json"} {
+		t.Run(format, func(t *testing.T) {
+			out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+			app := &App{Stdout: out, Stderr: errb}
+			rc := app.Run([]string{"peer", "drain", "--session", session, "--format", format})
+			if rc != 0 {
+				t.Fatalf("rc=%d, stderr=%s", rc, errb.String())
+			}
+			if out.Len() != 0 {
+				t.Errorf("empty inbox should produce no stdout (format=%s); got %q", format, out.String())
+			}
+		})
+	}
+}
+
+// TestPeer_DrainUnknownFormat — bad --format value rejected at
+// parse time with rc=2, no daemon round-trip. Mirror of
+// TestPeer_ListUnknownFormat.
+func TestPeer_DrainUnknownFormat(t *testing.T) {
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+	rc := app.Run([]string{"peer", "drain", "--format", "yaml"})
+	if rc != 2 {
+		t.Errorf("rc=%d, want 2 on bad --format", rc)
+	}
+	if !strings.Contains(errb.String(), "--format") {
+		t.Errorf("stderr should mention --format; got %q", errb.String())
+	}
+}
+
 // _silence keeps fmt imported when other tests don't need it
 // directly; helps future additions stay compile-safe.
 var _ = fmt.Sprintf

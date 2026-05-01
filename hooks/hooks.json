@@ -1,5 +1,5 @@
 {
-  "description": "clawtool fresh-session bootstrap + peer-discovery hooks. SessionStart loads context AND registers this Claude session into the daemon's peer registry so other terminals can discover it. Stop heartbeats (status busy→online); SessionEnd deregisters cleanly.",
+  "description": "clawtool fresh-session bootstrap + peer-discovery hooks. SessionStart loads context AND registers this Claude session into the daemon's peer registry so other terminals can discover it. Stop heartbeats (status busy→online) AND drains the peer inbox so received messages reach the live agent's next turn; SessionEnd deregisters cleanly.",
   "hooks": {
     "SessionStart": [
       {
@@ -26,6 +26,11 @@
           {
             "type": "command",
             "command": "clawtool peer heartbeat --status online",
+            "timeout": 2
+          },
+          {
+            "type": "command",
+            "command": "clawtool peer drain --format context",
             "timeout": 2
           }
         ]

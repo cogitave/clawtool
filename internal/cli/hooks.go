@@ -177,9 +177,16 @@ const codexHookSnippet = `# Codex peer-discovery hooks (clawtool ADR-024 Phase 1
 [hooks]
 session_start = "clawtool peer register --backend codex"
 session_end   = "clawtool peer deregister"
-# Optional: heartbeat every turn. Codex doesn't expose a turn-end
-# event today; until it does, rely on the daemon's stale-sweep
-# (peers flip to offline after 60s without a heartbeat).
+# Per-turn session tick: drain the peer inbox so messages other
+# peers send reach the LIVE AGENT's next turn (not just the file).
+# 'clawtool peer drain --format context' prints each pending
+# message as a system-prompt-shaped block; pipe / redirect it
+# wherever Codex injects per-turn context. Empty inbox = silent
+# exit 0 so a quiet turn produces no output.
+turn_end      = "clawtool peer drain --format context"
+# Codex doesn't expose a turn-end event in every release; until
+# it does, rely on the daemon's stale-sweep (peers flip to
+# offline after 60s without a heartbeat).
 `
 
 const geminiHookSnippet = `# Gemini-CLI peer-discovery hooks (clawtool ADR-024 Phase 1).
@@ -189,6 +196,9 @@ const geminiHookSnippet = `# Gemini-CLI peer-discovery hooks (clawtool ADR-024 P
 
 clawtool peer register --backend gemini
 # ... gemini session runs ...
+# Per-turn (or pre-prompt) session tick: drain inbox so peer
+# messages reach the live agent. Empty = silent.
+clawtool peer drain --format context
 clawtool peer deregister
 
 # When Gemini-CLI's hooks land, the equivalent config lives in
@@ -201,10 +211,15 @@ const opencodeHookSnippet = `# OpenCode peer-discovery hooks (clawtool ADR-024 P
 {
   "hooks": {
     "session.start": [{ "command": "clawtool peer register --backend opencode" }],
+    "session.tick":  [{ "command": "clawtool peer drain --format context" }],
     "session.end":   [{ "command": "clawtool peer deregister" }]
   }
 }
 
+# session.tick fires per-turn — drain the peer inbox so messages
+# from other peers reach the live agent's context, not just the
+# file. Empty inbox = silent exit 0.
+#
 # OpenCode is research-only in clawtool's send/dispatch routing;
 # peer discovery still works — it just shows up in the registry as
 # "opencode" so the operator knows it's available for inspection.

@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -138,6 +140,84 @@ func TestHooksTest_NoConfig(t *testing.T) {
 	}
 	if !strings.Contains(out, "nothing to do") {
 		t.Errorf("missing-config hint missing: %q", out)
+	}
+}
+
+// TestHooksInstall_DrainSnippets — every non-claude-code runtime
+// must surface the new session-tick drain command in its install
+// snippet, so peer messages reach the live agent on every turn.
+// Without this the operator wires register/deregister and never
+// learns the inbox needs to be drained.
+func TestHooksInstall_DrainSnippets(t *testing.T) {
+	for _, runtime := range []string{"codex", "gemini", "opencode"} {
+		t.Run(runtime, func(t *testing.T) {
+			var outBuf, errBuf bytes.Buffer
+			app := New()
+			app.Stdout = &outBuf
+			app.Stderr = &errBuf
+			code := app.Run([]string{"hooks", "install", runtime})
+			if code != 0 {
+				t.Fatalf("rc=%d, stderr=%s", code, errBuf.String())
+			}
+			body := outBuf.String()
+			if !strings.Contains(body, "clawtool peer drain --format context") {
+				t.Errorf("%s install snippet missing drain command:\n%s", runtime, body)
+			}
+		})
+	}
+}
+
+// TestBundledHooksJSON_StopHasDrain — the Claude Code plugin's
+// hooks/hooks.json must wire `clawtool peer drain --format context`
+// into the Stop event so each assistant turn auto-pulls peer
+// messages into the next-turn context. Existing entries (heartbeat,
+// register, deregister) must NOT have been clobbered.
+func TestBundledHooksJSON_StopHasDrain(t *testing.T) {
+	// internal/cli → repo root: ../../hooks/hooks.json
+	body, err := os.ReadFile(filepath.Join("..", "..", "hooks", "hooks.json"))
+	if err != nil {
+		t.Fatalf("read bundled hooks.json: %v", err)
+	}
+	var cfg struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		t.Fatalf("parse hooks.json: %v", err)
+	}
+	stop, ok := cfg.Hooks["Stop"]
+	if !ok || len(stop) == 0 {
+		t.Fatalf("Stop event missing")
+	}
+	var sawDrain, sawHeartbeat bool
+	for _, m := range stop {
+		for _, h := range m.Hooks {
+			if strings.Contains(h.Command, "peer drain --format context") {
+				sawDrain = true
+			}
+			if strings.Contains(h.Command, "peer heartbeat") {
+				sawHeartbeat = true
+			}
+		}
+	}
+	if !sawDrain {
+		t.Errorf("Stop event missing 'peer drain --format context' hook")
+	}
+	if !sawHeartbeat {
+		t.Errorf("Stop event must keep the existing peer-heartbeat hook")
+	}
+	// SessionEnd / SessionStart are existing wiring — guard them
+	// so a future re-roll of this file doesn't accidentally drop
+	// register / deregister.
+	for _, ev := range []string{"SessionStart", "SessionEnd"} {
+		if _, ok := cfg.Hooks[ev]; !ok {
+			t.Errorf("bundled hooks.json lost %s event", ev)
+		}
 	}
 }
 

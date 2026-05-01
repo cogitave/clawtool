@@ -62,6 +62,14 @@ const peerUsage = `Usage:
                                            GET /v1/peers/{id}/messages — drain
                                            pending messages (or peek without
                                            consuming).
+  clawtool peer drain [--session <id>] [--format text|json|context]
+                                           Like 'inbox' but always consumes,
+                                           and adds --format context which
+                                           emits each message as a system-
+                                           prompt-shaped block ready to splice
+                                           into the live agent's turn. Empty
+                                           inbox = silent exit 0 (chainable
+                                           from a session-tick hook).
   clawtool peer list [--circle <name>] [--backend <name>] [--status <s>]
                      [--format text|json|tsv]
                                            GET /v1/peers — operator-facing
@@ -92,6 +100,8 @@ func (a *App) runPeer(argv []string) int {
 		return a.runPeerSend(argv[1:])
 	case "inbox":
 		return a.runPeerInbox(argv[1:])
+	case "drain":
+		return a.runPeerDrain(argv[1:])
 	case "list":
 		return a.runPeerList(argv[1:])
 	default:
@@ -218,6 +228,134 @@ func (a *App) runPeerInbox(argv []string) int {
 			m.Timestamp.Format(time.RFC3339), shortenPath(m.FromPeer, 12), m.Type, m.Text)
 	}
 	return 0
+}
+
+// runPeerDrain consumes the saved session's inbox and renders it
+// for downstream consumers. Unlike `peer inbox` it has no --peek
+// (consume is the whole point), and it adds --format context: a
+// system-prompt-shaped block a session-tick hook can splice into
+// the live agent's turn so peer messages reach the AGENT, not just
+// the file.
+//
+// Empty inbox MUST exit 0 with NO output — the bundled Stop hook
+// chains the verb's stdout into the agent's context, so any noise
+// (a "(empty)" placeholder or banner) would pollute every turn.
+//
+// Atomicity: the daemon dequeues server-side on GET (peek=0). One
+// successful HTTPRequest = the message left the queue; a daemon
+// crash mid-flight loses at most the in-flight batch, never replays
+// it. The CLI does no client-side rebuffering.
+func (a *App) runPeerDrain(argv []string) int {
+	fs := flag.NewFlagSet("peer drain", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	session := fs.String("session", defaultSessionKey(), "Session identifier (resolves to peer_id).")
+	format := fs.String("format", "text", "Output format: text | json | context.")
+	if err := fs.Parse(argv); err != nil {
+		return 2
+	}
+	switch *format {
+	case "text", "json", "context":
+	default:
+		fmt.Fprintf(a.Stderr, "clawtool peer drain: unknown --format %q (want text|json|context)\n", *format)
+		return 2
+	}
+	if *session == "default" {
+		if id := readSessionFromStdin(a.stdin()); id != "" {
+			*session = id
+		}
+	}
+	peerID, err := readPeerIDFile(*session)
+	if err != nil {
+		// No registered session = no inbox to drain. Hooks fire
+		// before `peer register` lands on the very first session-
+		// tick of a brand-new install; treat that as silently
+		// empty so the chained `>>` redirection in hooks.json
+		// doesn't surface a spurious error every turn.
+		if errors.Is(err, os.ErrNotExist) {
+			return 0
+		}
+		fmt.Fprintf(a.Stderr, "clawtool peer drain: %v\n", err)
+		return 1
+	}
+	var out struct {
+		PeerID   string        `json:"peer_id"`
+		Messages []a2a.Message `json:"messages"`
+		Count    int           `json:"count"`
+		Peek     bool          `json:"peek"`
+	}
+	if err := daemon.HTTPRequest(http.MethodGet, "/v1/peers/"+peerID+"/messages", nil, &out); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool peer drain: %v\n", err)
+		return 1
+	}
+	// Empty inbox = silent exit 0. A session-tick hook chains
+	// this verb's stdout into the agent's context; ANY output
+	// here (placeholder banner, count line, etc.) would pollute
+	// every quiet turn.
+	if out.Count == 0 {
+		return 0
+	}
+	switch *format {
+	case "json":
+		body, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Fprintln(a.Stdout, string(body))
+		return 0
+	case "context":
+		// Resolve peer_id → display_name once so the context
+		// block names the human, not the UUID. Best-effort:
+		// when the lookup fails (daemon down between fetches,
+		// peer deregistered between send and drain) we fall
+		// back to the raw peer_id rather than dropping the
+		// message.
+		names := resolvePeerNames(out.Messages)
+		for _, m := range out.Messages {
+			label := names[m.FromPeer]
+			if label == "" {
+				label = m.FromPeer
+				if label == "" {
+					label = "unknown"
+				}
+			}
+			fmt.Fprintf(a.Stdout, "\n[clawtool peer message from %s]: %s\n", label, m.Text)
+		}
+		return 0
+	}
+	// text — same shape as `peer inbox` table mode minus the
+	// "(inbox empty)" branch (handled above).
+	for _, m := range out.Messages {
+		fmt.Fprintf(a.Stdout, "[%s] %s → %s\n  %s\n",
+			m.Timestamp.Format(time.RFC3339), shortenPath(m.FromPeer, 12), m.Type, m.Text)
+	}
+	return 0
+}
+
+// resolvePeerNames batch-fetches /v1/peers and builds a peer_id
+// → display_name map for every distinct sender in `msgs`. Returns
+// an empty map on any error so the caller transparently falls
+// back to bare peer_ids; the daemon being unreachable here is not
+// a reason to lose a delivered message.
+func resolvePeerNames(msgs []a2a.Message) map[string]string {
+	want := make(map[string]struct{}, len(msgs))
+	for _, m := range msgs {
+		if m.FromPeer != "" {
+			want[m.FromPeer] = struct{}{}
+		}
+	}
+	if len(want) == 0 {
+		return map[string]string{}
+	}
+	var out struct {
+		Peers []a2a.Peer `json:"peers"`
+	}
+	if err := daemon.HTTPRequest(http.MethodGet, "/v1/peers", nil, &out); err != nil {
+		return map[string]string{}
+	}
+	names := make(map[string]string, len(want))
+	for _, p := range out.Peers {
+		if _, ok := want[p.PeerID]; ok && p.DisplayName != "" {
+			names[p.PeerID] = p.DisplayName
+		}
+	}
+	return names
 }
 
 // resolvePeerByName looks up the daemon's peer list and returns
