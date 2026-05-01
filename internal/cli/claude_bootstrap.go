@@ -15,21 +15,35 @@ import (
 	"github.com/cogitave/clawtool/internal/version"
 )
 
-// runClaudeBootstrap is the entry point for the SessionStart hook
-// bundled in `hooks/hooks.json`. Claude Code invokes:
+// runClaudeBootstrap is the entry point for the clawtool-context
+// hook bundled in `hooks/hooks.json`. Claude Code invokes one of:
 //
-//	clawtool claude-bootstrap --event session-start
+//	clawtool claude-bootstrap --event user-prompt-submit   # canonical
+//	clawtool claude-bootstrap --event session-start        # legacy / back-compat
 //
-// at the start of every fresh session, BEFORE the first user
-// prompt is processed. The hook reads its event JSON from stdin
-// and emits one JSON document on stdout with this shape:
+// The canonical fire site is UserPromptSubmit (fires on the user's
+// first prompt). SessionStart was the original site but Claude Code
+// v2.1.126 introduced a regression where the hook runner bails with
+// "ToolUseContext is required for prompt hooks" when additionalContext
+// injection happens before any prompt exists. UserPromptSubmit always
+// has a live ToolUseContext.
+//
+// The hook reads its event JSON from stdin and emits one JSON
+// document on stdout with this shape:
 //
 //	{
 //	  "hookSpecificOutput": {
-//	    "hookEventName": "SessionStart",
-//	    "additionalContext": "<text injected before user's first prompt>"
+//	    "hookEventName": "UserPromptSubmit" | "SessionStart",
+//	    "additionalContext": "<text injected before user's prompt>"
 //	  }
 //	}
+//
+// Idempotency: UserPromptSubmit fires on EVERY prompt — we only want
+// to inject context once per session. We stamp a marker file at
+// /tmp/clawtool-claude-bootstrap-<session_id> on first fire and
+// short-circuit (empty context) on subsequent fires. The session_id
+// comes from the hook event JSON on stdin (Claude Code injects it)
+// or the CLAUDE_SESSION_ID env var as a fallback.
 //
 // We detect a `.clawtool/` marker walking up from cwd. When
 // present, the additionalContext primes Claude with: clawtool is
@@ -37,32 +51,63 @@ import (
 // first response Claude should offer continue / fresh-setup / just-
 // stay-aware paths.
 //
-// Why a CLI subcommand rather than an MCP tool: per Claude Code
-// 2.1.121 docs, SessionStart fires BEFORE MCP servers finish
-// connecting. A `command` hook is the only thing that's reliably
-// available at that point.
+// Why a CLI subcommand rather than an MCP tool: SessionStart used
+// to fire BEFORE MCP servers finished connecting. A `command` hook
+// is reliably available at any hook fire point.
 func (a *App) runClaudeBootstrap(argv []string) int {
 	fs := flag.NewFlagSet("claude-bootstrap", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
-	event := fs.String("event", "session-start", "Hook event name (currently only session-start is supported).")
+	event := fs.String("event", "session-start", "Hook event name: session-start (legacy) or user-prompt-submit (canonical).")
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
-	if *event != "session-start" {
-		// Forward-compat: future events (UserPromptSubmit,
-		// SessionEnd, etc.) emit empty additionalContext rather
-		// than refusing — keeps Claude Code's hook chain happy
-		// while we incrementally add behaviour.
-		emitBootstrapJSON(a.Stdout, "")
+
+	// Normalize event name → hookEventName the response declares.
+	// Anything outside the known set still emits empty context so
+	// future Claude Code events don't break the hook chain.
+	var hookEventName string
+	switch *event {
+	case "session-start":
+		hookEventName = "SessionStart"
+	case "user-prompt-submit":
+		hookEventName = "UserPromptSubmit"
+	default:
+		// Forward-compat: unknown events emit empty
+		// additionalContext rather than refusing — keeps Claude
+		// Code's hook chain happy while we incrementally add
+		// behaviour.
+		emitBootstrapJSONFor(a.Stdout, "SessionStart", "")
 		return 0
 	}
 
-	// Drain stdin best-effort. Hook events ship the conversation
-	// transcript path + cwd here, but we don't need the body — the
-	// process's own working directory is enough. Reading drains the
-	// pipe so Claude Code doesn't see a stalled child.
+	// Read stdin best-effort. Claude Code ships the hook event JSON
+	// here including session_id. Capped at 64 KiB so a runaway
+	// producer can't stall / OOM the hook.
+	var stdinBody []byte
 	if a.Stdin != nil {
-		_, _ = io.Copy(io.Discard, a.Stdin)
+		stdinBody, _ = io.ReadAll(io.LimitReader(a.Stdin, 64*1024))
+	}
+
+	// Idempotency: only inject context once per session for the
+	// UserPromptSubmit event. SessionStart is "fires once" by
+	// definition so it skips the marker dance — keeps back-compat
+	// for hosts still wired the old way.
+	if *event == "user-prompt-submit" {
+		sid := resolveBootstrapSessionID(stdinBody)
+		if sid != "" {
+			marker := bootstrapMarkerPath(sid)
+			if _, err := os.Stat(marker); err == nil {
+				// Already fired this session — short-circuit.
+				emitBootstrapJSONFor(a.Stdout, hookEventName, "")
+				return 0
+			}
+			// Stamp the marker BEFORE emitting so a concurrent
+			// re-fire (unlikely but possible if Claude Code
+			// re-runs the hook chain) sees it. Best-effort —
+			// any error here just means we may emit twice,
+			// which is harmless.
+			_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)), 0o644)
+		}
 	}
 
 	cwd, err := os.Getwd()
@@ -70,14 +115,52 @@ func (a *App) runClaudeBootstrap(argv []string) int {
 		// No cwd means we can't detect markers; emit empty
 		// context. The hook still succeeds — silent skip is
 		// preferable to blocking the user's session start.
-		emitBootstrapJSON(a.Stdout, "")
+		emitBootstrapJSONFor(a.Stdout, hookEventName, "")
 		return 0
 	}
 
 	root := findClawtoolRoot(cwd)
 	ctx := buildBootstrapContext(root)
-	emitBootstrapJSON(a.Stdout, ctx)
+	emitBootstrapJSONFor(a.Stdout, hookEventName, ctx)
 	return 0
+}
+
+// bootstrapMarkerPath returns the per-session idempotency marker
+// path. /tmp is canonical for ephemeral hook state — it's wiped on
+// reboot, doesn't pollute the user's config dir, and survives the
+// lifetime of a single Claude Code session.
+func bootstrapMarkerPath(sessionID string) string {
+	// Sanitize: only keep characters safe for a filename. Claude
+	// Code's session IDs are UUIDs in practice but we don't want
+	// to trust that.
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		default:
+			return '_'
+		}
+	}, sessionID)
+	return filepath.Join(os.TempDir(), "clawtool-claude-bootstrap-"+safe)
+}
+
+// resolveBootstrapSessionID extracts the session_id from the hook's
+// stdin JSON (Claude Code's canonical channel) and falls back to the
+// CLAUDE_SESSION_ID env var. Returns empty when neither is available
+// — caller skips the idempotency check in that case (no marker = we
+// just always emit, which is safe).
+func resolveBootstrapSessionID(stdinBody []byte) string {
+	if len(stdinBody) > 0 {
+		var ev struct {
+			SessionID string `json:"session_id"`
+		}
+		if err := json.Unmarshal(stdinBody, &ev); err == nil {
+			if sid := strings.TrimSpace(ev.SessionID); sid != "" {
+				return sid
+			}
+		}
+	}
+	return strings.TrimSpace(os.Getenv("CLAUDE_SESSION_ID"))
 }
 
 // fetchUpdate is a package-level seam so tests can stub the version
@@ -209,17 +292,18 @@ func detectClawtoolMarkers(root string) []string {
 	return found
 }
 
-// emitBootstrapJSON writes the SessionStart hook output. Always
-// produces valid JSON even when context is empty, since Claude
-// Code expects a structured response from command hooks.
-func emitBootstrapJSON(w io.Writer, additionalContext string) {
+// emitBootstrapJSONFor writes the hook output, declaring the
+// supplied hookEventName ("SessionStart" or "UserPromptSubmit").
+// Always produces valid JSON even when context is empty, since
+// Claude Code expects a structured response from command hooks.
+func emitBootstrapJSONFor(w io.Writer, hookEventName, additionalContext string) {
 	out := struct {
 		HookSpecificOutput struct {
 			HookEventName     string `json:"hookEventName"`
 			AdditionalContext string `json:"additionalContext,omitempty"`
 		} `json:"hookSpecificOutput"`
 	}{}
-	out.HookSpecificOutput.HookEventName = "SessionStart"
+	out.HookSpecificOutput.HookEventName = hookEventName
 	out.HookSpecificOutput.AdditionalContext = additionalContext
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)

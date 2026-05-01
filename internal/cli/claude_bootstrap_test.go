@@ -282,9 +282,9 @@ func TestClaudeBootstrap_Onboarded_SuppressesNudge(t *testing.T) {
 }
 
 // TestClaudeBootstrap_UnknownEventEmitsEmpty asserts forward-compat
-// for events we don't yet implement (UserPromptSubmit, SessionEnd,
-// etc.) — emit empty additionalContext rather than refusing so
-// Claude Code's hook chain stays unblocked.
+// for events we don't yet implement (SessionEnd, etc.) — emit empty
+// additionalContext rather than refusing so Claude Code's hook chain
+// stays unblocked.
 func TestClaudeBootstrap_UnknownEventEmitsEmpty(t *testing.T) {
 	out := &bytes.Buffer{}
 	app := &App{Stdout: out, Stderr: &bytes.Buffer{}, Stdin: strings.NewReader("")}
@@ -298,5 +298,198 @@ func TestClaudeBootstrap_UnknownEventEmitsEmpty(t *testing.T) {
 	}
 	if got.HookSpecificOutput.AdditionalContext != "" {
 		t.Errorf("unknown event should produce empty context, got %q", got.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+// runBootstrapEvent is a flexible variant of runBootstrap that lets a
+// test pick the --event flavour and the stdin body (so tests can ship
+// the Claude Code session_id payload). Returns the parsed hook
+// output. Skips assertion of hookEventName so tests covering both
+// SessionStart + UserPromptSubmit can share the helper.
+func runBootstrapEvent(t *testing.T, cwd, event, stdin string) hookOutput {
+	t.Helper()
+	t.Chdir(cwd)
+	out := &bytes.Buffer{}
+	app := &App{
+		Stdout: out,
+		Stderr: &bytes.Buffer{},
+		Stdin:  strings.NewReader(stdin),
+	}
+	rc := app.runClaudeBootstrap([]string{"--event", event})
+	if rc != 0 {
+		t.Fatalf("runClaudeBootstrap exit=%d stderr=%q", rc, app.Stderr)
+	}
+	var got hookOutput
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("parse hook output: %v\nraw: %s", err, out.String())
+	}
+	return got
+}
+
+// TestClaudeBootstrap_UserPromptSubmit_FirstFire confirms the
+// user-prompt-submit event emits additionalContext + creates the
+// per-session marker. This is the canonical fire site after the
+// Claude Code v2.1.126 ToolUseContext regression.
+func TestClaudeBootstrap_UserPromptSubmit_FirstFire(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", t.TempDir())
+
+	sid := "sess-first-fire-" + filepath.Base(t.TempDir())
+	stdin := `{"session_id":"` + sid + `","cwd":"` + dir + `"}`
+	out := runBootstrapEvent(t, dir, "user-prompt-submit", stdin)
+
+	if out.HookSpecificOutput.HookEventName != "UserPromptSubmit" {
+		t.Errorf("hookEventName = %q, want UserPromptSubmit", out.HookSpecificOutput.HookEventName)
+	}
+	if !strings.Contains(out.HookSpecificOutput.AdditionalContext, "clawtool is active") {
+		t.Errorf("expected clawtool context on first fire, got %q", out.HookSpecificOutput.AdditionalContext)
+	}
+	marker := bootstrapMarkerPath(sid)
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("expected marker %s to exist after first fire: %v", marker, err)
+	}
+}
+
+// TestClaudeBootstrap_UserPromptSubmit_Idempotent confirms that a
+// second user-prompt-submit fire with the same session_id short-
+// circuits to empty context (we don't want to re-inject the
+// clawtool primer on every prompt).
+func TestClaudeBootstrap_UserPromptSubmit_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", t.TempDir())
+
+	sid := "sess-idem-" + filepath.Base(t.TempDir())
+	// Pre-stamp the marker so the run sees "already fired".
+	marker := bootstrapMarkerPath(sid)
+	if err := os.WriteFile(marker, []byte("seen"), 0o644); err != nil {
+		t.Fatalf("seed marker: %v", err)
+	}
+
+	stdin := `{"session_id":"` + sid + `","cwd":"` + dir + `"}`
+	out := runBootstrapEvent(t, dir, "user-prompt-submit", stdin)
+
+	if out.HookSpecificOutput.HookEventName != "UserPromptSubmit" {
+		t.Errorf("hookEventName = %q, want UserPromptSubmit", out.HookSpecificOutput.HookEventName)
+	}
+	if out.HookSpecificOutput.AdditionalContext != "" {
+		t.Errorf("idempotent re-fire should emit empty context, got %q", out.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+// TestClaudeBootstrap_SessionStart_StillWorks pins the back-compat
+// path. Hosts that haven't refreshed their hooks.json should still
+// see additionalContext on session-start, even after the move to
+// UserPromptSubmit became canonical.
+func TestClaudeBootstrap_SessionStart_StillWorks(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out := runBootstrapEvent(t, dir, "session-start", `{"session_id":"sess-back-compat"}`)
+	if out.HookSpecificOutput.HookEventName != "SessionStart" {
+		t.Errorf("hookEventName = %q, want SessionStart", out.HookSpecificOutput.HookEventName)
+	}
+	if !strings.Contains(out.HookSpecificOutput.AdditionalContext, "clawtool is active") {
+		t.Errorf("session-start should still emit context for back-compat, got %q", out.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+// TestClaudeBootstrap_UserPromptSubmit_EnvSessionFallback confirms the
+// CLAUDE_SESSION_ID env var is the fallback when stdin doesn't carry
+// the session_id (some hook runners may not pipe JSON).
+func TestClaudeBootstrap_UserPromptSubmit_EnvSessionFallback(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", t.TempDir())
+
+	sid := "sess-env-" + filepath.Base(t.TempDir())
+	t.Setenv("CLAUDE_SESSION_ID", sid)
+
+	// First fire — empty stdin, env supplies session_id.
+	out1 := runBootstrapEvent(t, dir, "user-prompt-submit", "")
+	if !strings.Contains(out1.HookSpecificOutput.AdditionalContext, "clawtool is active") {
+		t.Errorf("first fire (env sid) should emit context, got %q", out1.HookSpecificOutput.AdditionalContext)
+	}
+	if _, err := os.Stat(bootstrapMarkerPath(sid)); err != nil {
+		t.Errorf("marker not created via env fallback: %v", err)
+	}
+
+	// Second fire — should short-circuit.
+	out2 := runBootstrapEvent(t, dir, "user-prompt-submit", "")
+	if out2.HookSpecificOutput.AdditionalContext != "" {
+		t.Errorf("second fire should be empty (idempotent), got %q", out2.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+// TestBundledHooksJSON_SessionStartHasNoBootstrap verifies the move
+// off SessionStart: the bundled plugin must NOT call claude-bootstrap
+// from SessionStart anymore (Claude Code v2.1.126 ToolUseContext
+// regression). Peer-register MUST remain so registry discovery still
+// fires immediately.
+func TestBundledHooksJSON_SessionStartHasNoBootstrap(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "hooks", "hooks.json"))
+	if err != nil {
+		t.Fatalf("read bundled hooks.json: %v", err)
+	}
+	var cfg struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		t.Fatalf("parse hooks.json: %v", err)
+	}
+
+	// SessionStart: peer register only, no claude-bootstrap.
+	ss, ok := cfg.Hooks["SessionStart"]
+	if !ok || len(ss) == 0 {
+		t.Fatalf("SessionStart event missing")
+	}
+	var sawRegister, sawBootstrap bool
+	for _, m := range ss {
+		for _, h := range m.Hooks {
+			if strings.Contains(h.Command, "peer register") {
+				sawRegister = true
+			}
+			if strings.Contains(h.Command, "claude-bootstrap") {
+				sawBootstrap = true
+			}
+		}
+	}
+	if !sawRegister {
+		t.Errorf("SessionStart must keep `peer register` for registry discovery")
+	}
+	if sawBootstrap {
+		t.Errorf("SessionStart must NOT call claude-bootstrap (v2.1.126 ToolUseContext regression)")
+	}
+
+	// UserPromptSubmit: claude-bootstrap is the canonical fire site.
+	ups, ok := cfg.Hooks["UserPromptSubmit"]
+	if !ok || len(ups) == 0 {
+		t.Fatalf("UserPromptSubmit event missing")
+	}
+	var sawUPSBootstrap bool
+	for _, m := range ups {
+		for _, h := range m.Hooks {
+			if strings.Contains(h.Command, "claude-bootstrap --event user-prompt-submit") {
+				sawUPSBootstrap = true
+			}
+		}
+	}
+	if !sawUPSBootstrap {
+		t.Errorf("UserPromptSubmit must call `claude-bootstrap --event user-prompt-submit`")
 	}
 }
