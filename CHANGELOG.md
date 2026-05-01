@@ -4,7 +4,34 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.82] - 2026-05-01
+## [0.22.88] - 2026-05-01
+
+### Documentation
+
+- **playbooks:** Add aider/semble/mcp-toolbox/shell-mcp/promptfoo/rtk/archon setup playbooks (3d2cfeb)## [0.22.87] - 2026-05-01
+
+### Documentation
+
+- Add autonomous/bootstrap/fanout/release-notes/telemetry pages + refresh rules/portals/mcp-authoring for v0.22.50-.82 surface (440665f)## [0.22.86] - 2026-05-01
+
+### Documentation
+
+- **commands:** Add slash-commands for new verbs (init/onboard/bootstrap/autonomous/fanout/apm/source-inspect/source-registry/playbook-list-archon) (857581e)## [0.22.85] - 2026-05-01
+
+### Features
+
+- **fanout:** Add 'fanout' verb + Fanout MCP tool for parallel-subgoal orchestration (026dca4)## [0.22.84] - 2026-05-01
+
+### Documentation
+
+- **readme:** Audit + update for v0.22.50-.74 surface (BIAM peers, MCP tools, catalog, autonomous mode) (c68be5f)## [0.22.83] - 2026-05-01
+
+### Build
+
+- **docker:** Consolidate Dockerfiles into unified multi-stage Dockerfile.unified (6892a09)
+### Documentation
+
+- **changelog:** Regenerate for v0.22.82 [skip ci] (28c9d89)## [0.22.82] - 2026-05-01
 
 ### Documentation
 
