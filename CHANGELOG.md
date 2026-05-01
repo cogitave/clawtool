@@ -4,7 +4,29 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.102] - 2026-05-01
+## [0.22.106] - 2026-05-01
+
+### Features
+
+- **install:** Install.sh handles tmux + claude-code + node deps; add RuntimeInstall MCP tool for chat-driven backend install (9eecc8e)
+### Tests
+
+- **e2e:** Add fullstack Docker harness exercising install→daemon→tmux→peer-register→peer-send (3f7fc4d)## [0.22.105] - 2026-05-01
+
+### Features
+
+- **agents:** SendMessage auto-spawns tmux pane when no live peer (zero-touch peer creation) (02b8150)## [0.22.104] - 2026-05-01
+
+### Features
+
+- **bootstrap:** First-run onboarding prompt on UserPromptSubmit (idempotent via marker) (691cba0)## [0.22.103] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.102 [skip ci] (5deec46)
+### Fixes
+
+- **peer:** Make tmux send-keys stub path-portable (macos-latest CI red) (7ed27d7)## [0.22.102] - 2026-05-01
 
 ### Features
 
