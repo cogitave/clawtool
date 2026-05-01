@@ -133,6 +133,10 @@ func RegisterAgentTools(s *server.MCPServer) {
 				mcp.Description("Async BIAM mode. When true, returns a task_id immediately and persists the upstream stream into the BIAM store; pair with TaskGet / TaskWait. Default false (synchronous, buffered single payload).")),
 			mcp.WithString("from_instance",
 				mcp.Description("BIAM envelope sender label. Override when a non-default host (codex / gemini / opencode) is dispatching back through the shared daemon — the resulting envelope's `from` field reflects the actual sender, so reply threading + audit trails stay accurate. Empty = use the daemon's own identity.")),
+			mcp.WithString("mode",
+				mcp.Description("Routing mode. 'peer-prefer' (default, empty) routes to a registered live BIAM peer when one matches the resolved family; falls back to spawning a fresh subprocess when no peer is online. 'peer-only' fails when no peer matches (use to guarantee the prompt lands in the operator's open pane). 'spawn-only' skips the peer registry and always spawns (legacy behavior).")),
+			mcp.WithString("from_peer_id",
+				mcp.Description("Caller's a2a peer_id. Used by peer-prefer to skip self-dispatch (we won't route a prompt back to the peer that sent it). Empty = no anti-self check; usually fine.")),
 		),
 		runSendMessage,
 	)
@@ -166,6 +170,8 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	tag := req.GetString("tag", "")
 	bidi := req.GetBool("bidi", false)
 	fromInstance := strings.TrimSpace(req.GetString("from_instance", ""))
+	mode := strings.TrimSpace(req.GetString("mode", ""))
+	fromPeerID := strings.TrimSpace(req.GetString("from_peer_id", ""))
 
 	start := time.Now()
 	out := sendMessageResult{BaseResult: BaseResult{Operation: "SendMessage", Engine: "supervisor"}}
@@ -205,6 +211,12 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 	if fromInstance != "" {
 		opts["from_instance"] = fromInstance
+	}
+	if mode != "" {
+		opts["mode"] = mode
+	}
+	if fromPeerID != "" {
+		opts["from_peer_id"] = fromPeerID
 	}
 
 	if bidi {

@@ -137,6 +137,12 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	// without a startup race.
 	peerReg := a2a.NewRegistry(a2a.DefaultStatePath())
 	a2a.SetGlobal(peerReg)
+	// Install the peer-prefer router so Supervisor.Send can drop
+	// SendMessage prompts into a registered live peer's inbox
+	// (operator's already-open codex / gemini pane) instead of
+	// always spawning a fresh subprocess. Falls back to spawn when
+	// no peer matches; opt-out via CLAWTOOL_PEER_ROUTING=0.
+	agents.SetGlobalPeerRouter(agents.NewA2APeerRouter(peerReg))
 
 	// Hooks subsystem (F3). Register the process-wide manager once
 	// so every callsite can emit without threading a handle through.

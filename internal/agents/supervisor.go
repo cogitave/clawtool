@@ -75,6 +75,12 @@ type supervisor struct {
 	observer   *observability.Observer // optional; nil → no instrumentation
 	biam       BiamRunner              // optional; nil → SubmitAsync errors out
 	limiter    *dispatchLimiter        // built lazily from config.Dispatch.Limits; nil when disabled
+
+	// peerRouter is the live BIAM peer registry adapter. nil →
+	// peer-prefer falls through to spawn (legacy behavior). Daemon
+	// boot wires the global router via SetGlobalPeerRouter; tests
+	// inject stubs by setting this field directly.
+	peerRouter PeerRouter
 }
 
 // globalObserver is the process-wide OTel observer NewSupervisor
@@ -128,10 +134,11 @@ func NewSupervisor() Supervisor {
 			"hermes":   HermesTransport(),
 			"aider":    AiderTransport(),
 		},
-		rrState:  rr,
-		observer: globalObserver,
-		biam:     globalBiamRunner,
-		limiter:  lim,
+		rrState:    rr,
+		observer:   globalObserver,
+		biam:       globalBiamRunner,
+		limiter:    lim,
+		peerRouter: GetGlobalPeerRouter(),
 	}
 }
 
@@ -351,6 +358,20 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 	)
 	defer end()
 
+	// Peer-prefer preflight (operator directive: route to a live
+	// BIAM peer over spawning a fresh subprocess). Tries the
+	// primary's family first; failover chain entries fall through
+	// to the spawn path because peer-prefer's natural fit is "one
+	// well-known peer per family" rather than per-instance routing.
+	mode := resolveSendMode(opts)
+	if rc, handled, err := s.tryPeerRoute(ctx, primary, prompt, opts, mode); handled {
+		if err != nil {
+			s.observer.RecordError(ctx, err)
+			return nil, err
+		}
+		return rc, nil
+	}
+
 	chain := append([]Agent{primary}, fallback...)
 	var lastErr error
 	for _, a := range chain {
@@ -492,6 +513,60 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 	}
 	s.observer.RecordError(ctx, lastErr)
 	return nil, lastErr
+}
+
+// tryPeerRoute is the peer-prefer preflight (operator directive: route
+// to a registered live BIAM peer over spawning a fresh subprocess).
+//
+// Returns (rc, true, nil)  → peer route succeeded; caller returns rc.
+// Returns (nil, true, err) → peer-only mode and no peer found; caller
+//
+//	returns the error verbatim (typed ErrNoLivePeer).
+//
+// Returns (nil, false, nil) → fall through to the spawn path.
+//
+// Decision flowchart:
+//
+//	mode == spawn-only → fall through.
+//	router == nil      → fall through (daemon never wired one).
+//	FindOnlinePeer hit AND peer != caller → enqueue + ack stream.
+//	FindOnlinePeer miss + peer-only       → ErrNoLivePeer.
+//	FindOnlinePeer miss + peer-prefer     → fall through.
+//	Found-peer == caller (self-dispatch)  → fall through.
+func (s *supervisor) tryPeerRoute(ctx context.Context, primary Agent, prompt string, opts map[string]any, mode SendMode) (io.ReadCloser, bool, error) {
+	if mode == SendModeSpawnOnly {
+		return nil, false, nil
+	}
+	router := s.peerRouter
+	if router == nil {
+		// peer-only with no router is a fail-closed configuration
+		// error: the operator asked for peer routing but the daemon
+		// never wired one.
+		if mode == SendModePeerOnly {
+			return nil, true, fmt.Errorf("%w: peer registry not initialised", ErrNoLivePeer)
+		}
+		return nil, false, nil
+	}
+	caller := callerPeerID(opts)
+	peerID, displayName, ok := router.FindOnlinePeer(primary.Family, caller)
+	if !ok {
+		if mode == SendModePeerOnly {
+			return nil, true, fmt.Errorf("%w: family=%s", ErrNoLivePeer, primary.Family)
+		}
+		return nil, false, nil
+	}
+	msgID, err := router.EnqueueToPeer(peerID, caller, prompt)
+	if err != nil {
+		// Enqueue failed — peer-only surfaces the error; otherwise
+		// fall through to spawn so the operator's prompt still
+		// lands somewhere.
+		if mode == SendModePeerOnly {
+			return nil, true, fmt.Errorf("peer-only: enqueue failed: %w", err)
+		}
+		return nil, false, nil
+	}
+	_ = ctx // span attribution piggybacks on the parent dispatch span
+	return newPeerAckStream(peerID, displayName, msgID), true, nil
 }
 
 // observedReadCloser ends the per-dispatch span when the caller closes
