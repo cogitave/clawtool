@@ -144,6 +144,8 @@ func RegisterAgentTools(s *server.MCPServer) {
 				mcp.Description("Routing mode. 'peer-prefer' (default, empty) routes to a registered live BIAM peer when one matches the resolved family; falls back to spawning a fresh subprocess when no peer is online. 'peer-only' fails when no peer matches (use to guarantee the prompt lands in the operator's open pane). 'spawn-only' skips the peer registry and always spawns (legacy behavior).")),
 			mcp.WithString("from_peer_id",
 				mcp.Description("Caller's a2a peer_id. Used by peer-prefer to skip self-dispatch (we won't route a prompt back to the peer that sent it). Empty = no anti-self check; usually fine.")),
+			mcp.WithBoolean("auto_close",
+				mcp.Description("Per-task auto-close override for the resolved peer's tmux pane. Default true: when this dispatch lands in an auto-spawned pane and the task hits a terminal status, clawtool closes the pane. Pass false to pin the pane for this specific task — the lifecycle hook never sees a link for this task_id, so the pane stays alive for inspection or re-use by a follow-up dispatch. Has no effect on user-attached panes (they're never auto-closed regardless).")),
 		),
 		runSendMessage,
 	)
@@ -183,6 +185,15 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	fromInstance := strings.TrimSpace(req.GetString("from_instance", ""))
 	mode := strings.TrimSpace(req.GetString("mode", ""))
 	fromPeerID := strings.TrimSpace(req.GetString("from_peer_id", ""))
+	// auto_close is read with a default of true (current
+	// behaviour). We thread it through opts only when the caller
+	// explicitly set it (raw arg present) so the legacy code path
+	// — opts without an "auto_close" key — keeps working byte for
+	// byte. The supervisor's autoCloseFromOpts treats missing key
+	// as true regardless, so the default still wins; threading on
+	// presence-only just keeps the dispatch opts minimal.
+	_, autoCloseSet := req.GetArguments()["auto_close"]
+	autoClose := req.GetBool("auto_close", true)
 
 	start := time.Now()
 	out := sendMessageResult{BaseResult: BaseResult{Operation: "SendMessage", Engine: "supervisor"}}
@@ -228,6 +239,9 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 	if fromPeerID != "" {
 		opts["from_peer_id"] = fromPeerID
+	}
+	if autoCloseSet {
+		opts["auto_close"] = autoClose
 	}
 
 	if bidi {

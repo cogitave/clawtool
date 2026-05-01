@@ -437,6 +437,98 @@ func TestRouting_AutoSpawnFallsBackWhenNoTmux(t *testing.T) {
 	}
 }
 
+// TestSendMessage_AutoCloseFalseSkipsLink asserts ADR-034 Q3: when
+// the caller passes opts["auto_close"]=false on a SendMessage
+// landing in an auto-spawned peer, tryPeerRoute MUST NOT call
+// LinkTaskToPeer. Without the link, the BIAM terminal-status hook
+// can't find the task → peer mapping and skips the kill-pane —
+// the operator's pane stays alive for inspection.
+func TestSendMessage_AutoCloseFalseSkipsLink(t *testing.T) {
+	resetPeerLifecycleStateForTest()
+	t.Cleanup(resetPeerLifecycleStateForTest)
+
+	router := &stubPeerRouter{
+		peerID:      "peer-codex-1",
+		displayName: "codex@pane3",
+		online:      true,
+		autoSpawned: true, // simulate IsAutoSpawnedPeer == true
+	}
+	s := newPeerSupervisor(t, router, map[string]bool{"codex": true})
+	s.transports["codex"] = noSpawnTransport{family: "codex"}
+
+	rc, err := s.Send(context.Background(), "codex", "do not link me", map[string]any{
+		"env":        map[string]string{"CLAWTOOL_TASK_ID": "task-no-close"},
+		"auto_close": false,
+	})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	defer rc.Close()
+	body, _ := io.ReadAll(rc)
+	if !strings.Contains(string(body), "[peer-route]") {
+		t.Fatalf("expected peer-route ack, got %q", body)
+	}
+
+	// Verify the link table is empty for this task — the lifecycle
+	// hook would never find a row to close even if it ran.
+	taskPeerLinkMu.Lock()
+	_, linked := taskPeerLink["task-no-close"]
+	taskPeerLinkMu.Unlock()
+	if linked {
+		t.Errorf("auto_close=false MUST NOT register a lifecycle link; taskPeerLink has the row")
+	}
+}
+
+// TestSendMessage_AutoCloseTrueLinksAsBefore asserts the legacy
+// behaviour stays intact when auto_close is unset (default = true)
+// or explicitly true: the link gets registered and the lifecycle
+// hook can act on it. Mirror of the previous test — same shape so
+// regression on either branch is easy to spot.
+func TestSendMessage_AutoCloseTrueLinksAsBefore(t *testing.T) {
+	resetPeerLifecycleStateForTest()
+	t.Cleanup(resetPeerLifecycleStateForTest)
+
+	router := &stubPeerRouter{
+		peerID:      "peer-codex-1",
+		displayName: "codex@pane3",
+		online:      true,
+		autoSpawned: true,
+	}
+	s := newPeerSupervisor(t, router, map[string]bool{"codex": true})
+	s.transports["codex"] = noSpawnTransport{family: "codex"}
+
+	// Sub-test 1: explicit auto_close=true.
+	rc, err := s.Send(context.Background(), "codex", "default close", map[string]any{
+		"env":        map[string]string{"CLAWTOOL_TASK_ID": "task-explicit-true"},
+		"auto_close": true,
+	})
+	if err != nil {
+		t.Fatalf("Send (explicit true): %v", err)
+	}
+	_ = rc.Close()
+	taskPeerLinkMu.Lock()
+	pid := taskPeerLink["task-explicit-true"]
+	taskPeerLinkMu.Unlock()
+	if pid != "peer-codex-1" {
+		t.Errorf("auto_close=true should register link; got pid=%q", pid)
+	}
+
+	// Sub-test 2: omitted (default).
+	rc2, err := s.Send(context.Background(), "codex", "default close", map[string]any{
+		"env": map[string]string{"CLAWTOOL_TASK_ID": "task-default"},
+	})
+	if err != nil {
+		t.Fatalf("Send (default): %v", err)
+	}
+	_ = rc2.Close()
+	taskPeerLinkMu.Lock()
+	pid2 := taskPeerLink["task-default"]
+	taskPeerLinkMu.Unlock()
+	if pid2 != "peer-codex-1" {
+		t.Errorf("default (auto_close unset) should register link; got pid=%q", pid2)
+	}
+}
+
 // TestRouting_ModeAutoTmuxFailsWithoutTmux asserts mode=auto-tmux
 // refuses to fall back: when no tmux is detected the caller sees a
 // typed ErrTmuxUnavailable instead of a silent fresh-subprocess.

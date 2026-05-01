@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cogitave/clawtool/internal/a2a"
 	"github.com/cogitave/clawtool/internal/agents/biam"
@@ -230,6 +231,237 @@ func TestAutoClosePane_SendMessageEndToEnd(t *testing.T) {
 	mu.Unlock()
 	if len(got) != 1 || got[0] != peer.TmuxPane {
 		t.Errorf("expected one kill-pane on %s, got %v", peer.TmuxPane, got)
+	}
+}
+
+// recordCloseAndWindowFn returns a window-aware close-pane stub —
+// records every (paneID, windowID) pair the hook fires. Used by the
+// window-cleanup tests to assert the right (pane, window) tuple
+// reaches the cli adapter without spinning up real tmux. Sibling of
+// recordCloseFn (pane-only).
+func recordCloseAndWindowFn(t *testing.T) (*[]paneWindowPair, *sync.Mutex) {
+	t.Helper()
+	var (
+		mu     sync.Mutex
+		closed []paneWindowPair
+	)
+	prev := getCloseTmuxPaneAndMaybeWindowFn()
+	SetCloseTmuxPaneAndMaybeWindowFn(func(paneID, windowID string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		closed = append(closed, paneWindowPair{paneID, windowID})
+		return nil
+	})
+	t.Cleanup(func() { SetCloseTmuxPaneAndMaybeWindowFn(prev) })
+	return &closed, &mu
+}
+
+type paneWindowPair struct {
+	pane, window string
+}
+
+// TestAutoCloseWindow_OnLastPaneClosed asserts the Q1 invariant:
+// when an auto-spawned peer's metadata carries MetaTmuxWindow, the
+// close hook routes through the window-aware seam (so the cli
+// adapter can probe `tmux list-panes -t <window>` and reap the
+// empty window). The pane+window pair fed to the seam matches what
+// the spawner stamped on the registry row.
+func TestAutoCloseWindow_OnLastPaneClosed(t *testing.T) {
+	resetPeerLifecycleStateForTest()
+	t.Cleanup(resetPeerLifecycleStateForTest)
+
+	reg := a2a.NewRegistry(filepath.Join(t.TempDir(), "peers.json"))
+	peer, err := reg.Register(a2a.RegisterInput{
+		DisplayName: "codex:auto-spawn",
+		Backend:     "codex",
+		TmuxPane:    "%42",
+		Metadata: map[string]string{
+			MetaAutoSpawned: "true",
+			MetaTmuxWindow:  "@7",
+		},
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	// Bind the WINDOW-aware seam (recordCloseAndWindowFn). Leaving
+	// the pane-only seam on its default no-op proves the hook
+	// picked the window-aware path because of MetaTmuxWindow.
+	closed, mu := recordCloseAndWindowFn(t)
+	LinkTaskToPeer("task-window-1", peer.PeerID)
+
+	if err := MaybeAutoClosePane("task-window-1", reg); err != nil {
+		t.Fatalf("MaybeAutoClosePane: %v", err)
+	}
+	mu.Lock()
+	got := append([]paneWindowPair(nil), (*closed)...)
+	mu.Unlock()
+	if len(got) != 1 {
+		t.Fatalf("expected one window-aware close call, got %v", got)
+	}
+	if got[0].pane != "%42" || got[0].window != "@7" {
+		t.Errorf("expected close on (%%42,@7), got %+v", got[0])
+	}
+}
+
+// TestAutoCloseWindow_KeepsWindowWhenOtherPanesAlive asserts the
+// kill-window step is skipped when other panes remain in the
+// window. The seam's job (KillTmuxPaneAndMaybeWindow in cli) is
+// where the list-panes probe lives — the agents-side hook just
+// hands off the pair. Here we assert the lifecycle hook DOES NOT
+// degrade to the legacy pane-only seam when the window-aware seam
+// is wired (it must always pass the windowID through so the cli
+// adapter can decide whether to reap).
+func TestAutoCloseWindow_KeepsWindowWhenOtherPanesAlive(t *testing.T) {
+	resetPeerLifecycleStateForTest()
+	t.Cleanup(resetPeerLifecycleStateForTest)
+
+	reg := a2a.NewRegistry(filepath.Join(t.TempDir(), "peers.json"))
+	peer, err := reg.Register(a2a.RegisterInput{
+		DisplayName: "codex:auto-spawn",
+		Backend:     "codex",
+		TmuxPane:    "%50",
+		Metadata: map[string]string{
+			MetaAutoSpawned: "true",
+			MetaTmuxWindow:  "@9",
+		},
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	// Stub BOTH seams so we can detect the wrong path: if the hook
+	// chose pane-only (because windowID was empty / wrongly
+	// treated as missing), the pane-only stub records it and we
+	// fail the test. Window-aware stub records the right path.
+	paneOnly, paneOnlyMu := recordCloseFn(t)
+	windowAware, windowMu := recordCloseAndWindowFn(t)
+
+	LinkTaskToPeer("task-window-2", peer.PeerID)
+	if err := MaybeAutoClosePane("task-window-2", reg); err != nil {
+		t.Fatalf("MaybeAutoClosePane: %v", err)
+	}
+
+	paneOnlyMu.Lock()
+	pof := append([]string(nil), (*paneOnly)...)
+	paneOnlyMu.Unlock()
+	windowMu.Lock()
+	wa := append([]paneWindowPair(nil), (*windowAware)...)
+	windowMu.Unlock()
+
+	if len(pof) != 0 {
+		t.Errorf("hook degraded to pane-only seam despite MetaTmuxWindow; pane-only got %v", pof)
+	}
+	if len(wa) != 1 || wa[0].window != "@9" {
+		t.Errorf("expected window-aware seam to receive @9, got %+v", wa)
+	}
+}
+
+// TestAutoCloseGracePeriod_DelaysKill asserts the Q2 contract: with
+// SetAutoCloseGraceSeconds(1), MaybeAutoClosePane returns immediately
+// without firing the close stub; after the grace window the stub
+// fires once. Uses a sub-second grace so the test stays fast.
+func TestAutoCloseGracePeriod_DelaysKill(t *testing.T) {
+	resetPeerLifecycleStateForTest()
+	t.Cleanup(resetPeerLifecycleStateForTest)
+
+	reg := a2a.NewRegistry(filepath.Join(t.TempDir(), "peers.json"))
+	peer, err := reg.Register(a2a.RegisterInput{
+		DisplayName: "codex:auto-spawn",
+		Backend:     "codex",
+		TmuxPane:    "%60",
+		Metadata:    map[string]string{MetaAutoSpawned: "true"},
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	closed, mu := recordCloseFn(t)
+	// Use 1 second grace — table-shorter would skip the timer
+	// path entirely (<= 0 short-circuits to immediate).
+	SetAutoCloseGraceSeconds(1)
+	LinkTaskToPeer("task-grace-1", peer.PeerID)
+
+	if err := MaybeAutoClosePane("task-grace-1", reg); err != nil {
+		t.Fatalf("MaybeAutoClosePane: %v", err)
+	}
+
+	// Immediately after: nothing should have fired. Brief sleep
+	// to let any (incorrectly-fired) AfterFunc goroutine schedule.
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	early := append([]string(nil), (*closed)...)
+	mu.Unlock()
+	if len(early) != 0 {
+		t.Fatalf("kill-pane fired during grace window: %v", early)
+	}
+
+	// Wait past the deadline. 1.3s > 1.0s budget + AfterFunc slack.
+	time.Sleep(1300 * time.Millisecond)
+	mu.Lock()
+	late := append([]string(nil), (*closed)...)
+	mu.Unlock()
+	if len(late) != 1 || late[0] != "%60" {
+		t.Errorf("expected one kill-pane on %%60 after grace, got %v", late)
+	}
+}
+
+// TestAutoCloseGracePeriod_CancelsOnRetrigger asserts the back-to-
+// back rule: a fresh LinkTaskToPeer for the SAME peer arriving
+// inside the grace window cancels the pending kill. Without this,
+// rapid follow-up dispatches into the same auto-spawned pane would
+// have the rug pulled out from under them. After the grace window
+// elapses on the SECOND task, the close fires once.
+func TestAutoCloseGracePeriod_CancelsOnRetrigger(t *testing.T) {
+	resetPeerLifecycleStateForTest()
+	t.Cleanup(resetPeerLifecycleStateForTest)
+
+	reg := a2a.NewRegistry(filepath.Join(t.TempDir(), "peers.json"))
+	peer, err := reg.Register(a2a.RegisterInput{
+		DisplayName: "codex:auto-spawn",
+		Backend:     "codex",
+		TmuxPane:    "%70",
+		Metadata:    map[string]string{MetaAutoSpawned: "true"},
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	closed, mu := recordCloseFn(t)
+	SetAutoCloseGraceSeconds(1)
+
+	// Task A finishes first, queues a deferred kill.
+	LinkTaskToPeer("task-A", peer.PeerID)
+	if err := MaybeAutoClosePane("task-A", reg); err != nil {
+		t.Fatalf("MaybeAutoClosePane (A): %v", err)
+	}
+
+	// Mid-grace, task B starts — re-triggers the link. This must
+	// cancel the pending timer.
+	time.Sleep(300 * time.Millisecond)
+	LinkTaskToPeer("task-B", peer.PeerID)
+
+	// Wait past A's original deadline. If the cancel didn't take,
+	// task-A's deferred kill fires here.
+	time.Sleep(1100 * time.Millisecond)
+	mu.Lock()
+	mid := append([]string(nil), (*closed)...)
+	mu.Unlock()
+	if len(mid) != 0 {
+		t.Fatalf("re-trigger failed to cancel timer: kill fired during second task: %v", mid)
+	}
+
+	// Now finish task B and let its grace window elapse — close
+	// should fire exactly once (for task-B's deferred kill).
+	if err := MaybeAutoClosePane("task-B", reg); err != nil {
+		t.Fatalf("MaybeAutoClosePane (B): %v", err)
+	}
+	time.Sleep(1300 * time.Millisecond)
+	mu.Lock()
+	final := append([]string(nil), (*closed)...)
+	mu.Unlock()
+	if len(final) != 1 || final[0] != "%70" {
+		t.Errorf("expected one kill after task-B grace, got %v", final)
 	}
 }
 

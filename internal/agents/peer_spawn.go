@@ -57,33 +57,52 @@ var tmuxBin = func() string {
 	return p
 }
 
-// tmuxNewWindow runs `tmux new-window -P -F '#{pane_id}'` for the
-// given command line in the given cwd and returns the new pane id
-// (e.g. "%42") so the lifecycle hook has a handle to close later.
-// `-P` prints output, `-F '#{pane_id}'` selects the pane id format;
-// without these flags tmux returns nothing on stdout and we'd lose
+// tmuxNewWindow runs `tmux new-window -P -F '#{pane_id} #{window_id}'`
+// for the given command line in the given cwd and returns BOTH the
+// new pane id (e.g. "%42") and window id (e.g. "@7") so the
+// lifecycle hook has handles for both kill-pane and (when the pane
+// was the last in its window) kill-window. `-P` prints output; the
+// `-F` template space-separates the two ids on a single line.
+// Without these flags tmux returns nothing on stdout and we'd lose
 // track of the spawned pane (the auto-close hook would have no
 // target). Test seam — production wires the real exec.Command,
-// tests substitute a recorder that returns a deterministic id.
+// tests substitute a recorder that returns deterministic ids.
 //
 // Honors CLAWTOOL_TMUX_SOCKET via the same `-L <socket>` prefix as
 // the rest of the tmux callsites so a containerised tmux server
 // (e2e Docker harness) is reachable.
-var tmuxNewWindow = func(ctx context.Context, cwd, cmdline string) (string, error) {
+//
+// Backward compatibility: callers receive ("%N", "") when tmux is
+// running an old enough version that #{window_id} is unsupported
+// (the field has been around since tmux 2.4 / 2017 — vanishingly
+// rare today). The window-cleanup hook short-circuits on the empty
+// window id, so the spawn keeps working without window cleanup.
+var tmuxNewWindow = func(ctx context.Context, cwd, cmdline string) (paneID, windowID string, err error) {
 	args := []string{}
 	if sock := strings.TrimSpace(os.Getenv("CLAWTOOL_TMUX_SOCKET")); sock != "" {
 		args = append(args, "-L", sock)
 	}
-	args = append(args, "new-window", "-P", "-F", "#{pane_id}")
+	args = append(args, "new-window", "-P", "-F", "#{pane_id} #{window_id}")
 	if cwd != "" {
 		args = append(args, "-c", cwd)
 	}
 	args = append(args, cmdline)
-	out, err := exec.CommandContext(ctx, "tmux", args...).Output()
-	if err != nil {
-		return "", err
+	out, oerr := exec.CommandContext(ctx, "tmux", args...).Output()
+	if oerr != nil {
+		return "", "", oerr
 	}
-	return strings.TrimSpace(string(out)), nil
+	line := strings.TrimSpace(string(out))
+	// Split on first whitespace; tolerate single-token output for
+	// older tmux versions that drop unknown -F fields silently.
+	fields := strings.Fields(line)
+	switch len(fields) {
+	case 0:
+		return "", "", nil
+	case 1:
+		return fields[0], "", nil
+	default:
+		return fields[0], fields[1], nil
+	}
 }
 
 // TmuxAvailable reports whether $TMUX is set AND a `tmux` binary
@@ -124,7 +143,7 @@ func (a *a2aPeerSpawner) EnsurePeer(family, fromPeerID string) (string, string, 
 	cmdline := strings.Join(append([]string{bin}, argv...), " ")
 	ctx, cancel := contextWithDefaultDeadline()
 	defer cancel()
-	paneID, err := tmuxNewWindow(ctx, cwd, cmdline)
+	paneID, windowID, err := tmuxNewWindow(ctx, cwd, cmdline)
 	if err != nil {
 		return "", "", false, fmt.Errorf("auto-spawn: tmux new-window: %w", err)
 	}
@@ -136,20 +155,29 @@ func (a *a2aPeerSpawner) EnsurePeer(family, fromPeerID string) (string, string, 
 	// (registered through the normal SessionStart hook path) never
 	// becomes eligible for auto-close even if it shares the same
 	// family / cwd as the auto-spawn target.
+	//
+	// MetaTmuxWindow records the window_id alongside so the close
+	// hook can reap an empty window after killing the last pane in
+	// it (ADR-034 Q1). Empty when running an old tmux that didn't
+	// echo `#{window_id}` — close hook then falls back to pane-only.
+	meta := map[string]string{
+		"spawned_by":      "clawtool",
+		"spawn_terminal":  "tmux",
+		"spawn_bin":       bin,
+		"spawn_initiator": fromPeerID,
+		"spawn_trigger":   "sendmessage-auto",
+		MetaAutoSpawned:   "true",
+	}
+	if windowID != "" {
+		meta[MetaTmuxWindow] = windowID
+	}
 	in := a2a.RegisterInput{
 		DisplayName: displayName,
 		Path:        cwd,
 		Backend:     familyToBackend(family),
 		Role:        a2a.RoleAgent,
 		TmuxPane:    paneID,
-		Metadata: map[string]string{
-			"spawned_by":      "clawtool",
-			"spawn_terminal":  "tmux",
-			"spawn_bin":       bin,
-			"spawn_initiator": fromPeerID,
-			"spawn_trigger":   "sendmessage-auto",
-			MetaAutoSpawned:   "true",
-		},
+		Metadata:    meta,
 	}
 	peer, err := a.reg.Register(in)
 	if err != nil {

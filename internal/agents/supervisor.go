@@ -614,7 +614,13 @@ func (s *supervisor) tryPeerRoute(ctx context.Context, primary Agent, prompt str
 	// peers — that path leaves auto_spawned absent and the hook
 	// short-circuits at the unlinkTask check, so an operator's
 	// manually-opened pane is safe from auto-close.
-	if router.IsAutoSpawnedPeer(peerID) {
+	//
+	// Per-task override (ADR-034 Q3): a SendMessage caller can pin
+	// the pane for this specific dispatch by passing
+	// opts["auto_close"]=false; we then skip LinkTaskToPeer so the
+	// terminal-status hook never finds a row to close. Default
+	// (unset / true) preserves the auto-close behaviour.
+	if router.IsAutoSpawnedPeer(peerID) && autoCloseFromOpts(opts) {
 		if taskID := taskIDFromOpts(opts); taskID != "" {
 			LinkTaskToPeer(taskID, peerID)
 		}
@@ -640,6 +646,45 @@ func taskIDFromOpts(opts map[string]any) string {
 		return ""
 	}
 	return env["CLAWTOOL_TASK_ID"]
+}
+
+// autoCloseFromOpts returns the per-task auto-close preference
+// (ADR-034 Q3). Default = true (current behaviour: lifecycle hook
+// closes the auto-spawned pane on terminal status). Setting
+// opts["auto_close"]=false at the SendMessage call site pins the
+// pane for that specific task — the hook never finds the link in
+// the table and skips the close. Useful for an operator who wants
+// to inspect the pane after the task settles, or for a long-lived
+// "scratch" pane used across multiple unrelated dispatches.
+//
+// Recognised opts shapes:
+//   - bool: opts["auto_close"] = false
+//   - string: opts["auto_close"] = "false" | "0" (CLI / MCP path
+//     where everything serialises through string form). "true" /
+//     "1" / "yes" / empty string all map to true (default).
+//
+// Anything else (missing key, wrong type) → true so the legacy
+// auto-close behaviour stays the default.
+func autoCloseFromOpts(opts map[string]any) bool {
+	if opts == nil {
+		return true
+	}
+	v, ok := opts["auto_close"]
+	if !ok {
+		return true
+	}
+	switch t := v.(type) {
+	case bool:
+		return t
+	case string:
+		switch strings.ToLower(strings.TrimSpace(t)) {
+		case "false", "0", "no", "off":
+			return false
+		default:
+			return true
+		}
+	}
+	return true
 }
 
 // tryAutoSpawn attempts to bring an agent of `family` to life when no

@@ -30,8 +30,14 @@ import (
 // once on every binary launch + before the daemon installs the BIAM
 // terminal-status hook. Tests that don't import internal/cli still
 // see the agents-package default no-op closeTmuxPaneFn.
+//
+// Both seams (close-pane + close-pane-and-window) bind to this
+// package's tmux helpers. The agents-side hook picks which one to
+// invoke based on whether the auto-spawned peer's metadata carries
+// a tmux window_id (it does, via MetaTmuxWindow set at spawn time).
 func init() {
 	agents.SetCloseTmuxPaneFn(KillTmuxPane)
+	agents.SetCloseTmuxPaneAndMaybeWindowFn(KillTmuxPaneAndMaybeWindow)
 }
 
 // tmuxSocketArgs returns `-L <socket>` when CLAWTOOL_TMUX_SOCKET is
@@ -154,6 +160,94 @@ func tmuxKillPane(paneID string) error {
 // containerised tmux servers stay reachable.
 func KillTmuxPane(paneID string) error {
 	return tmuxKillPane(paneID)
+}
+
+// tmuxWindowIDPattern matches tmux's `@<digits>` window id format
+// returned by `#{window_id}`. Same paranoia as the pane-id check —
+// any drift from the literal shape is rejected before we hand the
+// value to `tmux kill-window -t`.
+var tmuxWindowIDPattern = regexp.MustCompile(`^@[0-9]+$`)
+
+// validTmuxWindowID is the window_id sibling of validTmuxPaneID.
+func validTmuxWindowID(windowID string) bool {
+	return tmuxWindowIDPattern.MatchString(windowID)
+}
+
+// tmuxWindowEmpty reports whether windowID has no remaining panes.
+// `tmux list-panes -t <window_id>` errors with "can't find window"
+// when the window has already been collapsed by tmux itself (last
+// pane closed → window auto-removed in some tmux versions); both
+// "no output" and "errored" map to "empty" so the caller's
+// kill-window is best-effort and idempotent.
+//
+// On modern tmux (3.x) closing the last pane normally collapses the
+// window automatically — but the e2e harness has caught cases where
+// `kill-pane -t <pane_id>` leaves an empty window behind (custom
+// `remain-on-exit` settings; pane-detach via -X). The window-cleanup
+// hook needs to handle both: pane gone + window auto-collapsed
+// (true → kill-window is a no-op typed error we swallow), and pane
+// gone + window still present (true → kill-window actually closes).
+func tmuxWindowEmpty(windowID string) bool {
+	if !validTmuxWindowID(windowID) {
+		return false
+	}
+	out, err := tmuxOutputArgv("tmux", tmuxArgv("list-panes", "-t", windowID, "-F", "#{pane_id}")...)
+	if err != nil {
+		// list-panes refuses an unknown window — treat as empty
+		// so the caller skips the kill-window (already gone).
+		return true
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.TrimSpace(line) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// tmuxKillWindow closes a tmux window. Refuses anything that doesn't
+// match the `@<digits>` shape so a malformed registry row can't
+// smuggle arguments. Best-effort like its kill-pane sibling — the
+// caller treats any error as a silent skip.
+func tmuxKillWindow(windowID string) error {
+	if !validTmuxWindowID(windowID) {
+		return fmt.Errorf("invalid tmux window id %q (want @<digits>)", windowID)
+	}
+	if err := tmuxRunArgv("tmux", tmuxArgv("kill-window", "-t", windowID)...); err != nil {
+		return fmt.Errorf("tmux kill-window: %w", err)
+	}
+	return nil
+}
+
+// KillTmuxPaneAndMaybeWindow closes the named pane, then probes the
+// window — if no panes remain (or the window was already auto-
+// collapsed by tmux) it ALSO closes the window so an auto-spawned
+// pane doesn't leave an empty tmux window behind. Empty windowID
+// (peer registered before the spawner started recording window_id)
+// short-circuits to legacy pane-only close so the existing-peer
+// path is unaffected.
+//
+// Returns the kill-pane error (if any). The kill-window step is
+// best-effort: a stale window id, a tmux server that already
+// reaped the window, or a permission glitch all surface as
+// non-fatal — we still return success on the kill-pane step,
+// which is the caller's load-bearing concern.
+func KillTmuxPaneAndMaybeWindow(paneID, windowID string) error {
+	if err := tmuxKillPane(paneID); err != nil {
+		return err
+	}
+	if windowID == "" {
+		return nil
+	}
+	if !tmuxWindowEmpty(windowID) {
+		return nil
+	}
+	// Empty window detected — close it. Errors are swallowed by
+	// the caller (peer-lifecycle hook) which logs but doesn't
+	// propagate; an already-collapsed window is a no-op typed
+	// error.
+	_ = tmuxKillWindow(windowID)
+	return nil
 }
 
 // tmuxPaneAlive checks whether the named pane is still listed by

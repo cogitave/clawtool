@@ -51,17 +51,30 @@ type Config struct {
 }
 
 // PeerConfig holds per-feature toggles for the peer registry / a2a
-// surface. Currently exposes a single knob: AutoClosePanes flips off
-// the SendMessage auto-close lifecycle hook for power users who want
-// auto-spawned tmux panes to stick around for post-mortem inspection.
-// Default is on (true) — without it, the user's "şişer" case
-// triggers within minutes of normal usage.
+// surface. AutoClosePanes flips off the SendMessage auto-close
+// lifecycle hook for power users who want auto-spawned tmux panes
+// to stick around for post-mortem inspection. AutoCloseGraceSeconds
+// adds a configurable delay between the task hitting terminal status
+// and the pane being killed — useful when an operator wants a few
+// seconds of "the agent just finished, let me read the last reply"
+// before the window snaps shut. Default is on (close immediately) —
+// without it, the user's "şişer" case triggers within minutes of
+// normal usage.
 type PeerConfig struct {
 	// AutoClosePanes is a pointer so nil means default-on. An
 	// explicit `false` (operator opt-out) round-trips to disk and
 	// flips agents.SetAutoClosePanes(false) at boot, leaving every
 	// auto-spawned pane open after its dispatch terminates.
 	AutoClosePanes *bool `toml:"auto_close_panes,omitempty"`
+
+	// AutoCloseGraceSeconds defers the kill-pane after a task lands
+	// in terminal status by N seconds. Default 0 = immediate close
+	// (legacy behaviour). When > 0, the lifecycle hook schedules
+	// the kill via time.AfterFunc and cancels the timer if a fresh
+	// dispatch lands on the same auto-spawned peer before the
+	// grace window elapses (so back-to-back tasks don't kill the
+	// pane mid-second-task). Negative values are treated as 0.
+	AutoCloseGraceSeconds int `toml:"auto_close_grace_seconds,omitempty"`
 }
 
 // SandboxWorkerConfig wires the daemon to a sandbox-worker

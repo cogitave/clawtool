@@ -325,6 +325,79 @@ func TestTmuxSocketEnv(t *testing.T) {
 	}
 }
 
+// TestKillTmuxPaneAndMaybeWindow_KillsBothWhenWindowEmpty asserts the
+// Q1 contract end-to-end at the cli adapter layer: kill-pane fires
+// AND list-panes returns no remaining panes → kill-window fires too.
+func TestKillTmuxPaneAndMaybeWindow_KillsBothWhenWindowEmpty(t *testing.T) {
+	calls := withStubTmuxExec(t, func(args []string) string {
+		// list-panes is the empty-window probe — return empty
+		// stdout so tmuxWindowEmpty reports "no panes left".
+		if containsArg(args, "list-panes") {
+			return ""
+		}
+		return ""
+	})
+	if err := KillTmuxPaneAndMaybeWindow("%42", "@7"); err != nil {
+		t.Fatalf("KillTmuxPaneAndMaybeWindow: %v", err)
+	}
+	// Expect: kill-pane %42, list-panes -t @7, kill-window -t @7.
+	if got := len(*calls); got != 3 {
+		t.Fatalf("expected 3 tmux calls, got %d: %v", got, *calls)
+	}
+	if !equalSlice((*calls)[0], []string{"tmux", "kill-pane", "-t", "%42"}) {
+		t.Errorf("call[0] = %v", (*calls)[0])
+	}
+	// The probe + kill must target the window.
+	if !containsArg((*calls)[1], "@7") || !containsArg((*calls)[1], "list-panes") {
+		t.Errorf("call[1] missing list-panes -t @7: %v", (*calls)[1])
+	}
+	if !equalSlice((*calls)[2], []string{"tmux", "kill-window", "-t", "@7"}) {
+		t.Errorf("call[2] = %v, want kill-window -t @7", (*calls)[2])
+	}
+}
+
+// TestKillTmuxPaneAndMaybeWindow_KeepsWindowWhenOtherPanesAlive
+// asserts list-panes returning more than zero panes short-circuits
+// the kill-window step. The pane is still killed.
+func TestKillTmuxPaneAndMaybeWindow_KeepsWindowWhenOtherPanesAlive(t *testing.T) {
+	calls := withStubTmuxExec(t, func(args []string) string {
+		if containsArg(args, "list-panes") {
+			// Two panes remaining — window is NOT empty.
+			return "%50\n%51\n"
+		}
+		return ""
+	})
+	if err := KillTmuxPaneAndMaybeWindow("%50", "@9"); err != nil {
+		t.Fatalf("KillTmuxPaneAndMaybeWindow: %v", err)
+	}
+	// Expect kill-pane + list-panes; NO kill-window.
+	if got := len(*calls); got != 2 {
+		t.Fatalf("expected 2 tmux calls, got %d: %v", got, *calls)
+	}
+	for _, c := range *calls {
+		if containsArg(c, "kill-window") {
+			t.Errorf("kill-window leaked despite remaining panes: %v", c)
+		}
+	}
+}
+
+// TestKillTmuxPaneAndMaybeWindow_EmptyWindowIDSkipsCleanup asserts
+// the legacy fallback: callers that pass windowID="" (peer
+// registered before the spawner started recording window_id) get
+// pane-only behaviour. No list-panes probe, no kill-window.
+func TestKillTmuxPaneAndMaybeWindow_EmptyWindowIDSkipsCleanup(t *testing.T) {
+	calls := withStubTmuxExec(t, nil)
+	if err := KillTmuxPaneAndMaybeWindow("%60", ""); err != nil {
+		t.Fatalf("KillTmuxPaneAndMaybeWindow: %v", err)
+	}
+	if got := len(*calls); got != 1 {
+		t.Fatalf("expected 1 tmux call (kill-pane only), got %d: %v", got, *calls)
+	}
+	if !equalSlice((*calls)[0], []string{"tmux", "kill-pane", "-t", "%60"}) {
+		t.Errorf("call[0] = %v", (*calls)[0])
+	}
+}
+
 // containsArg reports whether argv contains the literal arg.
 func containsArg(argv []string, arg string) bool {
 	for _, a := range argv {

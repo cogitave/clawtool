@@ -161,6 +161,16 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	if cfg.Peer.AutoClosePanes != nil {
 		agents.SetAutoClosePanes(*cfg.Peer.AutoClosePanes)
 	}
+	// Grace-period knob: when > 0, MaybeAutoClosePane defers the
+	// kill via time.AfterFunc so the operator gets a few seconds
+	// of "agent finished, last reply visible" before the pane
+	// snaps shut. Default 0 (immediate close) preserves existing
+	// behaviour. Negative values are clamped to 0 inside the
+	// setter — TOML can't express negatives without surfacing
+	// here, but mirroring the clamp keeps the contract obvious.
+	if cfg.Peer.AutoCloseGraceSeconds > 0 {
+		agents.SetAutoCloseGraceSeconds(cfg.Peer.AutoCloseGraceSeconds)
+	}
 
 	// Hooks subsystem (F3). Register the process-wide manager once
 	// so every callsite can emit without threading a handle through.
