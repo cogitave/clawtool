@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.93] - 2026-05-01
+## [0.22.94] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.93 [skip ci] (b0ed860)
+### Features
+
+- **peer:** Add peer list verb + PeerList MCP tool for BIAM peer discovery (13c352c)## [0.22.93] - 2026-05-01
 
 ### Documentation
 
