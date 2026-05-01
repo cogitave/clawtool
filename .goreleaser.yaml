@@ -76,7 +76,13 @@ release:
     name: clawtool
   draft: false
   prerelease: auto
-  mode: append
+  # mode: removed 2026-05-01 — `append` was overriding --release-notes
+  # and producing release bodies with header + footer but an EMPTY
+  # middle section (the rich BODY.md content was silently dropped).
+  # Default mode (keep-existing) lets --release-notes=BODY.md
+  # populate the changelog body cleanly. Verified: v0.22.78 had
+  # `mode: append` and shipped without commit list; this comment
+  # change is paired with that diagnosis.
   header: |
     ## clawtool {{ .Tag }}
 
