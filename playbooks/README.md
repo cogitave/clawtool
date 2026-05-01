@@ -106,12 +106,36 @@ The only added trust is in the agent runtime (Claude Code,
 Cursor, Codex, …) — which the operator already chose to trust
 when they installed it.
 
+## Tool playbooks
+
+Pre-built recipes for tools clawtool integrates with. Each one
+follows the structure documented in `add-new-tool.md` (Prereqs /
+Install / Auth / Register-with-clawtool / Smoke-test /
+Troubleshoot).
+
+- `aider/setup.md` — Aider as BIAM peer #6 (repo-map-aware
+  pair-programming CLI).
+- `archon/setup.md` — Archon YAML workflow loader (phase 1:
+  parse + list via `clawtool playbook list-archon`).
+- `github/setup.md` — GitHub via `gh` CLI OAuth device flow.
+- `mastra/setup.md` — Mastra TypeScript agent server, driven via
+  HTTP from `mcp__clawtool__Bash`.
+- `mcp-toolbox/setup.md` — Google's reference DB MCP server
+  (Postgres, MySQL, SQLite, BigQuery, Mongo, Redis, Spanner).
+- `promptfoo/setup.md` — promptfoo redteam baseline that drives
+  every clawtool agent family through `clawtool send --agent`.
+- `rtk/setup.md` — rtk CLI proxy that compresses Bash output for
+  60-90% token savings (pre_tool_use rewrite layer).
+- `semble/setup.md` — semble code-search MCP source (~98% fewer
+  tokens than grep+read).
+- `shell-mcp/setup.md` — sandbox-aware shell MCP server with
+  per-directory allowlist.
+
 ## Status
 
-Foundation only as of v0.22.46. Pre-built playbooks ship one at
-a time per autodev tick:
+Foundation + an initial wave of tool playbooks. Still on the
+backlog:
 
-- ✅ `github/` — minimal example using `gh` CLI.
 - ⏳ `slack/` — to come.
 - ⏳ `jira/` — to come.
 - ⏳ `linear/` — to come.
@@ -120,6 +144,6 @@ a time per autodev tick:
   across all configured playbooks (the 10xProductivity
   flagship workflow).
 
-The `clawtool playbook` CLI verb is on the autodev backlog as
-**QQ** — wires `playbooks/` into the same surface as `recipe`,
-`source`, and `bridge`.
+The `clawtool playbook` CLI verb landed in phase 1 with
+`list-archon`; the broader `list` / `show` / `new` surface is
+still on the autodev backlog.
