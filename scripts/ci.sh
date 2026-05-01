@@ -170,6 +170,12 @@ else
         # Bootstrap fixture: skips cleanly until the bootstrap verb
         # lands on this branch. Same docker gate as the others.
         run_stage e2e-bootstrap env CLAWTOOL_E2E_DOCKER=1 "$GO_BIN" test -count=1 -timeout=300s ./test/e2e/bootstrap/... || true
+        # Fullstack fixture: end-to-end install→daemon→tmux→peer
+        # surface. Build-tagged `e2e` so the package only compiles
+        # when this stage runs (avoids dragging docker fixtures into
+        # the default `go test ./...` graph). Larger timeout because
+        # the build stage compiles the binary inside the container.
+        run_stage e2e-fullstack env CLAWTOOL_E2E_DOCKER=1 "$GO_BIN" test -tags=e2e -count=1 -timeout=600s ./test/e2e/fullstack/... || true
 
         # Docker image build + MCP initialize handshake. Same target
         # the Makefile's docker-smoke runs. Builds via the unified
