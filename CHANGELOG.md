@@ -4,7 +4,26 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.88] - 2026-05-01
+## [0.22.92] - 2026-05-01
+
+### Fixes
+
+- **commands:** Repair YAML frontmatter that broke ubuntu-latest CI (e7914c4)## [0.22.91] - 2026-05-01
+
+### Tests
+
+- **server:** Add commands/ slash-command lint covering frontmatter + verb-existence + allowed-tools (f70494d)## [0.22.90] - 2026-05-01
+
+### Build
+
+- **docker:** Finalize unified Dockerfile by removing legacy ones + swapping all consumers (f0bf60f)
+### Documentation
+
+- **changelog:** Regenerate for v0.22.88 [skip ci] (366a4e5)## [0.22.89] - 2026-05-01
+
+### Fixes
+
+- **mcp:** Make CLAWTOOL_TOKEN optional in default install (codex was refusing to start without it) (a89946e)## [0.22.88] - 2026-05-01
 
 ### Documentation
 
