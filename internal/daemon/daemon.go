@@ -20,8 +20,6 @@ package daemon
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -229,12 +227,13 @@ func EnsureFrom(ctx context.Context, exePath string) (*State, error) {
 		return s, nil
 	}
 
+	// Single-user local daemon — no token gate. The operator's
+	// machine is the trust boundary; the listener binds 127.0.0.1
+	// and codex / gemini reach /mcp over loopback without
+	// pre-setting CLAWTOOL_TOKEN. Operators who need auth (relay
+	// deployments) run `clawtool serve --listen ... --token-file ...`
+	// directly instead of going through Ensure.
 	tokenPath := TokenPath()
-	if _, err := os.Stat(tokenPath); errors.Is(err, os.ErrNotExist) {
-		if _, err := initTokenFile(tokenPath); err != nil {
-			return nil, fmt.Errorf("init token: %w", err)
-		}
-	}
 
 	port, err := pickFreePort()
 	if err != nil {
@@ -262,7 +261,7 @@ func EnsureFrom(ctx context.Context, exePath string) (*State, error) {
 	cmd := exec.Command(self,
 		"serve",
 		"--listen", fmt.Sprintf("127.0.0.1:%d", port),
-		"--token-file", tokenPath,
+		"--no-auth",
 		"--mcp-http",
 	)
 	cmd.Stdout = logFile
@@ -384,21 +383,9 @@ func FormatStatus(s *State) string {
 	}, "\n")
 }
 
-// initTokenFile writes a fresh 32-byte hex bearer token to path with
-// 0600. Mirrors internal/server.InitTokenFile but kept local so this
-// package doesn't import server (which would create an import cycle
-// via agents → daemon → server → agents).
-func initTokenFile(path string) (string, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", err
-	}
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	tok := hex.EncodeToString(buf)
-	if err := os.WriteFile(path, []byte(tok+"\n"), 0o600); err != nil {
-		return "", err
-	}
-	return tok, nil
-}
+// initTokenFile lived here to mint a fresh bearer token on first
+// daemon spawn. v0.22.x flipped the daemon to no-auth single-user
+// mode by default, so Ensure no longer calls it; operators who need
+// auth use `clawtool serve init-token` (internal/server.InitTokenFile)
+// directly. Kept removed rather than #nosplit'd so the deadcode
+// linter stays clean.

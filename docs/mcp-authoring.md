@@ -196,6 +196,42 @@ agent looks like:
 4. AutonomousRun → drive the dev loop in-process
 ```
 
+## Auth-token gating (`CLAWTOOL_TOKEN`)
+
+The shared local daemon (`internal/daemon`) every host fans into runs
+in **no-auth single-user mode by default** — the operator's machine
+is the trust boundary, the listener binds 127.0.0.1 only, and the
+generated MCP-host config carries no `CLAWTOOL_TOKEN` reference. This
+is what makes `codex` start cleanly after `clawtool install &&
+clawtool bootstrap` without the operator pre-exporting an env var.
+
+| Surface | Default | Opt-in path |
+| --- | --- | --- |
+| `clawtool serve --listen ...` | `--token-file` required | `--no-auth` for loopback dev |
+| Daemon (`daemon.Ensure`) | spawns `serve --no-auth --mcp-http` | n/a — relays don't go through Ensure |
+| Codex `mcp add` | `--url <daemon>` only | `--bearer-token-env-var=CLAWTOOL_TOKEN` (see below) |
+| Gemini `mcp add` | `--url <daemon> -t http -s user` | adds `-H "Authorization: Bearer <tok>"` |
+| `agent-claim` recipe | `RequireAuth=false` | `require_auth=true` option |
+
+Daemon / relay deployments (multi-user, exposed beyond loopback) flip
+auth back on by:
+
+1. Running `clawtool serve --listen :8080 --token-file <path> --mcp-http`
+   directly (not via `daemon.Ensure` — the relay container's entrypoint
+   handles this; see `Dockerfile.relay`).
+2. Re-claiming hosts with `require_auth=true`:
+   ```
+   clawtool recipe apply agent-claim --opt require_auth=true
+   ```
+   This regenerates the codex / gemini MCP entries with the bearer-token
+   gate wired in. The operator must then export `CLAWTOOL_TOKEN` in
+   the environment that launches codex (Gemini bakes the literal token
+   into its config so no env-var dance there).
+
+Existing operators who already had `CLAWTOOL_TOKEN` set continue working
+unchanged — the daemon's listener-token file is left alone, only the
+default `mcp add` invocation drops the env-var reference.
+
 ## Cross-references
 
 - `docs/portals.md`, `docs/browser-tools.md`, `docs/http-api.md` —

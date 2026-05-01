@@ -43,8 +43,16 @@ import (
 // HTTPOptions configures the listener.
 type HTTPOptions struct {
 	Listen    string // ":8080" or "0.0.0.0:8080" — passed to http.ListenAndServe.
-	TokenFile string // path to a 0600 file containing the bearer token. Refused if missing/empty.
+	TokenFile string // path to a 0600 file containing the bearer token. Refused if missing/empty unless NoAuth is set.
 	MCPHTTP   bool   // when true, mount the MCP toolset at /mcp via mcp-go's Streamable HTTP transport.
+
+	// NoAuth runs the listener without bearer-token enforcement. The
+	// shared local daemon flips this on by default — the operator's
+	// machine is the trust boundary, codex / gemini hit /mcp over
+	// loopback without pre-setting CLAWTOOL_TOKEN. Daemon / relay
+	// deployments (multi-user, exposed beyond loopback) keep auth on
+	// by leaving NoAuth false and supplying TokenFile.
+	NoAuth bool
 }
 
 // ServeHTTP runs clawtool as an HTTP gateway. Blocks until the
@@ -59,9 +67,20 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 	if strings.TrimSpace(opts.Listen) == "" {
 		return errors.New("--listen is required (e.g. ':8080')")
 	}
-	token, err := loadToken(opts.TokenFile)
-	if err != nil {
-		return err
+	var token string
+	if opts.NoAuth {
+		// Single-user local mode — log a loud warning so an
+		// operator who flips this on accidentally sees it. Pair
+		// with the loopback-only listener convention enforced in
+		// internal/daemon (127.0.0.1:<random-port>).
+		fmt.Fprintln(os.Stderr,
+			"clawtool: WARNING --no-auth set; HTTP listener accepts every request without bearer-token check (single-user local mode)")
+	} else {
+		t, err := loadToken(opts.TokenFile)
+		if err != nil {
+			return err
+		}
+		token = t
 	}
 
 	bootedAt := time.Now()
@@ -160,7 +179,11 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 		close(shutdownDone)
 	}()
 
-	fmt.Fprintf(os.Stderr, "clawtool: listening on %s (token-file: %s)\n", opts.Listen, opts.TokenFile)
+	if opts.NoAuth {
+		fmt.Fprintf(os.Stderr, "clawtool: listening on %s (no-auth single-user mode)\n", opts.Listen)
+	} else {
+		fmt.Fprintf(os.Stderr, "clawtool: listening on %s (token-file: %s)\n", opts.Listen, opts.TokenFile)
+	}
 	listenErr := srv.ListenAndServe()
 	if listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
 		return fmt.Errorf("listen %s: %w", opts.Listen, listenErr)
@@ -226,10 +249,17 @@ func InitTokenFile(path string) (string, error) {
 // ── auth ───────────────────────────────────────────────────────────
 
 // authMiddleware enforces `Authorization: Bearer <token>`. Constant-time
-// comparison so token-validity timing doesn't leak the prefix.
+// comparison so token-validity timing doesn't leak the prefix. When
+// `expected` is empty the middleware is a pass-through — used for the
+// shared local daemon's no-auth single-user mode (ServeHTTP only
+// calls this with "" when opts.NoAuth is set + the loud stderr
+// warning was already printed).
 func authMiddleware(expected string) func(http.Handler) http.Handler {
 	exp := []byte(expected)
 	return func(next http.Handler) http.Handler {
+		if len(exp) == 0 {
+			return next
+		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := r.Header.Get("Authorization")
 			const prefix = "Bearer "

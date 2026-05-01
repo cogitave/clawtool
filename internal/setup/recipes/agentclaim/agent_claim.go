@@ -85,6 +85,11 @@ func (agentClaimRecipe) Prereqs() []setup.Prereq { return nil }
 // Empty / absent → claim every detected agent. Re-claiming an
 // already-claimed agent is a no-op per the adapter contract, so
 // Apply is idempotent.
+//
+// opts["require_auth"] (bool, default false) flips the bearer-token
+// gate on for the host's MCP entry. Default install (single-user
+// local) leaves it off so codex / gemini start without
+// CLAWTOOL_TOKEN pre-set; daemon / relay deployments set it true.
 func (agentClaimRecipe) Apply(_ context.Context, _ string, opts setup.Options) error {
 	requested := stringSliceOption(opts, "agents")
 	if len(requested) == 0 {
@@ -107,6 +112,9 @@ func (agentClaimRecipe) Apply(_ context.Context, _ string, opts setup.Options) e
 	sort.Strings(requested)
 	requested = dedup(requested)
 
+	requireAuth, _ := setup.GetOption[bool](opts, "require_auth")
+	adapterOpts := agents.Options{RequireAuth: requireAuth}
+
 	var failures []string
 	for _, name := range requested {
 		ad, err := agents.Find(name)
@@ -117,7 +125,7 @@ func (agentClaimRecipe) Apply(_ context.Context, _ string, opts setup.Options) e
 			}
 			return fmt.Errorf("lookup %q: %w", name, err)
 		}
-		if _, err := ad.Claim(agents.Options{}); err != nil {
+		if _, err := ad.Claim(adapterOpts); err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", name, err))
 		}
 	}

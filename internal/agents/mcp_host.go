@@ -60,31 +60,46 @@ type mcpHostBinary struct {
 	binary       string // CLI binary on PATH
 	configDir    string // dir under $HOME for marker storage
 	mode         mcpHostMode
-	addArgsHTTP  func(serverName, url, tokenEnv, token string) []string
+	addArgsHTTP  func(serverName, url, tokenEnv, token string, requireAuth bool) []string
 	addArgsStdio func(serverName, selfPath string) []string
 	rmArgs       func(serverName string) []string
 	tokenEnvName string // env var name set in the host's mcp entry (HTTP mode only)
 }
 
 // codexAddArgsHTTP / geminiAddArgsHTTP / opencodeAddArgsStdio differ
-// per-CLI. Codex: `--url ... --bearer-token-env-var ENV`. Gemini:
-// `<url> -t http -H "Authorization: Bearer <tok>" -s user`. Opencode
+// per-CLI. Codex: `--url ... [--bearer-token-env-var ENV]`. Gemini:
+// `<url> -t http [-H "Authorization: Bearer <tok>"] -s user`. Opencode
 // has no documented `--url` transport so it stays on stdio.
-func codexAddArgsHTTP(name, url, tokenEnv, _ string) []string {
-	return []string{"mcp", "add", name, "--url", url, "--bearer-token-env-var", tokenEnv}
+//
+// The bearer-token wiring is gated by the `requireAuth` flag the caller
+// derives from Options.RequireAuth. Default install (single-user, the
+// daemon listens only on 127.0.0.1) skips the env var entirely so
+// Codex doesn't refuse to start when the operator hasn't pre-set
+// CLAWTOOL_TOKEN. Daemon / relay deployments flip RequireAuth on.
+func codexAddArgsHTTP(name, url, tokenEnv, _ string, requireAuth bool) []string {
+	args := []string{"mcp", "add", name, "--url", url}
+	if requireAuth {
+		args = append(args, "--bearer-token-env-var", tokenEnv)
+	}
+	return args
 }
 func codexAddArgsStdio(name, self string) []string {
 	return []string{"mcp", "add", name, "--", self, "serve"}
 }
 func codexRmArgs(name string) []string { return []string{"mcp", "remove", name} }
 
-func geminiAddArgsHTTP(name, url, _, token string) []string {
-	return []string{
-		"mcp", "add", name, url,
-		"-t", "http",
-		"-H", "Authorization: Bearer " + token,
-		"-s", "user",
+// geminiAddArgsHTTP bakes the Bearer header into Gemini's mcp config
+// (Gemini has no env-var indirection, only a literal -H value). When
+// requireAuth is false the header is omitted entirely — the daemon
+// is then expected to be running in single-user no-auth mode, so
+// Gemini's unauthenticated request is accepted.
+func geminiAddArgsHTTP(name, url, _, token string, requireAuth bool) []string {
+	args := []string{"mcp", "add", name, url, "-t", "http"}
+	if requireAuth {
+		args = append(args, "-H", "Authorization: Bearer "+token)
 	}
+	args = append(args, "-s", "user")
+	return args
 }
 func geminiAddArgsStdio(name, self string) []string {
 	return []string{"mcp", "add", name, self, "serve", "-s", "user"}
@@ -198,7 +213,7 @@ func (a *mcpHostAdapter) Claim(opts Options) (Plan, error) {
 		if a.cfg.addArgsHTTP == nil {
 			return plan, fmt.Errorf("%s: shared-http mode unsupported by this host (no addArgsHTTP)", a.cfg.name)
 		}
-		args = a.cfg.addArgsHTTP(MCPServerName, url, MCPTokenEnvVar, tok)
+		args = a.cfg.addArgsHTTP(MCPServerName, url, MCPTokenEnvVar, tok, opts.RequireAuth)
 	case mcpHostModeStdio:
 		self, err := mcpHostExecutable()
 		if err != nil {

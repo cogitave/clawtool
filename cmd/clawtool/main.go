@@ -159,6 +159,14 @@ func parseServeFlags(argv []string) (server.HTTPOptions, bool, error) {
 			i++
 		case "--mcp-http":
 			opts.MCPHTTP = true
+		case "--no-auth":
+			// Disable bearer-token enforcement. Used by the
+			// shared local daemon (single-user, loopback-only)
+			// so codex / gemini can hit /mcp without
+			// pre-setting CLAWTOOL_TOKEN. Refuses to combine
+			// with --token-file to keep the operator's intent
+			// unambiguous.
+			opts.NoAuth = true
 		case "--debug", "-d":
 			debug = true
 		case "--help", "-h":
@@ -168,7 +176,10 @@ func parseServeFlags(argv []string) (server.HTTPOptions, bool, error) {
 			return opts, debug, fmt.Errorf("unknown flag %q", v)
 		}
 	}
-	if opts.Listen != "" && opts.TokenFile == "" {
+	if opts.NoAuth && opts.TokenFile != "" {
+		return opts, debug, fmt.Errorf("--no-auth and --token-file are mutually exclusive")
+	}
+	if opts.Listen != "" && opts.TokenFile == "" && !opts.NoAuth {
 		opts.TokenFile = defaultTokenPath()
 	}
 	return opts, debug, nil
@@ -190,12 +201,16 @@ const serveUsage = `Usage:
                                        --debug logs every telemetry event +
                                        drop reason to stderr. Equivalent to
                                        CLAWTOOL_DEBUG=1.
-  clawtool serve --listen :8080 [--token-file <path>] [--mcp-http] [--debug]
+  clawtool serve --listen :8080 [--token-file <path>] [--no-auth]
+                 [--mcp-http] [--debug]
                                        Run the HTTP gateway. Token file
                                        defaults to
                                        $XDG_CONFIG_HOME/clawtool/listener-token
                                        (or $HOME/.config/clawtool/...).
-                                       Bearer-token auth is mandatory.
+                                       --no-auth disables bearer-token
+                                       enforcement (single-user local
+                                       mode; mutually exclusive with
+                                       --token-file).
   clawtool serve init-token [<path>]   Generate a fresh 32-byte hex token
                                        at <path> (default the same listener-
                                        token path) and print it to stdout.

@@ -49,6 +49,18 @@ type Adapter interface {
 // Options carries per-call flags the CLI propagates.
 type Options struct {
 	DryRun bool
+
+	// RequireAuth tells HTTP-mode adapters to wire the bearer-token
+	// gate into the host's MCP entry — Codex via
+	// `--bearer-token-env-var=CLAWTOOL_TOKEN`, Gemini via a baked
+	// `Authorization: Bearer <tok>` header. Default false: single-
+	// user local installs run the shared daemon in no-auth mode (the
+	// operator's machine is the trust boundary), so codex / gemini
+	// don't need the env var pre-set. Daemon / relay deployments
+	// (multi-user, exposed beyond loopback) flip this to true via
+	// `clawtool agents claim --require-auth` or the `agent-claim`
+	// recipe's `require_auth=true` option.
+	RequireAuth bool
 }
 
 // Plan is what an adapter would do (or did, in non-dry-run). The CLI

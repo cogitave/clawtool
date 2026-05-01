@@ -94,13 +94,59 @@ func newGeminiHTTPAdapter() *mcpHostAdapter {
 	}}
 }
 
+// TestMCPHost_HTTPDefaultClaimOmitsBearerEnv guards the install-time
+// UX fix: with RequireAuth=false (the default), the codex `mcp add`
+// invocation MUST NOT pass `--bearer-token-env-var=CLAWTOOL_TOKEN` —
+// otherwise codex refuses to start when the operator hasn't pre-set
+// the env var. Single-user local installs run the daemon in no-auth
+// mode and codex talks to it unauthenticated over loopback.
+func TestMCPHost_HTTPDefaultClaimOmitsBearerEnv(t *testing.T) {
+	home := t.TempDir()
+	env := &fakeHostEnv{}
+	defer withFakeMCPHost(t, home, env)()
+
+	a := newCodexHTTPAdapter()
+	plan, err := a.Claim(Options{}) // RequireAuth defaults to false
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	if plan.WasNoop {
+		t.Error("first Claim must not be a no-op")
+	}
+	if len(env.calls) != 1 {
+		t.Fatalf("expected 1 host invocation, got %d", len(env.calls))
+	}
+	got := env.calls[0]
+	wantArgs := []string{
+		"mcp", "add", "clawtool",
+		"--url", "http://127.0.0.1:38127/mcp",
+	}
+	if got.bin != "/abs/codex" || !equalStrings(got.args, wantArgs) {
+		t.Errorf("default HTTP Claim args wrong:\n got %s %v\nwant /abs/codex %v", got.bin, got.args, wantArgs)
+	}
+	for _, a := range got.args {
+		if strings.Contains(a, "CLAWTOOL_TOKEN") || strings.Contains(a, "bearer-token") {
+			t.Errorf("default install MUST NOT mention CLAWTOOL_TOKEN/bearer-token; got arg %q", a)
+		}
+	}
+
+	marker := filepath.Join(home, ".codex", "clawtool-mcp.lock")
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("marker not written: %v", err)
+	}
+}
+
+// TestMCPHost_HTTPClaimUsesURLAndBearerEnv exercises the explicit
+// `--require-auth` opt-in path: daemon / relay deployments where the
+// operator deliberately wants codex to fail-closed without
+// CLAWTOOL_TOKEN in the environment.
 func TestMCPHost_HTTPClaimUsesURLAndBearerEnv(t *testing.T) {
 	home := t.TempDir()
 	env := &fakeHostEnv{}
 	defer withFakeMCPHost(t, home, env)()
 
 	a := newCodexHTTPAdapter()
-	plan, err := a.Claim(Options{})
+	plan, err := a.Claim(Options{RequireAuth: true})
 	if err != nil {
 		t.Fatalf("Claim: %v", err)
 	}
@@ -126,6 +172,34 @@ func TestMCPHost_HTTPClaimUsesURLAndBearerEnv(t *testing.T) {
 	}
 }
 
+// TestMCPHost_GeminiHTTPDefaultOmitsBearerHeader is the gemini
+// counterpart: default install must not bake the Authorization
+// header into Gemini's mcp config either.
+func TestMCPHost_GeminiHTTPDefaultOmitsBearerHeader(t *testing.T) {
+	home := t.TempDir()
+	env := &fakeHostEnv{}
+	defer withFakeMCPHost(t, home, env)()
+
+	a := newGeminiHTTPAdapter()
+	if _, err := a.Claim(Options{}); err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	got := env.calls[0]
+	wantArgs := []string{
+		"mcp", "add", "clawtool", "http://127.0.0.1:38127/mcp",
+		"-t", "http",
+		"-s", "user",
+	}
+	if !equalStrings(got.args, wantArgs) {
+		t.Errorf("gemini default HTTP Claim args = %v, want %v", got.args, wantArgs)
+	}
+	for _, a := range got.args {
+		if strings.Contains(a, "Bearer") || strings.Contains(a, "Authorization") {
+			t.Errorf("default install MUST NOT bake Authorization header; got arg %q", a)
+		}
+	}
+}
+
 func TestMCPHost_StdioClaimUsesSelfPath(t *testing.T) {
 	home := t.TempDir()
 	env := &fakeHostEnv{}
@@ -148,7 +222,7 @@ func TestMCPHost_GeminiHTTPArgsBakeTokenIntoHeader(t *testing.T) {
 	defer withFakeMCPHost(t, home, env)()
 
 	a := newGeminiHTTPAdapter()
-	if _, err := a.Claim(Options{}); err != nil {
+	if _, err := a.Claim(Options{RequireAuth: true}); err != nil {
 		t.Fatalf("Claim: %v", err)
 	}
 	got := env.calls[0]

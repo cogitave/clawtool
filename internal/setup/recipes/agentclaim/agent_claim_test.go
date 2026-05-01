@@ -122,6 +122,73 @@ func TestAgentClaim_ApplyUnknownAgentReportsError(t *testing.T) {
 	}
 }
 
+// TestAgentClaim_DefaultInstallSkipsTokenEnvVar is the regression
+// guard for the install-time UX bug where codex refused to start
+// after `clawtool install && clawtool bootstrap` complaining that
+// CLAWTOOL_TOKEN was not set. The recipe's default Apply path MUST
+// produce an `agents.Options` whose RequireAuth=false, so the
+// generated MCP host config carries no CLAWTOOL_TOKEN reference.
+func TestAgentClaim_DefaultInstallSkipsTokenEnvVar(t *testing.T) {
+	captured := captureClaimOptions(t)
+	r := setup.Lookup("agent-claim")
+	if err := r.Apply(context.Background(), t.TempDir(), setup.Options{
+		"agents": []string{"fake-mcp"},
+	}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got := captured(); got.RequireAuth {
+		t.Errorf("default install: RequireAuth = true, want false (CLAWTOOL_TOKEN must be optional)")
+	}
+}
+
+// TestAgentClaim_RequireAuthOptionPropagates is the opt-in path:
+// `require_auth=true` in the recipe options must reach Claim's
+// Options.RequireAuth so daemon / relay installs still get the
+// bearer-token gate wired into the host's MCP entry.
+func TestAgentClaim_RequireAuthOptionPropagates(t *testing.T) {
+	captured := captureClaimOptions(t)
+	r := setup.Lookup("agent-claim")
+	if err := r.Apply(context.Background(), t.TempDir(), setup.Options{
+		"agents":       []string{"fake-mcp"},
+		"require_auth": true,
+	}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got := captured(); !got.RequireAuth {
+		t.Errorf("require_auth=true: RequireAuth = false, want true")
+	}
+}
+
+// captureClaimOptions registers a stub adapter whose Claim records
+// the Options it was called with. Returns a closure the test calls
+// to retrieve the recorded value. Restores the registry on cleanup.
+func captureClaimOptions(t *testing.T) func() agents.Options {
+	t.Helper()
+	prev := agents.Registry
+	var got agents.Options
+	stub := &recordingAdapter{got: &got}
+	agents.Registry = []agents.Adapter{stub}
+	t.Cleanup(func() { agents.Registry = prev })
+	return func() agents.Options { return got }
+}
+
+type recordingAdapter struct {
+	got *agents.Options
+}
+
+func (r *recordingAdapter) Name() string   { return "fake-mcp" }
+func (r *recordingAdapter) Detected() bool { return true }
+func (r *recordingAdapter) Claim(o agents.Options) (agents.Plan, error) {
+	*r.got = o
+	return agents.Plan{Adapter: "fake-mcp", Action: "claim"}, nil
+}
+func (r *recordingAdapter) Release(_ agents.Options) (agents.Plan, error) {
+	return agents.Plan{Adapter: "fake-mcp", Action: "release"}, nil
+}
+func (r *recordingAdapter) Status() (agents.Status, error) {
+	return agents.Status{Adapter: "fake-mcp", Detected: true}, nil
+}
+
 func TestAgentClaim_VerifyFailsBeforeApply(t *testing.T) {
 	cleanup := withTempClaudeCode(t)
 	defer cleanup()
