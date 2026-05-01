@@ -143,6 +143,13 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	// always spawning a fresh subprocess. Falls back to spawn when
 	// no peer matches; opt-out via CLAWTOOL_PEER_ROUTING=0.
 	agents.SetGlobalPeerRouter(agents.NewA2APeerRouter(peerReg))
+	// Auto-spawn seam: when SendMessage finds no live peer and
+	// the operator is in tmux, clawtool transparently opens a
+	// new pane for the family + registers it. Means the operator
+	// never has to remember `clawtool spawn` — sending a message
+	// to an absent peer brings it to life. Falls back to the
+	// legacy spawn-fresh-subprocess path on no-tmux hosts.
+	agents.SetGlobalPeerSpawner(agents.NewA2APeerSpawner(peerReg))
 
 	// Hooks subsystem (F3). Register the process-wide manager once
 	// so every callsite can emit without threading a handle through.

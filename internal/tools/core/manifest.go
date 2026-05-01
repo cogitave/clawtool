@@ -461,7 +461,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"dispatch", "delegate", "forward", "prompt", "agent", "claude", "codex", "opencode", "gemini", "hermes", "relay", "ask", "ai"},
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
-		UsageHint:   "Use SendMessage to dispatch a prompt to a peer AI coding agent (claude / codex / opencode / gemini / hermes); the bridge plugin must be installed first via BridgeAdd. Routing rule: code-writing or structured spec → codex or gemini; opencode is research-only (read-only investigation), so re-dispatch tiny opencode replies to gemini if you need code. Pass `bidi=true` when you want a task_id back so you can pair with TaskWait or TaskNotify.",
+		UsageHint:   "Use SendMessage to dispatch a prompt to a peer AI coding agent (claude / codex / opencode / gemini / hermes); the bridge plugin must be installed first via BridgeAdd. If the target agent isn't currently live as a BIAM peer, clawtool will auto-spawn it in a new tmux pane (when tmux is available) before routing the message — no manual `Spawn` call needed. Pass `mode=peer-only` to disable auto-spawn (typed error when no peer matches), `mode=auto-tmux` to require tmux delivery (typed error when no tmux), `mode=spawn-only` for the legacy fresh-subprocess path. Default `mode=peer-prefer` falls back gracefully: live peer first, then tmux auto-spawn, then a fresh subprocess. Routing rule: code-writing or structured spec → codex or gemini; opencode is research-only (read-only investigation), so re-dispatch tiny opencode replies to gemini if you need code. Pass `bidi=true` when you want a task_id back so you can pair with TaskWait or TaskNotify. Ask the operator a clarifying question when the target family is ambiguous (\"do you want codex or gemini?\") rather than guessing.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterAgentTools(s)
 		},
@@ -746,7 +746,7 @@ func BuildManifest() *registry.Manifest {
 		Keywords:    []string{"spawn", "open", "terminal", "window", "pane", "tmux", "screen", "wt", "wsl", "agent", "backend", "claude-code", "codex", "gemini", "opencode", "register", "peer", "biam"},
 		Category:    registry.CategorySetup,
 		Gate:        "",
-		UsageHint:   "Open a NEW terminal window running the requested agent backend (claude-code/codex/gemini/opencode), auto-register it in the BIAM peer registry, and return its peer_id. Pair with SendMessage / PeerSend to talk to the spawned agent. The spawned agent's hooks fire as if the operator opened it manually.",
+		UsageHint:   "Open a NEW terminal window running the requested agent backend (claude-code/codex/gemini/opencode), auto-register it in the BIAM peer registry, and return its peer_id. Pair with SendMessage / PeerSend to talk to the spawned agent. The spawned agent's hooks fire as if the operator opened it manually. Note: for the common case of \"send a message to an agent that isn't running yet\", you usually do NOT need to call Spawn manually — SendMessage now auto-spawns a tmux pane for the target family on first dispatch (when tmux is available). Reach for Spawn explicitly when you need a peer_id back BEFORE sending, want a non-default backend label, or want to control the cwd / display name / first prompt of the new pane.",
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			setuptools.RegisterSpawn(s)
 		},

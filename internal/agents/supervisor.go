@@ -81,6 +81,15 @@ type supervisor struct {
 	// boot wires the global router via SetGlobalPeerRouter; tests
 	// inject stubs by setting this field directly.
 	peerRouter PeerRouter
+
+	// peerSpawner is the auto-spawn seam — when peer-prefer (or
+	// auto-tmux) finds no online peer, the supervisor asks this
+	// to bring one to life (typically by opening a new tmux pane
+	// and registering the agent in the BIAM peer registry). nil →
+	// auto-spawn is disabled and peer-prefer falls through to
+	// spawn-fresh-subprocess. Daemon boot wires the global spawner
+	// via SetGlobalPeerSpawner; tests inject stubs directly.
+	peerSpawner PeerSpawner
 }
 
 // globalObserver is the process-wide OTel observer NewSupervisor
@@ -134,11 +143,12 @@ func NewSupervisor() Supervisor {
 			"hermes":   HermesTransport(),
 			"aider":    AiderTransport(),
 		},
-		rrState:    rr,
-		observer:   globalObserver,
-		biam:       globalBiamRunner,
-		limiter:    lim,
-		peerRouter: GetGlobalPeerRouter(),
+		rrState:     rr,
+		observer:    globalObserver,
+		biam:        globalBiamRunner,
+		limiter:     lim,
+		peerRouter:  GetGlobalPeerRouter(),
+		peerSpawner: GetGlobalPeerSpawner(),
 	}
 }
 
@@ -519,9 +529,9 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 // to a registered live BIAM peer over spawning a fresh subprocess).
 //
 // Returns (rc, true, nil)  → peer route succeeded; caller returns rc.
-// Returns (nil, true, err) → peer-only mode and no peer found; caller
+// Returns (nil, true, err) → peer-only / auto-tmux refused; caller
 //
-//	returns the error verbatim (typed ErrNoLivePeer).
+//	returns the typed error verbatim (ErrNoLivePeer / ErrTmuxUnavailable).
 //
 // Returns (nil, false, nil) → fall through to the spawn path.
 //
@@ -531,7 +541,9 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 //	router == nil      → fall through (daemon never wired one).
 //	FindOnlinePeer hit AND peer != caller → enqueue + ack stream.
 //	FindOnlinePeer miss + peer-only       → ErrNoLivePeer.
-//	FindOnlinePeer miss + peer-prefer     → fall through.
+//	FindOnlinePeer miss + auto-tmux       → spawn-tmux-or-ErrTmuxUnavailable.
+//	FindOnlinePeer miss + peer-prefer     → try auto-spawn-in-tmux,
+//	                                        else fall through.
 //	Found-peer == caller (self-dispatch)  → fall through.
 func (s *supervisor) tryPeerRoute(ctx context.Context, primary Agent, prompt string, opts map[string]any, mode SendMode) (io.ReadCloser, bool, error) {
 	if mode == SendModeSpawnOnly {
@@ -539,34 +551,112 @@ func (s *supervisor) tryPeerRoute(ctx context.Context, primary Agent, prompt str
 	}
 	router := s.peerRouter
 	if router == nil {
-		// peer-only with no router is a fail-closed configuration
-		// error: the operator asked for peer routing but the daemon
-		// never wired one.
+		// peer-only / auto-tmux with no router is a fail-closed
+		// configuration error: the operator asked for peer routing
+		// but the daemon never wired one.
 		if mode == SendModePeerOnly {
 			return nil, true, fmt.Errorf("%w: peer registry not initialised", ErrNoLivePeer)
+		}
+		if mode == SendModeAutoTmux {
+			return nil, true, fmt.Errorf("%w: peer registry not initialised", ErrTmuxUnavailable)
 		}
 		return nil, false, nil
 	}
 	caller := callerPeerID(opts)
 	peerID, displayName, ok := router.FindOnlinePeer(primary.Family, caller)
 	if !ok {
+		// No live peer. peer-only refuses; everyone else gets a
+		// crack at auto-spawn (peer-prefer falls through on no-tmux,
+		// auto-tmux fails-closed on no-tmux).
 		if mode == SendModePeerOnly {
 			return nil, true, fmt.Errorf("%w: family=%s", ErrNoLivePeer, primary.Family)
 		}
-		return nil, false, nil
+		spawned, sErr := s.tryAutoSpawn(primary.Family, caller, mode)
+		if sErr != nil {
+			return nil, true, sErr
+		}
+		if !spawned {
+			// peer-prefer + no tmux → legacy fall-through.
+			return nil, false, nil
+		}
+		// Auto-spawn fired; re-resolve so we route to the
+		// freshly registered peer rather than the stale miss.
+		peerID, displayName, ok = router.FindOnlinePeer(primary.Family, caller)
+		if !ok {
+			// Spawner returned success but registry didn't see
+			// the peer yet — race the caller can recover from
+			// by retrying. peer-prefer falls through; auto-tmux
+			// surfaces a typed error so the caller knows the
+			// pane is up but inbox isn't ready.
+			if mode == SendModeAutoTmux {
+				return nil, true, fmt.Errorf("%w: spawn fired but peer not yet visible in registry", ErrTmuxUnavailable)
+			}
+			return nil, false, nil
+		}
 	}
 	msgID, err := router.EnqueueToPeer(peerID, caller, prompt)
 	if err != nil {
-		// Enqueue failed — peer-only surfaces the error; otherwise
-		// fall through to spawn so the operator's prompt still
-		// lands somewhere.
+		// Enqueue failed — peer-only / auto-tmux surface the error;
+		// otherwise fall through to spawn so the operator's prompt
+		// still lands somewhere.
 		if mode == SendModePeerOnly {
 			return nil, true, fmt.Errorf("peer-only: enqueue failed: %w", err)
+		}
+		if mode == SendModeAutoTmux {
+			return nil, true, fmt.Errorf("auto-tmux: enqueue failed: %w", err)
 		}
 		return nil, false, nil
 	}
 	_ = ctx // span attribution piggybacks on the parent dispatch span
 	return newPeerAckStream(peerID, displayName, msgID), true, nil
+}
+
+// tryAutoSpawn attempts to bring an agent of `family` to life when no
+// online peer matched. Returns (spawned, err):
+//
+//	(true, nil)  → spawn fired (or recently fired & cooldown reused);
+//	               caller re-resolves the peer and routes to it.
+//	(false, nil) → no-op fall-through (peer-prefer + no tmux / no
+//	               spawner): caller falls through to the legacy
+//	               spawn-fresh-subprocess path.
+//	(false, err) → auto-tmux refused because the host has no tmux:
+//	               the caller surfaces ErrTmuxUnavailable verbatim.
+//
+// Idempotency: shouldAutoSpawn debounces per-family within
+// autoSpawnCooldown so five SendMessage calls in a second produce one
+// pane, not five.
+func (s *supervisor) tryAutoSpawn(family, fromPeerID string, mode SendMode) (bool, error) {
+	spawner := s.peerSpawner
+	if spawner == nil {
+		// No spawner wired — auto-tmux fails closed; peer-prefer
+		// falls through to the legacy spawn path.
+		if mode == SendModeAutoTmux {
+			return false, fmt.Errorf("%w: spawner not configured", ErrTmuxUnavailable)
+		}
+		return false, nil
+	}
+	if !spawner.TmuxAvailable() {
+		if mode == SendModeAutoTmux {
+			return false, fmt.Errorf("%w: tmux not detected (start a tmux session or pass mode=peer-prefer)", ErrTmuxUnavailable)
+		}
+		return false, nil
+	}
+	// Cooldown: skip the spawn call if we already fired one for
+	// this family recently. The caller re-resolves the registry
+	// and finds the just-spawned peer.
+	if !shouldAutoSpawn(family) {
+		return true, nil
+	}
+	if _, _, _, err := spawner.EnsurePeer(family, fromPeerID); err != nil {
+		// Spawner failed — auto-tmux surfaces; peer-prefer falls
+		// through. We deliberately don't reset the cooldown on
+		// failure: a misbehaving spawner should not be hammered.
+		if mode == SendModeAutoTmux {
+			return false, fmt.Errorf("auto-tmux: spawn failed: %w", err)
+		}
+		return false, nil
+	}
+	return true, nil
 }
 
 // observedReadCloser ends the per-dispatch span when the caller closes

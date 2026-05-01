@@ -6,8 +6,16 @@
 // of being shadowed by an invisible fresh subprocess.
 //
 // Mode flag (opts["mode"]): "peer-prefer" (default) | "peer-only" |
-// "spawn-only". Env override CLAWTOOL_PEER_ROUTING=0 forces
-// spawn-only for one release while migrations land.
+// "spawn-only" | "auto-tmux". Env override CLAWTOOL_PEER_ROUTING=0
+// forces spawn-only for one release while migrations land.
+//
+// Zero-touch auto-spawn: peer-prefer + no online peer + tmux session
+// active → clawtool transparently spawns the agent in a fresh tmux
+// pane, registers it as a peer, and routes the prompt there. The
+// operator never has to remember `clawtool spawn` — sending a message
+// to an absent peer brings it to life. auto-tmux is the explicit
+// "require tmux delivery or fail" variant for callers that want the
+// guarantee.
 package agents
 
 import (
@@ -18,6 +26,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cogitave/clawtool/internal/a2a"
 )
@@ -29,6 +38,12 @@ const (
 	SendModePeerPrefer SendMode = "peer-prefer"
 	SendModePeerOnly   SendMode = "peer-only"
 	SendModeSpawnOnly  SendMode = "spawn-only"
+	// SendModeAutoTmux requires the auto-spawn path to land the
+	// agent in a tmux pane; no-tmux → typed ErrTmuxUnavailable.
+	// Useful when the operator wants the live-pane guarantee
+	// (e.g. so they can watch the agent's progress) instead of
+	// the silent spawn-fresh-subprocess fallback.
+	SendModeAutoTmux SendMode = "auto-tmux"
 )
 
 // ErrNoLivePeer is returned by peer-only mode when no online peer
@@ -36,6 +51,12 @@ const (
 // render a guided error instead of treating it as a generic dispatch
 // failure.
 var ErrNoLivePeer = errors.New("peer-only mode: no online peer matches the resolved family")
+
+// ErrTmuxUnavailable is returned by auto-tmux mode when no tmux
+// session is detected. Typed so the calling agent can recover by
+// retrying with peer-prefer (or asking the operator to start a tmux
+// session) instead of treating it as a generic dispatch failure.
+var ErrTmuxUnavailable = errors.New("auto-tmux mode: no tmux session detected")
 
 // PeerRouter is the small subset of *a2a.Registry the supervisor
 // needs for peer-prefer routing. Defining it as an interface keeps
@@ -165,6 +186,8 @@ func resolveSendMode(opts map[string]any) SendMode {
 		return SendModePeerOnly
 	case SendModeSpawnOnly:
 		return SendModeSpawnOnly
+	case SendModeAutoTmux:
+		return SendModeAutoTmux
 	case SendModePeerPrefer, "":
 		return SendModePeerPrefer
 	default:
@@ -186,6 +209,109 @@ func callerPeerID(opts map[string]any) string {
 		return strings.TrimSpace(v)
 	}
 	return ""
+}
+
+// PeerSpawner is the indirection seam for the auto-spawn path. When
+// peer-prefer (or auto-tmux) finds no online peer, the supervisor
+// asks the spawner to bring one to life — typically by opening a
+// new tmux pane, registering the freshly spawned agent in the BIAM
+// peer registry, and returning the assigned peer_id. Defining it as
+// an interface keeps the agents package decoupled from the
+// internal/cli spawn machinery (which depends on daemon HTTP) and
+// makes the auto-spawn flow unit-testable.
+type PeerSpawner interface {
+	// TmuxAvailable reports whether a tmux session is currently
+	// active in this process's environment ($TMUX is set + the
+	// `tmux` binary is on PATH). The supervisor checks this
+	// before invoking EnsurePeer so peer-prefer can fall through
+	// to the spawn-fresh-subprocess path on no-tmux hosts and
+	// auto-tmux can fail with ErrTmuxUnavailable.
+	TmuxAvailable() bool
+
+	// EnsurePeer ensures a peer for the given family is alive
+	// and registered. Implementations should be idempotent at
+	// the family level — repeated calls within a small cooldown
+	// window return the same peer rather than spawning a second
+	// pane. Returns the peer_id + display name + a flag noting
+	// whether the call actually fired a spawn (false = reused
+	// an existing peer).
+	EnsurePeer(family, fromPeerID string) (peerID, displayName string, spawned bool, err error)
+}
+
+// globalPeerSpawner is the process-wide spawner NewSupervisor wires.
+// Server boot calls SetGlobalPeerSpawner; tests inject stubs by
+// setting supervisor.peerSpawner directly. nil = auto-spawn path is
+// disabled and peer-prefer falls through to the spawn-fresh-
+// subprocess legacy behavior (auto-tmux returns ErrTmuxUnavailable).
+var (
+	globalPeerSpawnerMu sync.RWMutex
+	globalPeerSpawner   PeerSpawner
+)
+
+// SetGlobalPeerSpawner registers the process-wide spawner. Pass nil
+// to clear (e.g. daemon shutdown). Idempotent.
+func SetGlobalPeerSpawner(s PeerSpawner) {
+	globalPeerSpawnerMu.Lock()
+	defer globalPeerSpawnerMu.Unlock()
+	globalPeerSpawner = s
+}
+
+// GetGlobalPeerSpawner returns the process-wide spawner or nil.
+func GetGlobalPeerSpawner() PeerSpawner {
+	globalPeerSpawnerMu.RLock()
+	defer globalPeerSpawnerMu.RUnlock()
+	return globalPeerSpawner
+}
+
+// autoSpawnCooldown is the per-family debounce window. SendMessage
+// fired five times in a second to a missing codex peer must NOT
+// produce five tmux panes — within the window, the second through
+// fifth calls reuse the just-spawned peer. The window is generous
+// enough to cover the agent's own boot + first peer registration
+// roundtrip but tight enough that a genuine respawn-after-crash
+// scenario isn't blocked.
+const autoSpawnCooldown = 10 * time.Second
+
+// autoSpawnDeadline caps a single tmux-new-window call. Generous
+// for a local pane spawn (5s); tight enough that a wedged tmux
+// server surfaces as a typed error rather than a hung SendMessage
+// handler. Lives here (not in peer_spawn.go) so the cooldown +
+// deadline budgets sit alongside each other for ops review.
+const autoSpawnDeadline = 5 * time.Second
+
+// autoSpawnTracker debounces auto-spawn calls per (family). Lives at
+// package scope so every supervisor in the process shares one
+// cooldown view — otherwise five concurrent NewSupervisor instances
+// each with their own tracker would defeat the rate-limit.
+var (
+	autoSpawnTrackerMu sync.Mutex
+	autoSpawnLastFire  = map[string]time.Time{}
+)
+
+// shouldAutoSpawn reports whether `family` is outside the cooldown
+// window. True → caller proceeds with EnsurePeer. False → caller
+// re-checks the registry (the just-spawned peer should be there)
+// before falling through. The registered fire-time is updated on
+// `true` so concurrent SendMessage calls funnel through the first
+// spawn.
+func shouldAutoSpawn(family string) bool {
+	autoSpawnTrackerMu.Lock()
+	defer autoSpawnTrackerMu.Unlock()
+	last, ok := autoSpawnLastFire[family]
+	if ok && time.Since(last) < autoSpawnCooldown {
+		return false
+	}
+	autoSpawnLastFire[family] = time.Now()
+	return true
+}
+
+// resetAutoSpawnTracker is a test-only helper. The cooldown map is
+// process-global, so a previous test that fired a spawn would block
+// the next test for autoSpawnCooldown seconds without this.
+func resetAutoSpawnTracker() {
+	autoSpawnTrackerMu.Lock()
+	defer autoSpawnTrackerMu.Unlock()
+	autoSpawnLastFire = map[string]time.Time{}
 }
 
 // newPeerAckStream returns a synthetic ReadCloser confirming the
