@@ -109,11 +109,18 @@ func RegisterAgentTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"SendMessage",
 			mcp.WithDescription(
-				"Forward a prompt to a configured AI coding-agent CLI (claude / codex / "+
-					"opencode / gemini) and return its streamed reply. clawtool wraps "+
-					"each upstream's published headless mode (codex exec, opencode run, "+
-					"gemini -p, claude -p) — we don't re-implement agent loops. Use "+
-					"AgentList to enumerate available instances.",
+				"Dispatch a prompt to another AI coding-agent CLI (claude / codex / "+
+					"opencode / gemini) and return its reply. Use when the operator "+
+					"says \"ask codex to ...\" or \"have gemini review ...\" or to "+
+					"fan a task out to a peer CLI. Synchronous by default (buffered "+
+					"single payload); pair with `bidi=true` + TaskWait / TaskNotify "+
+					"for non-blocking dispatch when the upstream may take >10s. "+
+					"clawtool wraps each upstream's published headless mode (codex "+
+					"exec, opencode run, gemini -p, claude -p) — we don't "+
+					"re-implement agent loops. Routing rule: code-writing → codex "+
+					"or gemini; opencode reserved for read-only investigation. "+
+					"NOT for sending shell commands — use Bash. Run AgentList "+
+					"first to enumerate live instances.",
 			),
 			mcp.WithString("agent",
 				mcp.Description("Instance name (claude-personal, claude-work, codex1, …) or bare family name when only one instance of that family exists. Empty = sticky default.")),
@@ -145,10 +152,14 @@ func RegisterAgentTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"AgentList",
 			mcp.WithDescription(
-				"Snapshot of the supervisor's agent registry — every configured "+
-					"instance with family, bridge name, callable / status, and auth "+
-					"scope. Same shape as `clawtool send --list` and the HTTP "+
-					"GET /v1/agents response. Read-only.",
+				"Enumerate every configured AI coding-agent instance the "+
+					"supervisor knows about — family, bridge name, callable / "+
+					"status, auth scope. Use BEFORE SendMessage to discover "+
+					"which instance names (claude-personal, codex1, gemini-work, "+
+					"...) are actually live, or when the operator asks \"what "+
+					"agents do I have?\". NOT for probing one specific adapter's "+
+					"detect / claim state — use AgentDetect for that. Same shape "+
+					"as `clawtool send --list` and HTTP GET /v1/agents. Read-only.",
 			),
 		),
 		runAgentList,

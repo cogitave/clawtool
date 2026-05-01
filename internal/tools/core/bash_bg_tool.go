@@ -59,9 +59,14 @@ func RegisterBashOutput(s *server.MCPServer) {
 	tool := mcp.NewTool(
 		"BashOutput",
 		mcp.WithDescription(
-			"Snapshot of a background Bash task: live stdout, stderr, status "+
-				"(active / done / failed / cancelled), and exit_code once terminal. "+
-				"Pair with `Bash background=true` for fire-and-forget execution.",
+			"Poll a background Bash task — returns live stdout / stderr, "+
+				"status (active / done / failed / cancelled), and exit_code "+
+				"once terminal. Use after `Bash background=true` to check "+
+				"progress on a long-running command (test run, build, "+
+				"scraper) without waiting for it to finish. Read-only and "+
+				"non-blocking — call repeatedly until status is terminal. "+
+				"NOT for cancelling — use BashKill; NOT for synchronous "+
+				"foreground commands — call Bash directly.",
 		),
 		mcp.WithString("task_id",
 			mcp.Required(),
@@ -93,9 +98,15 @@ func RegisterBashKill(s *server.MCPServer) {
 	tool := mcp.NewTool(
 		"BashKill",
 		mcp.WithDescription(
-			"Cancel a background Bash task. Sends SIGKILL to the whole "+
-				"process group (children too). No-op when the task is already "+
-				"terminal. Returns the task's snapshot post-kill.",
+			"Cancel a runaway background Bash task started with `Bash "+
+				"background=true`. Sends SIGKILL to the whole process group "+
+				"so children get reaped too. Use when a polled task (via "+
+				"BashOutput) has been active too long, the operator says "+
+				"\"stop that\", or you need to abort before starting a "+
+				"replacement command. No-op when the task is already terminal. "+
+				"Returns the post-kill snapshot. NOT for inspecting status — "+
+				"use BashOutput; NOT for foreground commands — they cancel "+
+				"on context timeout automatically.",
 		),
 		mcp.WithString("task_id",
 			mcp.Required(),

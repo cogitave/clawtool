@@ -80,12 +80,16 @@ func RegisterBrowserFetch(s *server.MCPServer) {
 	tool := mcp.NewTool(
 		"BrowserFetch",
 		mcp.WithDescription(
-			"Render a URL inside a real headless browser (Obscura) and "+
-				"return clean prose for HTML or the value of a custom JS "+
-				"`eval` expression. Use this when WebFetch returns empty "+
-				"shells (Next.js / React / SPA pages). Stateless — each call "+
-				"runs in a fresh browser context. Requires the `obscura` "+
-				"binary on PATH (https://github.com/h4ckf0r0day/obscura).",
+			"Render a URL inside a real headless browser (Obscura, "+
+				"Chromium-via-CDP) and return clean prose for HTML or the "+
+				"value of a custom JS `eval` expression. Use ONLY when "+
+				"WebFetch returns empty shells / near-zero text (Next.js, "+
+				"React, hydrated SPAs) or the operator explicitly needs "+
+				"client-rendered content / JS evaluation / a CSS-selector "+
+				"wait. NOT for static HTML — WebFetch is faster and cheaper "+
+				"for that. Stateless: each call runs in a fresh browser "+
+				"context. Requires the `obscura` binary on PATH "+
+				"(https://github.com/h4ckf0r0day/obscura).",
 		),
 		mcp.WithString("url", mcp.Required(),
 			mcp.Description("Target URL. http:// or https://.")),

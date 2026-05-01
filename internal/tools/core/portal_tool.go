@@ -106,8 +106,14 @@ func RegisterPortalTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"PortalUse",
 			mcp.WithDescription(
-				"Set the sticky-default portal so PortalAsk / portal ask "+
-					"calls without an explicit name route here.",
+				"Pin a sticky-default web-UI portal so subsequent PortalAsk "+
+					"calls without an explicit `portal` argument route here. "+
+					"Use when the operator says \"use my deepseek portal\" or "+
+					"after PortalList shows multiple portals and you need to "+
+					"settle on one for the rest of the session. NOT for "+
+					"clearing the default — use PortalUnset. Persists to "+
+					"$XDG_CONFIG_HOME/clawtool/active_portal; same precedence "+
+					"as the CLAWTOOL_PORTAL env var (env wins).",
 			),
 			mcp.WithString("name", mcp.Required(),
 				mcp.Description("Configured portal name.")),
@@ -117,7 +123,14 @@ func RegisterPortalTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool(
 			"PortalUnset",
-			mcp.WithDescription("Clear the sticky-default portal."),
+			mcp.WithDescription(
+				"Clear the sticky-default web-UI portal pin set by PortalUse. "+
+					"Use when the operator wants future PortalAsk calls to "+
+					"require an explicit `portal` argument again, or before "+
+					"switching to a different default. NOT for removing a "+
+					"portal stanza from config.toml — use PortalRemove for "+
+					"that. No-op when no sticky default is set.",
+			),
 		),
 		runPortalUnset,
 	)

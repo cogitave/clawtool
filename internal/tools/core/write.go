@@ -108,10 +108,19 @@ func RegisterWrite(s *server.MCPServer) {
 	tool := mcp.NewTool(
 		"Write",
 		mcp.WithDescription(
-			"Create or replace a whole file. Atomic temp+rename. Parent directory "+
-				"auto-created when create_parents=true (default). When the file "+
-				"already exists, line endings (LF/CRLF/CR) are preserved by default "+
-				"so existing Windows / legacy tooling stays compatible.",
+			"Create or whole-file overwrite a file with the given content. Use "+
+				"to scaffold a brand-new source / config / doc, or to replace "+
+				"a file's entire body when a substring edit would be messier "+
+				"than starting fresh. Atomic temp+rename so a crash never "+
+				"leaves a half-written file. Parent directory auto-created "+
+				"when create_parents=true (default). Existing files: line "+
+				"endings (LF/CRLF/CR) preserved by default so Windows / "+
+				"legacy tooling stays compatible. Read-before-Write guard "+
+				"blocks overwriting a file this session hasn't Read (override "+
+				"with mode=\"create\" for new files or unsafe_overwrite_"+
+				"without_read=true). NOT for surgical substring changes — "+
+				"use Edit, which is safer when the rest of the file should "+
+				"stay untouched.",
 		),
 		mcp.WithString("path", mcp.Required(),
 			mcp.Description("File path. Created if absent.")),

@@ -61,10 +61,13 @@ func RegisterSkillList(s *server.MCPServer) {
 	tool := mcp.NewTool(
 		"SkillList",
 		mcp.WithDescription(
-			"Enumerate Agent Skills installed on this host. Returns each "+
-				"skill's name, scope (project|user|catalog), description from "+
-				"frontmatter, and absolute SKILL.md path. Pair with SkillLoad "+
-				"to pull one skill's full content into the current turn.",
+			"Discover Agent Skills installed on this host. Use FIRST when the "+
+				"operator says \"use the X skill\" or you suspect a relevant "+
+				"skill exists — returns each skill's name, scope "+
+				"(project|user|catalog), description from frontmatter, and "+
+				"absolute SKILL.md path. Pair with SkillLoad to pull one "+
+				"skill's full content into the current turn. NOT for loading "+
+				"skill content — use SkillLoad. Read-only; cheap.",
 		),
 	)
 	s.AddTool(tool, runSkillList)

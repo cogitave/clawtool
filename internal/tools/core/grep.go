@@ -56,11 +56,16 @@ func RegisterGrep(s *server.MCPServer) {
 	tool := mcp.NewTool(
 		"Grep",
 		mcp.WithDescription(
-			"Search file contents for a regular-expression pattern. "+
-				"Powered by ripgrep (`rg`) when available with .gitignore-aware traversal "+
-				"and --type aliases; falls back to system grep otherwise. "+
-				"Returns a uniform structured result with per-match path, 1-indexed line/column, "+
-				"and the matched line text.",
+			"Search file contents for a literal string or regular expression "+
+				"and return per-match path, 1-indexed line/column, matched "+
+				"text. Use Grep when the operator wants an EXACT token, "+
+				"identifier, regex, or string they remember verbatim "+
+				"(\"find every call to FooBar\", \"grep for TODO\"). NOT for "+
+				"conceptual / intent-based queries (\"how is auth rotated?\") "+
+				"— use SemanticSearch for those. Powered by ripgrep (`rg`) "+
+				"when available with .gitignore-aware traversal and --type "+
+				"aliases; falls back to system grep otherwise. Uniform "+
+				"structured result regardless of engine.",
 		),
 		mcp.WithString("pattern", mcp.Required(),
 			mcp.Description("Regular expression to search for.")),

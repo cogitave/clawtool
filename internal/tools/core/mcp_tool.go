@@ -79,9 +79,15 @@ func RegisterMcpTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"McpList",
 			mcp.WithDescription(
-				"List MCP server projects under the given root (default cwd). "+
-					"A project is detected via the `.clawtool/mcp.toml` marker "+
-					"`clawtool mcp new` writes.",
+				"Discover MCP server projects scaffolded under a directory tree. "+
+					"Use when the operator asks \"what MCP servers do I have here?\" "+
+					"or before McpRun / McpBuild to find the project path. Walks "+
+					"from `root` (default cwd), detecting projects via the "+
+					"`.clawtool/mcp.toml` marker that `McpNew` / `clawtool mcp new` "+
+					"writes; reports name, language (go/python/typescript), and "+
+					"absolute path. NOT for listing already-installed MCP servers "+
+					"a host runs — those live in the host's own config (e.g. "+
+					"~/.claude.json). Read-only.",
 			),
 			mcp.WithString("root",
 				mcp.Description("Search root path. Defaults to the server's cwd.")),

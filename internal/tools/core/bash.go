@@ -46,11 +46,18 @@ func RegisterBash(s *server.MCPServer) {
 	tool := mcp.NewTool(
 		"Bash",
 		mcp.WithDescription(
-			"Run a shell command via /bin/bash. "+
-				"Returns structured JSON with stdout, stderr, exit_code, duration_ms, "+
-				"timed_out, and cwd. Output is preserved even when the command times out. "+
-				"Set background=true to fire-and-forget: returns a task_id immediately; "+
-				"poll output via BashOutput, terminate via BashKill.",
+			"Execute a shell command via /bin/bash and return structured JSON "+
+				"(stdout, stderr, exit_code, duration_ms, timed_out, cwd). Use "+
+				"for any shell work — running tests, git diffs, file system "+
+				"queries, build commands, ad-hoc tooling. Output is preserved "+
+				"even when the command times out (process group SIGKILLed; "+
+				"children reaped). Secret-shaped env vars (GITHUB_TOKEN, "+
+				"OPENAI_API_KEY, ...) are scrubbed before reaching the child "+
+				"shell. Set background=true for fire-and-forget execution: "+
+				"returns a task_id immediately — poll via BashOutput, cancel "+
+				"via BashKill. NOT for `git commit` on this repo — use the "+
+				"Commit tool instead so Conventional-Commits + rules.toml gates "+
+				"run; NOT for grep/find — use Grep / Glob for structured hits.",
 		),
 		mcp.WithString("command",
 			mcp.Required(),

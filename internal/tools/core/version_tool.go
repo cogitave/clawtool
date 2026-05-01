@@ -68,13 +68,15 @@ func RegisterVersionTool(s *server.MCPServer) {
 		mcp.NewTool(
 			"Version",
 			mcp.WithDescription(
-				"Snapshot of the running clawtool binary's identity: name, "+
-					"semver, Go runtime version, GOOS/GOARCH platform, VCS "+
-					"commit + modified flag (when the build embedded VCS info). "+
-					"Same shape as `clawtool version --json` and the `build` "+
-					"field of GET /v1/health. Read-only. Useful for monitoring "+
-					"scripts that gate on a minimum version or for diagnosing "+
-					"version mismatches across hosts.",
+				"Identify the running clawtool binary: name, semver, Go "+
+					"runtime version, GOOS/GOARCH platform, VCS commit + "+
+					"modified flag (when the build embedded VCS info). Use "+
+					"when the operator asks \"what version of clawtool is "+
+					"running?\", before recommending a feature gated on a "+
+					"minimum version, or to diagnose version mismatches "+
+					"across hosts. Same shape as `clawtool version --json` "+
+					"and the `build` field of GET /v1/health. Read-only; no "+
+					"arguments.",
 			),
 		),
 		runVersion,

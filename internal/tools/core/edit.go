@@ -55,11 +55,16 @@ func RegisterEdit(s *server.MCPServer) {
 	tool := mcp.NewTool(
 		"Edit",
 		mcp.WithDescription(
-			"Replace an exact substring in a file with new content. Atomic write "+
-				"(temp+rename), line-ending preserve (LF/CRLF/CR detected from current "+
-				"file), BOM preserve, binary refusal. By default refuses to run when "+
-				"old_string appears more than once — set replace_all=true to override. "+
-				"Use Write for whole-file create/replace.",
+			"Replace an exact substring in an existing file with new content. "+
+				"Use for surgical changes — fixing a function body, swapping "+
+				"a constant, adjusting a config line — anywhere a unique "+
+				"old_string identifies the spot. Atomic write (temp+rename); "+
+				"line-ending preserve (LF/CRLF/CR detected); BOM preserve; "+
+				"binary refusal. By default refuses to run when old_string "+
+				"appears more than once — set replace_all=true to override. "+
+				"NOT for creating a new file or rewriting the entire body — "+
+				"use Write for that; NOT for renaming a file — use Bash "+
+				"(`mv`).",
 		),
 		mcp.WithString("path", mcp.Required(),
 			mcp.Description("File path. Must exist; use Write to create new files.")),

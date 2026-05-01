@@ -83,13 +83,16 @@ func RegisterAgentDetectTool(s *server.MCPServer) {
 		mcp.NewTool(
 			"AgentDetect",
 			mcp.WithDescription(
-				"Probe one host AI coding agent (claude-code, codex, …) "+
-					"and report whether it's detected on this host AND "+
-					"whether clawtool has claimed its native tools. Returns "+
-					"a structured payload with `detected`, `claimed`, and "+
-					"an `exit_code` field that matches the `clawtool agents "+
-					"detect` CLI verb's exit codes (0=detected+claimed, "+
-					"1=detected-not-claimed, 2=not-detected). Read-only.",
+				"Probe one host AI coding agent (claude-code, codex, gemini, "+
+					"opencode) and report whether it's installed on this host AND "+
+					"whether clawtool has claimed its native tools. Use when the "+
+					"operator says \"is codex set up?\" or before SendMessage to "+
+					"verify the target adapter is reachable. Returns `detected`, "+
+					"`claimed`, and an `exit_code` matching the `clawtool agents "+
+					"detect` CLI: 0=detected+claimed, 1=detected-not-claimed (run "+
+					"`clawtool agents claim`), 2=not-detected. NOT for "+
+					"enumerating every registered adapter — use AgentList. "+
+					"Read-only.",
 			),
 			mcp.WithString("agent", mcp.Required(),
 				mcp.Description("Adapter name (e.g. 'claude-code'). Use AgentList to enumerate registered adapters.")),

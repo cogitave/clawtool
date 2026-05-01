@@ -35,11 +35,18 @@ func RegisterToolSearch(s *server.MCPServer, idx *search.Index) {
 	tool := mcp.NewTool(
 		"ToolSearch",
 		mcp.WithDescription(
-			"Find tools by natural-language query. Returns ranked candidates "+
-				"(name, score, description, type, instance) so an agent with a "+
-				"large catalog can pick the right tool without holding every "+
-				"schema in context. Engine: bleve BM25 with name^3 / keywords^2 "+
-				"field boosts.",
+			"Find the right clawtool tool by natural-language intent. Use "+
+				"FIRST when no eager-loaded tool clearly matches the task — "+
+				"clawtool exposes 50+ tools and ToolSearch returns the "+
+				"top-ranked ones for queries like \"commit with rules check\", "+
+				"\"fetch a JS-rendered page\", \"run a shell command in the "+
+				"background\", or \"semantic code search\". Returns ranked "+
+				"candidates (name, score, description, type, instance) so the "+
+				"agent can bind to the precise tool without holding every "+
+				"schema in context. Engine: bleve BM25 with name^3 / "+
+				"keywords^2 field boosts. NOT for running the tool — call "+
+				"the matched tool directly afterward; NOT for searching code "+
+				"or files — use Grep / SemanticSearch / Glob.",
 		),
 		mcp.WithString("query", mcp.Required(),
 			mcp.Description("Natural-language description of what you want to do.")),

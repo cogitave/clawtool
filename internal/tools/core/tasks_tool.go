@@ -84,10 +84,13 @@ func RegisterTaskTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"TaskGet",
 			mcp.WithDescription(
-				"Snapshot of one BIAM task: status + every message persisted "+
-					"under task_id, oldest first. Pair with SendMessage --bidi "+
-					"to dispatch async and pull the result without blocking the "+
-					"caller. Read-only.",
+				"Polls one BIAM async task once and returns the current "+
+					"snapshot: status + every message persisted under task_id, "+
+					"oldest first. Use to peek at progress on a task dispatched "+
+					"via `SendMessage bidi=true` without blocking — call "+
+					"repeatedly to track a long-running upstream. NOT for "+
+					"blocking until done — use TaskWait; NOT for waiting on "+
+					"any of N tasks — use TaskNotify. Read-only.",
 			),
 			mcp.WithString("task_id", mcp.Required(),
 				mcp.Description("Task UUID returned from SendMessage --bidi.")),
@@ -98,11 +101,14 @@ func RegisterTaskTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"TaskWait",
 			mcp.WithDescription(
-				"Block until the BIAM task reaches a terminal state "+
+				"Blocks until ONE BIAM async task reaches a terminal state "+
 					"(done | failed | cancelled | expired) or the deadline "+
-					"elapses. Returns the final task snapshot + all messages. "+
-					"Use this when the caller has nothing else to do until the "+
-					"upstream finishes.",
+					"elapses, then returns the final snapshot + all messages. "+
+					"Use when the caller has nothing else to do until that "+
+					"specific upstream finishes (e.g. a synchronous flow that "+
+					"happens to use the bidi transport). NOT for polling a "+
+					"single moment — use TaskGet; NOT for waiting on any of "+
+					"several tasks — use TaskNotify (cheaper for fan-out).",
 			),
 			mcp.WithString("task_id", mcp.Required()),
 			mcp.WithNumber("timeout_s",
@@ -114,8 +120,11 @@ func RegisterTaskTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"TaskList",
 			mcp.WithDescription(
-				"Recent BIAM tasks (default 50, max 1000). Use this to find "+
-					"task_ids when the caller forgot one mid-conversation.",
+				"Enumerate recent BIAM async tasks (default 50, max 1000) "+
+					"with status + last message preview. Use when the operator "+
+					"asks \"what tasks are running?\" or to recover a task_id "+
+					"the caller forgot mid-conversation. NOT for fetching one "+
+					"specific task's full transcript — use TaskGet. Read-only.",
 			),
 			mcp.WithNumber("limit",
 				mcp.Description("Max rows returned. Default 50, hard cap 1000.")),

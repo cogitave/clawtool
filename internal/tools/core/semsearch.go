@@ -73,14 +73,17 @@ func RegisterSemanticSearch(s *server.MCPServer) {
 	tool := mcp.NewTool(
 		"SemanticSearch",
 		mcp.WithDescription(
-			"Semantic (intent-based) code search across a repo. Use for "+
-				"conceptual queries like \"how is auth rotated?\" or "+
-				"\"where do we cache embeddings?\" — Grep stays the "+
-				"literal-regex tool. Wraps chromem-go (MIT) for the vector "+
-				"store; embedding via OpenAI text-embedding-3-small (default; "+
-				"requires OPENAI_API_KEY) or Ollama nomic-embed-text "+
-				"(override via CLAWTOOL_EMBED_PROVIDER=ollama). The index "+
-				"is built lazily on the first call per repo.",
+			"Semantic (intent-based) code search — finds code by what it "+
+				"DOES, not by literal tokens. Use for conceptual queries like "+
+				"\"how is auth rotated?\", \"where do we cache embeddings?\", "+
+				"or \"find the request-throttling logic\" — anywhere the "+
+				"caller's words won't appear verbatim in the source. NOT for "+
+				"finding an exact identifier, regex, or string the operator "+
+				"already knows — use Grep, which is faster and cheaper. "+
+				"Wraps chromem-go vector store; embedding via OpenAI "+
+				"text-embedding-3-small (default; requires OPENAI_API_KEY) "+
+				"or Ollama nomic-embed-text (CLAWTOOL_EMBED_PROVIDER=ollama). "+
+				"Index is built lazily per repo on first call.",
 		),
 		mcp.WithString("repo", mcp.Required(),
 			mcp.Description("Repo path to search.")),

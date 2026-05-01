@@ -58,10 +58,16 @@ func RegisterWebFetch(s *server.MCPServer) {
 		"WebFetch",
 		mcp.WithDescription(
 			"Retrieve a URL and return its body as agent-friendly content. "+
-				"For text/html, runs the Mozilla Readability algorithm via go-readability "+
-				"to strip nav/ads/chrome and return title + byline + article body. "+
-				"For text/* MIME types, returns the body verbatim. Binary content is "+
-				"refused with a structured error. Hard 10 MB body cap protects context.",
+				"Use FIRST for any URL fetch — server-side, no browser, fast. "+
+				"For text/html, runs the Mozilla Readability algorithm via "+
+				"go-readability to strip nav/ads/chrome and return title + "+
+				"byline + article body. For text/* MIME types, returns body "+
+				"verbatim. Binary content refused with structured error. Hard "+
+				"10 MB body cap protects context. NOT for JS-rendered SPAs "+
+				"(Next.js / React / hydrated apps) — they ship empty shells "+
+				"server-side; fall back to BrowserFetch when WebFetch returns "+
+				"a near-empty body or the operator says \"the real page is "+
+				"client-rendered\".",
 		),
 		mcp.WithString("url", mcp.Required(),
 			mcp.Description("URL to fetch. http:// and https:// only.")),

@@ -95,13 +95,17 @@ func RegisterTaskNotify(s *server.MCPServer) {
 		mcp.NewTool(
 			"TaskNotify",
 			mcp.WithDescription(
-				"Block until ANY of the watched BIAM task_ids reaches a terminal "+
-					"state, then return that task's snapshot + every message. "+
-					"Cheaper than TaskWait when you have multiple tasks in flight: "+
-					"one round-trip wakes you on the first finisher instead of "+
-					"polling each one. Edge-triggered via the in-process notifier — "+
-					"no SQLite poll. Tasks already terminal at call time return "+
-					"immediately.",
+				"Blocks until ANY of N watched BIAM async tasks reaches a "+
+					"terminal state, then returns that task's snapshot + every "+
+					"message. Use after dispatching multiple `SendMessage "+
+					"bidi=true` calls in a fan-out (e.g. asking codex AND "+
+					"gemini the same question) — one round-trip wakes the "+
+					"caller on the FIRST finisher. Cheaper than TaskWait per "+
+					"task because it's edge-triggered via the in-process "+
+					"notifier (no SQLite poll). Tasks already terminal at "+
+					"call time return immediately. NOT for waiting on a "+
+					"single task — use TaskWait; NOT for polling without "+
+					"blocking — use TaskGet.",
 			),
 			mcp.WithArray("task_ids",
 				mcp.Required(),

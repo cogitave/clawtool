@@ -116,9 +116,15 @@ func RegisterSandboxTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"SandboxList",
 			mcp.WithDescription(
-				"List configured sandbox profiles. Returns each profile's name "+
-					"+ description and the engine that would run it on this host "+
-					"(bwrap / sandbox-exec / docker / noop).",
+				"Enumerate configured sandbox profiles for `clawtool sandbox "+
+					"run`. Use when the operator asks \"what sandboxes do I "+
+					"have?\" or before recommending a profile for an untrusted "+
+					"command. Returns each profile's name + description plus "+
+					"the engine that would run it on this host (bwrap / "+
+					"sandbox-exec / docker / noop). NOT for showing one "+
+					"profile's full constraints — use SandboxShow; NOT for "+
+					"checking engine availability — use SandboxDoctor. "+
+					"Read-only.",
 			),
 		),
 		runSandboxList,
@@ -127,9 +133,12 @@ func RegisterSandboxTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"SandboxShow",
 			mcp.WithDescription(
-				"Render a parsed sandbox profile — paths, network policy, "+
-					"limits, env policy. Use before recommending a profile to "+
-					"the operator so the constraints are explicit.",
+				"Render one parsed sandbox profile in full — paths (ro/rw), "+
+					"network allow-list, limits (memory/timeout), env policy. "+
+					"Use BEFORE recommending the profile to the operator so "+
+					"the constraints are explicit, or when debugging why a "+
+					"sandboxed command can't reach a path. NOT for browsing "+
+					"available profiles — use SandboxList. Read-only.",
 			),
 			mcp.WithString("name", mcp.Required(),
 				mcp.Description("Profile name from config.toml.")),
@@ -140,9 +149,13 @@ func RegisterSandboxTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"SandboxDoctor",
 			mcp.WithDescription(
-				"Report which sandbox engines are available on this host "+
-					"(bwrap, sandbox-exec, docker). Use to recommend the right "+
-					"engine to install when none is available.",
+				"Diagnose which sandbox engines are installed on this host "+
+					"(bwrap on Linux / sandbox-exec on macOS / docker / noop "+
+					"fallback) and which one clawtool would select. Use when "+
+					"the operator asks \"is sandboxing working?\" or after "+
+					"SandboxList shows engine=noop to recommend the right "+
+					"engine to install. NOT for inspecting profile contents — "+
+					"use SandboxShow. Read-only.",
 			),
 		),
 		runSandboxDoctor,

@@ -112,10 +112,14 @@ func RegisterBridgeTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"BridgeList",
 			mcp.WithDescription(
-				"List the bridges clawtool can install (codex / opencode / gemini), "+
-					"with current install state. A 'bridge' is the connector clawtool "+
-					"installs to talk to another agent CLI; distinct from 'agents' "+
-					"(instance management) and 'recipe' (generic project-setup wizard).",
+				"Enumerate AI-CLI bridges clawtool can install (codex / opencode / "+
+					"gemini) with each one's current install + verify state on this "+
+					"host. Use when the operator says \"what bridges do I have?\" or "+
+					"before BridgeAdd to check if the target family is already "+
+					"installed. A 'bridge' is the connector wrapping another agent "+
+					"CLI's headless mode; distinct from 'agents' (configured "+
+					"instances) and 'recipes' (generic project-setup wizards). "+
+					"Read-only.",
 			),
 		),
 		runBridgeList,
@@ -141,9 +145,12 @@ func RegisterBridgeTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"BridgeRemove",
 			mcp.WithDescription(
-				"Remove the bridge for the given family. v0.10 surfaces this as a "+
-					"manual hint (claude plugin remove); fully automated uninstall "+
-					"lands in v0.10.x.",
+				"Uninstall an AI-CLI bridge (codex / opencode / gemini) by family. "+
+					"Use when the operator wants to drop a bridge they no longer "+
+					"need or before re-installing a different upstream variant. "+
+					"NOT for refreshing a bridge — use BridgeUpgrade instead. "+
+					"v0.10 surfaces this as a manual hint (`claude plugin "+
+					"remove <name>`); fully automated uninstall lands in v0.10.x.",
 			),
 			mcp.WithString("family", mcp.Required(),
 				mcp.Description("Bridge family: codex | opencode | gemini.")),
@@ -154,8 +161,13 @@ func RegisterBridgeTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"BridgeUpgrade",
 			mcp.WithDescription(
-				"Re-run the bridge install for the given family. Idempotent; "+
-					"pulls the latest plugin version from the upstream marketplace.",
+				"Refresh an installed AI-CLI bridge (codex / opencode / gemini) "+
+					"by re-running its install recipe — pulls the latest plugin "+
+					"version from the upstream marketplace. Use when the operator "+
+					"says \"update gemini bridge\" or after a clawtool release "+
+					"that updates pinned plugin versions. Idempotent; safe on "+
+					"a healthy bridge. NOT for the initial install — use "+
+					"BridgeAdd; NOT for uninstall — use BridgeRemove.",
 			),
 			mcp.WithString("family", mcp.Required(),
 				mcp.Description("Bridge family: codex | opencode | gemini.")),

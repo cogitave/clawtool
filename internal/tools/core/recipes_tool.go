@@ -137,10 +137,15 @@ func RegisterRecipeTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"RecipeList",
 			mcp.WithDescription(
-				"List clawtool init recipes with their state in a target repo. "+
-					"Recipes are organized into 9 fixed categories (governance, "+
-					"commits, release, ci, quality, supply-chain, knowledge, agents, "+
-					"runtime). Use this to discover what `RecipeApply` can install.",
+				"Browse the clawtool init-recipe catalog with each recipe's "+
+					"current state in a target repo. Use when the operator "+
+					"asks \"what recipes do you have?\" or before RecipeApply "+
+					"to discover available recipe names. Recipes are organized "+
+					"into 9 fixed categories (governance, commits, release, "+
+					"ci, quality, supply-chain, knowledge, agents, runtime). "+
+					"NOT for inspecting one recipe's status only — use "+
+					"RecipeStatus; NOT for installing — use RecipeApply. "+
+					"Read-only.",
 			),
 			mcp.WithString("category",
 				mcp.Description("Filter to one of the 9 categories. Empty = all.")),
@@ -154,9 +159,14 @@ func RegisterRecipeTools(s *server.MCPServer) {
 		mcp.NewTool(
 			"RecipeStatus",
 			mcp.WithDescription(
-				"Detect status for one recipe (or every recipe) against a repo. "+
-					"Status values: applied, partial, absent, error. Pair with "+
-					"RecipeApply to fill in what's missing.",
+				"Probe Detect status for one recipe (or every recipe) against "+
+					"a repo without running the install. Use to verify a recipe "+
+					"is `applied` in this repo, audit which recipes are still "+
+					"`absent`/`partial`, or before RecipeApply to confirm the "+
+					"recipe needs work. Status values: applied | partial | "+
+					"absent | error. NOT for browsing the catalog with "+
+					"category grouping — use RecipeList; NOT for installing — "+
+					"use RecipeApply. Read-only.",
 			),
 			mcp.WithString("name",
 				mcp.Description("Recipe name. Empty = report all recipes.")),
