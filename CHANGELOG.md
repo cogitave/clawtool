@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.106] - 2026-05-01
+## [0.22.107] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.106 [skip ci] (04b470c)
+### Features
+
+- **peer:** Auto-close auto-spawned tmux panes on terminal task status (6e4b78e)## [0.22.106] - 2026-05-01
 
 ### Features
 
