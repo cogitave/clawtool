@@ -4,7 +4,15 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.80] - 2026-05-01
+## [0.22.81] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.80 [skip ci] (e4b8bab)
+### Fixes
+
+- **ci:** Force release body via gh CLI post-step (goreleaser silently drops --release-notes) (ba1da75)
+- **telemetry:** No-op in CI by default + filter Go pseudo-versions from version reporting (853f511)## [0.22.80] - 2026-05-01
 
 ### Documentation
 
