@@ -13,18 +13,37 @@
 package cli
 
 import (
-	"bytes"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
 )
 
-// tmuxExec is the seam tests stub. exec.Command's signature
-// matches without conversion, so production wiring is `var
-// tmuxExec = exec.Command` and tests overwrite it for the
-// duration of the test.
-var tmuxExec = exec.Command
+// tmuxRunArgv runs a tmux invocation for its side effect and
+// discards stdout. Used by tmuxSendKeys (fire-and-forget). The
+// indirection is a test seam — production binds to execRunArgv,
+// tests overwrite with a non-execing recorder so the suite stays
+// portable across Linux/macOS without depending on /bin/true vs
+// /usr/bin/true (the original /bin/true stub broke macos-latest
+// CI because `/bin/true` doesn't exist on Darwin).
+var tmuxRunArgv = execRunArgv
+
+// tmuxOutputArgv runs a tmux invocation and returns its stdout.
+// Used by tmuxPaneAlive. Same test-seam contract as tmuxRunArgv.
+var tmuxOutputArgv = execOutputArgv
+
+// execRunArgv is the production no-stub adapter that fork+execs
+// the named binary with the given argv and returns its Run error.
+func execRunArgv(name string, args ...string) error {
+	return exec.Command(name, args...).Run()
+}
+
+// execOutputArgv is the production no-stub adapter that fork+execs
+// the named binary with the given argv and returns its captured
+// stdout (or an error).
+func execOutputArgv(name string, args ...string) ([]byte, error) {
+	return exec.Command(name, args...).Output()
+}
 
 // tmuxPaneIDPattern matches tmux's `%<digits>` pane id format.
 // Anything else (path-like, shell-meta-laden) is rejected before
@@ -52,16 +71,16 @@ func tmuxSendKeys(paneID, text string) error {
 	}
 	// Step 1 — push the literal text into the pane's input
 	// buffer. `-l` suppresses key-name interpretation.
-	if err := tmuxExec("tmux", "send-keys", "-t", paneID, "-l", text).Run(); err != nil {
+	if err := tmuxRunArgv("tmux", "send-keys", "-t", paneID, "-l", text); err != nil {
 		return fmt.Errorf("tmux send-keys text: %w", err)
 	}
 	// Step 2 — Escape to clear any partial keystroke state in
 	// the recipient's TUI before submission. Mirrors repowire.
-	if err := tmuxExec("tmux", "send-keys", "-t", paneID, "Escape").Run(); err != nil {
+	if err := tmuxRunArgv("tmux", "send-keys", "-t", paneID, "Escape"); err != nil {
 		return fmt.Errorf("tmux send-keys Escape: %w", err)
 	}
 	// Step 3 — Enter to submit the prompt to the recipient agent.
-	if err := tmuxExec("tmux", "send-keys", "-t", paneID, "Enter").Run(); err != nil {
+	if err := tmuxRunArgv("tmux", "send-keys", "-t", paneID, "Enter"); err != nil {
 		return fmt.Errorf("tmux send-keys Enter: %w", err)
 	}
 	return nil
@@ -80,13 +99,11 @@ func tmuxPaneAlive(paneID string) bool {
 	if !validTmuxPaneID(paneID) {
 		return false
 	}
-	cmd := tmuxExec("tmux", "list-panes", "-a", "-F", "#{pane_id}")
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	if err := cmd.Run(); err != nil {
+	out, err := tmuxOutputArgv("tmux", "list-panes", "-a", "-F", "#{pane_id}")
+	if err != nil {
 		return false
 	}
-	for _, line := range strings.Split(buf.String(), "\n") {
+	for _, line := range strings.Split(string(out), "\n") {
 		if strings.TrimSpace(line) == paneID {
 			return true
 		}

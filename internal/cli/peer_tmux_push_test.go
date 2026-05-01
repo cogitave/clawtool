@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -13,31 +12,42 @@ import (
 	"github.com/cogitave/clawtool/internal/a2a"
 )
 
-// withStubTmuxExec rebinds tmuxExec to a recorder for the test.
-// Returns a pointer to the captured argv slice; Run()s succeed
-// via /bin/true. When stdoutFor returns non-empty, that string
-// is echoed via /bin/sh -c printf so tmuxPaneAlive sees a tmux-
-// shaped listing. Cleanup restores the production binding.
+// withStubTmuxExec rebinds tmuxRunArgv + tmuxOutputArgv to a
+// shared in-process recorder. No fork/exec happens, so the suite
+// is portable across Linux and macOS (the previous stub shelled
+// out to /bin/true, which doesn't exist on Darwin and broke
+// macos-latest CI). stdoutFor — when non-nil — supplies fake
+// stdout for tmuxPaneAlive's list-panes call. Cleanup restores
+// the production bindings.
 func withStubTmuxExec(t *testing.T, stdoutFor func(args []string) string) *[][]string {
 	t.Helper()
 	var (
 		mu    sync.Mutex
 		calls [][]string
 	)
-	prev := tmuxExec
-	tmuxExec = func(name string, args ...string) *exec.Cmd {
+	record := func(name string, args ...string) []string {
 		full := append([]string{name}, args...)
 		mu.Lock()
 		calls = append(calls, append([]string(nil), full...))
 		mu.Unlock()
-		if stdoutFor != nil {
-			if out := stdoutFor(full); out != "" {
-				return exec.Command("/bin/sh", "-c", "printf '%s' '"+strings.ReplaceAll(out, "'", `'\''`)+"'")
-			}
-		}
-		return exec.Command("/bin/true")
+		return full
 	}
-	t.Cleanup(func() { tmuxExec = prev })
+	prevRun, prevOut := tmuxRunArgv, tmuxOutputArgv
+	tmuxRunArgv = func(name string, args ...string) error {
+		record(name, args...)
+		return nil
+	}
+	tmuxOutputArgv = func(name string, args ...string) ([]byte, error) {
+		full := record(name, args...)
+		if stdoutFor != nil {
+			return []byte(stdoutFor(full)), nil
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		tmuxRunArgv = prevRun
+		tmuxOutputArgv = prevOut
+	})
 	return &calls
 }
 
