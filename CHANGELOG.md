@@ -4,7 +4,26 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.98] - 2026-05-01
+## [0.22.102] - 2026-05-01
+
+### Features
+
+- **peer:** Add tmux send-keys push for real-time agent-to-agent delivery (repowire-style) (c579a52)## [0.22.101] - 2026-05-01
+
+### Features
+
+- **install:** --auto-spawn flag opens detected agents in tmux panes + auto-registers pane_ids (c7e3983)## [0.22.100] - 2026-05-01
+
+### Fixes
+
+- **hooks:** Auto-deliver peer inbox on UserPromptSubmit (Stop drain never reached agent context) (99118a5)## [0.22.99] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.98 [skip ci] (67f0aec)
+### Fixes
+
+- **hooks:** Move SessionStart context-load to UserPromptSubmit (Claude Code v2.1.126 ToolUseContext regression workaround) (639fb87)## [0.22.98] - 2026-05-01
 
 ### Features
 
