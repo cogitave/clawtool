@@ -193,6 +193,26 @@ func TestSurfaceDrift_SlashCommandsHaveBackingTool(t *testing.T) {
 		"clawtool-dashboard.md":   true, // CLI verb — `clawtool dashboard` is a TUI; no MCP-tool counterpart by design
 		"clawtool-rules.md":       true, // CLI verb — `clawtool rules <list|show|new|remove|path>`. RulesAdd MCP tool covers the add half; the others are CLI-only.
 		"clawtool-overview.md":    true, // CLI verb — `clawtool overview` is a one-screen status dump (lighter than doctor, not live like dashboard). No MCP-tool counterpart by design.
+
+		// Setup / onboarding verbs. The MCP peers are
+		// OnboardStatus / OnboardWizard / InitApply / AutonomousRun,
+		// each already in surfaceAllowlist as agent-facing primitives;
+		// the slash command names use the user-facing CLI verb so the
+		// stems don't camelToKebab-match the MCP tool names.
+		"clawtool-init.md":       true, // CLI verb — `clawtool init [--all] [--summary-json]` (MCP peer: InitApply)
+		"clawtool-onboard.md":    true, // CLI verb — `clawtool onboard [--yes] [--force]` (MCP peer: OnboardWizard / OnboardStatus)
+		"clawtool-bootstrap.md":  true, // CLI verb — `clawtool bootstrap` spawns a peer that drives Onboard+Init via MCP. No MCP-tool counterpart by design.
+		"clawtool-autonomous.md": true, // CLI verb — `clawtool autonomous "<goal>"` (MCP peer: AutonomousRun; verb stem is `autonomous`, tool stem is `autonomous-run`)
+
+		// APM / Archon imports. These are CLI-only surfaces today;
+		// phase-2 work will add MCP-tool peers.
+		"clawtool-apm-import.md":           true, // CLI verb — `clawtool apm import` (microsoft/apm manifest reader). No MCP-tool counterpart yet.
+		"clawtool-playbook-list-archon.md": true, // CLI verb — `clawtool playbook list-archon` (Archon DAG workflows). Read-only phase 1; no MCP-tool counterpart yet.
+
+		// Source subcommands. `source-inspect` shells out to the
+		// npm-published MCP Inspector; no MCP-tool counterpart by
+		// design (we don't re-implement the inspector).
+		"clawtool-source-inspect.md": true, // CLI verb — `clawtool source inspect <instance>` (wraps @modelcontextprotocol/inspector via npx).
 	}
 
 	known := map[string]bool{}
