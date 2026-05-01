@@ -419,6 +419,16 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		server.WithToolCapabilities(true),
 		server.WithLogging(),
 		server.WithHooks(mcpHooks),
+		// SEP-414: extract W3C Trace Context off
+		// `_meta.traceparent` / `_meta.tracestate` (with
+		// TRACEPARENT/TRACESTATE env as the v0.22 fallback)
+		// onto the handler ctx, then echo the resulting
+		// span context back onto the response's `_meta`
+		// so callers can stitch the tool call into their
+		// own distributed trace. See
+		// internal/tools/registry/otel_meta.go for the
+		// extraction + injection logic.
+		server.WithToolHandlerMiddleware(registry.TraceContextMiddleware()),
 	)
 
 	// Manifest-driven registration (#173 Step 4). The 28 hand-
