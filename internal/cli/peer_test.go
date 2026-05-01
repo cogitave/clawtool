@@ -429,6 +429,131 @@ func TestPeer_DrainEmpty(t *testing.T) {
 	}
 }
 
+// TestPeer_DrainHookJSON_Empty — empty inbox must emit `{}` (an
+// empty JSON object) on stdout and exit 0. Claude Code's
+// UserPromptSubmit hook contract: empty stdout would crash the
+// parser, but `{}` is "no additionalContext to add" so the agent
+// processes the prompt unchanged.
+func TestPeer_DrainHookJSON_Empty(t *testing.T) {
+	const session = "sess-hookjson-empty"
+	const peerID = "peer-hookjson-empty"
+	newDrainStub(t, session, peerID, nil, nil)
+
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+	rc := app.Run([]string{"peer", "drain", "--session", session, "--format", "hook-json"})
+	if rc != 0 {
+		t.Fatalf("rc=%d, stderr=%s", rc, errb.String())
+	}
+	body := strings.TrimSpace(out.String())
+	if body != "{}" {
+		t.Errorf("empty inbox should emit `{}`; got %q", out.String())
+	}
+}
+
+// TestPeer_DrainHookJSON_OneMessage — pin the
+// hookSpecificOutput envelope shape for a single-message inbox.
+// The injected additionalContext must carry the "[clawtool peer
+// message — from <name>, <ts>]\n<body>" block, and hookEventName
+// must be "UserPromptSubmit" so Claude Code knows where to inject.
+func TestPeer_DrainHookJSON_OneMessage(t *testing.T) {
+	const session = "sess-hookjson-one"
+	const peerID = "peer-hookjson-one"
+	const senderID = "peer-hookjson-sender"
+	now := time.Now().UTC()
+	peers := []a2a.Peer{
+		{PeerID: senderID, DisplayName: "alice@host/codex", Backend: "codex"},
+		{PeerID: peerID, DisplayName: "bob@host/claude-code", Backend: "claude-code"},
+	}
+	msgs := []a2a.Message{
+		{ID: "m1", FromPeer: senderID, Type: a2a.MsgNotification, Text: "hello bob", Timestamp: now},
+	}
+	newDrainStub(t, session, peerID, peers, msgs)
+
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+	rc := app.Run([]string{"peer", "drain", "--session", session, "--format", "hook-json"})
+	if rc != 0 {
+		t.Fatalf("rc=%d, stderr=%s", rc, errb.String())
+	}
+	var got struct {
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON envelope: %v\n--- body ---\n%s", err, out.String())
+	}
+	if got.HookSpecificOutput.HookEventName != "UserPromptSubmit" {
+		t.Errorf("hookEventName=%q, want UserPromptSubmit", got.HookSpecificOutput.HookEventName)
+	}
+	ctx := got.HookSpecificOutput.AdditionalContext
+	wantPrefix := "[clawtool peer message — from alice@host/codex, "
+	if !strings.HasPrefix(ctx, wantPrefix) {
+		t.Errorf("additionalContext prefix mismatch.\nwant prefix: %q\ngot: %q", wantPrefix, ctx)
+	}
+	if !strings.Contains(ctx, "hello bob") {
+		t.Errorf("additionalContext missing message body 'hello bob'; got %q", ctx)
+	}
+	if !strings.Contains(ctx, now.Format(time.RFC3339)) {
+		t.Errorf("additionalContext missing RFC3339 timestamp; got %q", ctx)
+	}
+}
+
+// TestPeer_DrainHookJSON_MultipleMessages — N messages must be
+// joined with `\n\n---\n\n` so the agent sees a clean separator
+// between distinct peer messages. Pins the join token + ordering.
+func TestPeer_DrainHookJSON_MultipleMessages(t *testing.T) {
+	const session = "sess-hookjson-many"
+	const peerID = "peer-hookjson-many"
+	const sA = "peer-A"
+	const sB = "peer-B"
+	now := time.Now().UTC()
+	peers := []a2a.Peer{
+		{PeerID: sA, DisplayName: "alice@host/codex"},
+		{PeerID: sB, DisplayName: "bob@host/gemini"},
+		{PeerID: peerID, DisplayName: "carol@host/claude-code"},
+	}
+	msgs := []a2a.Message{
+		{ID: "m1", FromPeer: sA, Type: a2a.MsgNotification, Text: "first body", Timestamp: now},
+		{ID: "m2", FromPeer: sB, Type: a2a.MsgNotification, Text: "second body", Timestamp: now.Add(time.Second)},
+		{ID: "m3", FromPeer: sA, Type: a2a.MsgNotification, Text: "third body", Timestamp: now.Add(2 * time.Second)},
+	}
+	newDrainStub(t, session, peerID, peers, msgs)
+
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+	rc := app.Run([]string{"peer", "drain", "--session", session, "--format", "hook-json"})
+	if rc != 0 {
+		t.Fatalf("rc=%d, stderr=%s", rc, errb.String())
+	}
+	var got struct {
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON envelope: %v\n--- body ---\n%s", err, out.String())
+	}
+	ctx := got.HookSpecificOutput.AdditionalContext
+	// Three messages → exactly two `\n\n---\n\n` separators.
+	parts := strings.Split(ctx, "\n\n---\n\n")
+	if len(parts) != 3 {
+		t.Fatalf("expected 3 blocks joined by `\\n\\n---\\n\\n`; got %d parts:\n%s", len(parts), ctx)
+	}
+	if !strings.Contains(parts[0], "first body") || !strings.Contains(parts[0], "alice@host/codex") {
+		t.Errorf("block 0 mismatch: %q", parts[0])
+	}
+	if !strings.Contains(parts[1], "second body") || !strings.Contains(parts[1], "bob@host/gemini") {
+		t.Errorf("block 1 mismatch: %q", parts[1])
+	}
+	if !strings.Contains(parts[2], "third body") || !strings.Contains(parts[2], "alice@host/codex") {
+		t.Errorf("block 2 mismatch: %q", parts[2])
+	}
+}
+
 // TestPeer_DrainUnknownFormat — bad --format value rejected at
 // parse time with rc=2, no daemon round-trip. Mirror of
 // TestPeer_ListUnknownFormat.

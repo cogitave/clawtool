@@ -1,5 +1,5 @@
 {
-  "description": "clawtool fresh-session bootstrap + peer-discovery hooks. SessionStart registers this Claude session into the daemon's peer registry so other terminals can discover it. UserPromptSubmit loads clawtool context on the FIRST prompt of the session (idempotent via per-session marker) — moved off SessionStart to dodge Claude Code v2.1.126's ToolUseContext regression that bails on additionalContext injection without an active prompt. Stop heartbeats (busy→online) AND drains the peer inbox so received messages reach the live agent's next turn; SessionEnd deregisters cleanly.",
+  "description": "clawtool fresh-session bootstrap + peer-discovery hooks. SessionStart only registers this Claude session into the daemon's peer registry (context-load moved to UserPromptSubmit to dodge Claude Code v2.1.126's ToolUseContext regression). UserPromptSubmit loads context on first prompt (idempotent via marker) AND drains the peer inbox into additionalContext so received messages reach the agent's next turn. Stop heartbeats status busy→online; SessionEnd deregisters cleanly.",
   "hooks": {
     "SessionStart": [
       {
@@ -21,11 +21,6 @@
             "type": "command",
             "command": "clawtool peer heartbeat --status online",
             "timeout": 2
-          },
-          {
-            "type": "command",
-            "command": "clawtool peer drain --format context",
-            "timeout": 2
           }
         ]
       }
@@ -43,6 +38,11 @@
           {
             "type": "command",
             "command": "clawtool peer heartbeat --status busy",
+            "timeout": 2
+          },
+          {
+            "type": "command",
+            "command": "clawtool peer drain --format hook-json",
             "timeout": 2
           }
         ]

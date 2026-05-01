@@ -175,18 +175,19 @@ const codexHookSnippet = `# Codex peer-discovery hooks (clawtool ADR-024 Phase 1
 # Drop into ~/.codex/config.toml under [hooks]:
 
 [hooks]
-session_start = "clawtool peer register --backend codex"
-session_end   = "clawtool peer deregister"
-# Per-turn session tick: drain the peer inbox so messages other
-# peers send reach the LIVE AGENT's next turn (not just the file).
-# 'clawtool peer drain --format context' prints each pending
-# message as a system-prompt-shaped block; pipe / redirect it
-# wherever Codex injects per-turn context. Empty inbox = silent
-# exit 0 so a quiet turn produces no output.
-turn_end      = "clawtool peer drain --format context"
-# Codex doesn't expose a turn-end event in every release; until
-# it does, rely on the daemon's stale-sweep (peers flip to
-# offline after 60s without a heartbeat).
+session_start    = "clawtool peer register --backend codex"
+session_end      = "clawtool peer deregister"
+# Pre-prompt drain: fires BEFORE Codex processes each user prompt
+# so injected context reaches the LIVE agent's turn (Stop / turn_end
+# events fire AFTER the agent finishes — their stdout never reaches
+# the agent's context). Use 'user_prompt_submit' when your Codex
+# build exposes it; older builds: wire a pre_turn / before_prompt
+# hook to the same command.
+user_prompt_submit = "clawtool peer drain --format context"
+# Fallback for builds without a pre-prompt hook: drain on turn_end
+# is dead noise (its stdout is dropped) — instead rely on the
+# daemon's stale-sweep (peers flip to offline after 60s without a
+# heartbeat) and inspect with 'clawtool peer inbox --peek' manually.
 `
 
 const geminiHookSnippet = `# Gemini-CLI peer-discovery hooks (clawtool ADR-024 Phase 1).
@@ -196,13 +197,16 @@ const geminiHookSnippet = `# Gemini-CLI peer-discovery hooks (clawtool ADR-024 P
 
 clawtool peer register --backend gemini
 # ... gemini session runs ...
-# Per-turn (or pre-prompt) session tick: drain inbox so peer
-# messages reach the live agent. Empty = silent.
+# Pre-prompt drain: must run BEFORE the agent sees the user's
+# prompt so injected context reaches the live turn. After-turn
+# events fire too late — their stdout never reaches the agent.
 clawtool peer drain --format context
 clawtool peer deregister
 
 # When Gemini-CLI's hooks land, the equivalent config lives in
-# ~/.config/gemini/hooks.toml — same shape as codex.
+# ~/.config/gemini/hooks.toml — wire the drain to the
+# 'before_user_prompt' (or whatever Gemini calls its pre-prompt
+# event) so each turn's stdout is injected as additional context.
 `
 
 const opencodeHookSnippet = `# OpenCode peer-discovery hooks (clawtool ADR-024 Phase 1).
@@ -210,15 +214,17 @@ const opencodeHookSnippet = `# OpenCode peer-discovery hooks (clawtool ADR-024 P
 
 {
   "hooks": {
-    "session.start": [{ "command": "clawtool peer register --backend opencode" }],
-    "session.tick":  [{ "command": "clawtool peer drain --format context" }],
-    "session.end":   [{ "command": "clawtool peer deregister" }]
+    "session.start":     [{ "command": "clawtool peer register --backend opencode" }],
+    "chat.params":       [{ "command": "clawtool peer drain --format context" }],
+    "session.end":       [{ "command": "clawtool peer deregister" }]
   }
 }
 
-# session.tick fires per-turn — drain the peer inbox so messages
-# from other peers reach the live agent's context, not just the
-# file. Empty inbox = silent exit 0.
+# chat.params fires BEFORE OpenCode submits the user's message to
+# the model — drain output reaches the live turn's context. Don't
+# wire drain to session.tick / after-turn events: their stdout is
+# dropped after the agent has already responded. Empty inbox =
+# silent exit 0.
 #
 # OpenCode is research-only in clawtool's send/dispatch routing;
 # peer discovery still works — it just shows up in the registry as

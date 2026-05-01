@@ -167,12 +167,15 @@ func TestHooksInstall_DrainSnippets(t *testing.T) {
 	}
 }
 
-// TestBundledHooksJSON_StopHasDrain — the Claude Code plugin's
-// hooks/hooks.json must wire `clawtool peer drain --format context`
-// into the Stop event so each assistant turn auto-pulls peer
-// messages into the next-turn context. Existing entries (heartbeat,
-// register, deregister) must NOT have been clobbered.
-func TestBundledHooksJSON_StopHasDrain(t *testing.T) {
+// TestBundledHooksJSON_UserPromptSubmitHasDrain — the Claude Code
+// plugin's hooks/hooks.json must wire `clawtool peer drain --format
+// hook-json` into the UserPromptSubmit event so peer inbox messages
+// auto-deliver as additionalContext at the start of each user turn.
+// Stop's drain entry is REMOVED here: Stop fires AFTER the agent
+// has already responded, so its stdout never reached the agent's
+// context — that drain was dead noise. Stop keeps its heartbeat
+// entry, which IS useful (status flip independent of stdin/stdout).
+func TestBundledHooksJSON_UserPromptSubmitHasDrain(t *testing.T) {
 	// internal/cli → repo root: ../../hooks/hooks.json
 	body, err := os.ReadFile(filepath.Join("..", "..", "hooks", "hooks.json"))
 	if err != nil {
@@ -190,27 +193,55 @@ func TestBundledHooksJSON_StopHasDrain(t *testing.T) {
 	if err := json.Unmarshal(body, &cfg); err != nil {
 		t.Fatalf("parse hooks.json: %v", err)
 	}
-	stop, ok := cfg.Hooks["Stop"]
-	if !ok || len(stop) == 0 {
-		t.Fatalf("Stop event missing")
+
+	// UserPromptSubmit MUST carry the drain --format hook-json
+	// command (this is the auto-deliver pipeline).
+	ups, ok := cfg.Hooks["UserPromptSubmit"]
+	if !ok || len(ups) == 0 {
+		t.Fatalf("UserPromptSubmit event missing")
 	}
-	var sawDrain, sawHeartbeat bool
-	for _, m := range stop {
+	var sawDrain, sawBusyHeartbeat bool
+	for _, m := range ups {
 		for _, h := range m.Hooks {
-			if strings.Contains(h.Command, "peer drain --format context") {
+			if strings.Contains(h.Command, "peer drain --format hook-json") {
 				sawDrain = true
 			}
-			if strings.Contains(h.Command, "peer heartbeat") {
-				sawHeartbeat = true
+			if strings.Contains(h.Command, "peer heartbeat --status busy") {
+				sawBusyHeartbeat = true
 			}
 		}
 	}
 	if !sawDrain {
-		t.Errorf("Stop event missing 'peer drain --format context' hook")
+		t.Errorf("UserPromptSubmit missing 'peer drain --format hook-json' hook")
 	}
-	if !sawHeartbeat {
-		t.Errorf("Stop event must keep the existing peer-heartbeat hook")
+	if !sawBusyHeartbeat {
+		t.Errorf("UserPromptSubmit must keep the existing busy-heartbeat hook")
 	}
+
+	// Stop MUST NOT carry a drain — its stdout never reaches the
+	// agent. Heartbeat (status online) MUST stay.
+	stop, ok := cfg.Hooks["Stop"]
+	if !ok || len(stop) == 0 {
+		t.Fatalf("Stop event missing")
+	}
+	var stopHasDrain, stopHasOnlineHeartbeat bool
+	for _, m := range stop {
+		for _, h := range m.Hooks {
+			if strings.Contains(h.Command, "peer drain") {
+				stopHasDrain = true
+			}
+			if strings.Contains(h.Command, "peer heartbeat --status online") {
+				stopHasOnlineHeartbeat = true
+			}
+		}
+	}
+	if stopHasDrain {
+		t.Errorf("Stop event must NOT have peer drain (its stdout never reaches the agent)")
+	}
+	if !stopHasOnlineHeartbeat {
+		t.Errorf("Stop event must keep the existing online-heartbeat hook")
+	}
+
 	// SessionEnd / SessionStart are existing wiring — guard them
 	// so a future re-roll of this file doesn't accidentally drop
 	// register / deregister.

@@ -62,14 +62,20 @@ const peerUsage = `Usage:
                                            GET /v1/peers/{id}/messages — drain
                                            pending messages (or peek without
                                            consuming).
-  clawtool peer drain [--session <id>] [--format text|json|context]
-                                           Like 'inbox' but always consumes,
-                                           and adds --format context which
-                                           emits each message as a system-
-                                           prompt-shaped block ready to splice
-                                           into the live agent's turn. Empty
-                                           inbox = silent exit 0 (chainable
-                                           from a session-tick hook).
+  clawtool peer drain [--session <id>] [--format text|json|context|hook-json]
+                                           Like 'inbox' but always consumes.
+                                           --format context emits each message
+                                           as a system-prompt-shaped block
+                                           ready to splice into the live
+                                           agent's turn. --format hook-json
+                                           emits a Claude Code UserPromptSubmit
+                                           hookSpecificOutput envelope so the
+                                           rendered messages get injected as
+                                           additionalContext into the agent's
+                                           next turn (empty inbox = ` + "`{}`" + `).
+                                           Empty inbox in text/json/context
+                                           = silent exit 0 (chainable from a
+                                           session-tick hook).
   clawtool peer list [--circle <name>] [--backend <name>] [--status <s>]
                      [--format text|json|tsv]
                                            GET /v1/peers — operator-facing
@@ -249,14 +255,14 @@ func (a *App) runPeerDrain(argv []string) int {
 	fs := flag.NewFlagSet("peer drain", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	session := fs.String("session", defaultSessionKey(), "Session identifier (resolves to peer_id).")
-	format := fs.String("format", "text", "Output format: text | json | context.")
+	format := fs.String("format", "text", "Output format: text | json | context | hook-json.")
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
 	switch *format {
-	case "text", "json", "context":
+	case "text", "json", "context", "hook-json":
 	default:
-		fmt.Fprintf(a.Stderr, "clawtool peer drain: unknown --format %q (want text|json|context)\n", *format)
+		fmt.Fprintf(a.Stderr, "clawtool peer drain: unknown --format %q (want text|json|context|hook-json)\n", *format)
 		return 2
 	}
 	if *session == "default" {
@@ -272,6 +278,12 @@ func (a *App) runPeerDrain(argv []string) int {
 		// empty so the chained `>>` redirection in hooks.json
 		// doesn't surface a spurious error every turn.
 		if errors.Is(err, os.ErrNotExist) {
+			if *format == "hook-json" {
+				// UserPromptSubmit hook contract: empty
+				// object = "no additional context" — Claude
+				// Code processes the prompt unchanged.
+				fmt.Fprintln(a.Stdout, "{}")
+			}
 			return 0
 		}
 		fmt.Fprintf(a.Stderr, "clawtool peer drain: %v\n", err)
@@ -284,14 +296,25 @@ func (a *App) runPeerDrain(argv []string) int {
 		Peek     bool          `json:"peek"`
 	}
 	if err := daemon.HTTPRequest(http.MethodGet, "/v1/peers/"+peerID+"/messages", nil, &out); err != nil {
+		// hook-json: a daemon-down moment must not jam the
+		// UserPromptSubmit pipeline — emit empty envelope and
+		// route the diagnostic to stderr so the host's hook
+		// log captures it without corrupting the agent's turn.
+		if *format == "hook-json" {
+			fmt.Fprintf(a.Stderr, "clawtool peer drain: %v\n", err)
+			fmt.Fprintln(a.Stdout, "{}")
+			return 0
+		}
 		fmt.Fprintf(a.Stderr, "clawtool peer drain: %v\n", err)
 		return 1
 	}
-	// Empty inbox = silent exit 0. A session-tick hook chains
-	// this verb's stdout into the agent's context; ANY output
-	// here (placeholder banner, count line, etc.) would pollute
-	// every quiet turn.
+	// Empty inbox = silent exit 0 for the chainable formats; for
+	// hook-json the contract is `{}` (so Claude Code's parser
+	// always sees a valid envelope, never an empty stdout).
 	if out.Count == 0 {
+		if *format == "hook-json" {
+			fmt.Fprintln(a.Stdout, "{}")
+		}
 		return 0
 	}
 	switch *format {
@@ -317,6 +340,41 @@ func (a *App) runPeerDrain(argv []string) int {
 			}
 			fmt.Fprintf(a.Stdout, "\n[clawtool peer message from %s]: %s\n", label, m.Text)
 		}
+		return 0
+	case "hook-json":
+		// Claude Code UserPromptSubmit hook contract: stdout
+		// is parsed as JSON; if hookSpecificOutput.hookEventName
+		// == "UserPromptSubmit" and additionalContext is set,
+		// that string is spliced into the prompt the agent
+		// sees on its NEXT turn. This is how peer messages
+		// reach the live agent automatically — no manual
+		// `peer inbox --peek` required.
+		//
+		// Render: each message wrapped as a labeled system-
+		// prompt block, joined with `\n\n---\n\n` so the agent
+		// sees a clean sequence even when N peers broadcast at
+		// once.
+		names := resolvePeerNames(out.Messages)
+		blocks := make([]string, 0, len(out.Messages))
+		for _, m := range out.Messages {
+			label := names[m.FromPeer]
+			if label == "" {
+				label = m.FromPeer
+				if label == "" {
+					label = "unknown"
+				}
+			}
+			ts := m.Timestamp.Format(time.RFC3339)
+			blocks = append(blocks, fmt.Sprintf("[clawtool peer message — from %s, %s]\n%s", label, ts, m.Text))
+		}
+		envelope := map[string]any{
+			"hookSpecificOutput": map[string]any{
+				"hookEventName":     "UserPromptSubmit",
+				"additionalContext": strings.Join(blocks, "\n\n---\n\n"),
+			},
+		}
+		body, _ := json.Marshal(envelope)
+		fmt.Fprintln(a.Stdout, string(body))
 		return 0
 	}
 	// text — same shape as `peer inbox` table mode minus the
