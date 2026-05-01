@@ -4,7 +4,26 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.94] - 2026-05-01
+## [0.22.98] - 2026-05-01
+
+### Features
+
+- **spawn:** Add 'spawn' verb + Spawn MCP tool to open new terminals running agents (auto peer-registered) (2438c74)## [0.22.97] - 2026-05-01
+
+### Features
+
+- **agents:** SendMessage prefers live BIAM peer over spawning fresh subprocess (peer-prefer mode default) (ced7440)## [0.22.96] - 2026-05-01
+
+### Features
+
+- **peer:** Add 'peer drain' verb + bundled session-tick inbox hook for live message delivery (128f140)## [0.22.95] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.94 [skip ci] (0fcb170)
+### Features
+
+- **cli:** Add 'install' verb for zero-touch first-run setup (daemon + hosts + hooks + peer + init) (5485725)## [0.22.94] - 2026-05-01
 
 ### Documentation
 
