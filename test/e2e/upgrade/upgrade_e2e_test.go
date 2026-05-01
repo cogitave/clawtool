@@ -221,10 +221,20 @@ func TestUpgrade_LiveContainerSurvivesBinarySwap(t *testing.T) {
 	// Probe /v1/health from inside the container. The new daemon
 	// picked a fresh port; read it from daemon.json the same way
 	// the live binary writes it.
+	//
+	// No bearer token: `clawtool daemon start` (and `daemon
+	// restart`) always spawns the listener with `--no-auth`
+	// (single-user local mode, see daemon.EnsureFrom), so no
+	// listener-token file is written and the /v1/health endpoint
+	// accepts unauthenticated requests. Reading the token here
+	// would fail with "No such file or directory" the moment the
+	// daemon flipped to no-auth — that's exactly the latent bug
+	// this comment now codifies. Operators running `clawtool
+	// serve --token-file ...` directly are out of scope for this
+	// upgrade-flow test.
 	healthCmd := `set -e
 PORT=$(grep -oP '"port":\s*\K[0-9]+' /tmp/cfg/clawtool/daemon.json)
-TOKEN=$(tr -d '\n' < /tmp/cfg/clawtool/listener-token)
-curl -fsS -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT/v1/health"`
+curl -fsS "http://127.0.0.1:$PORT/v1/health"`
 	health := dockerExecBash(t, name, healthCmd)
 	if !strings.Contains(health, "0.0.0-new") {
 		t.Errorf("post-restart /v1/health = %q, want version 0.0.0-new", health)
