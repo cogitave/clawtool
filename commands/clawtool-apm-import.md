@@ -1,6 +1,6 @@
 ---
-description: Import a microsoft/apm manifest (apm.yml, schema 0.1) into the current repo. Registers MCP servers via `clawtool source add`; records skills + playbooks + other agent primitives in .clawtool/apm-imported-manifest.toml for phase-2 recipe wiring.
-argument-hint: [<path/to/apm.yml>] [--dry-run] [--repo <path>]
+description: "Import a microsoft/apm manifest (apm.yml) into the current repo. Registers MCP servers via clawtool source add; records skills + playbooks in .clawtool/apm-imported-manifest.toml."
+argument-hint: "[<path/to/apm.yml>] [--dry-run] [--repo <path>]"
 allowed-tools: mcp__clawtool__Bash
 ---
 

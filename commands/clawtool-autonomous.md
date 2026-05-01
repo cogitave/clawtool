@@ -1,6 +1,6 @@
 ---
-description: Self-paced single-message dev loop. Builds a session prompt from a goal + iteration metadata and dispatches it to a BIAM peer until the agent emits DONE, --max-iterations is hit, or the operator sends SIGINT. Resume + watch modes for long runs.
-argument-hint: "<goal>" [--agent <i>] [--max-iterations <N>] [--cooldown <dur>] [--dry-run] | --resume <final.json> | --watch <workdir>
+description: "Self-paced single-message dev loop. Dispatches a goal to a BIAM peer until DONE, max-iterations, or SIGINT. Resume + watch modes for long runs."
+argument-hint: "<goal> [flags] | --resume <final.json> | --watch <workdir>"
 allowed-tools: mcp__clawtool__Bash, mcp__clawtool__AutonomousRun
 ---
 

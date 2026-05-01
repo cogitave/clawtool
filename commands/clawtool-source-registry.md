@@ -1,6 +1,6 @@
 ---
-description: Probe an MCP catalog and list the first N servers. Backends: registry.modelcontextprotocol.io (default), registry.smithery.ai, or both merged + deduped. Read-only; doesn't touch local config or secrets.
-argument-hint: [--limit N] [--url URL] [--json] [--backend mcp|smithery|both]
+description: "Probe an MCP catalog and list the first N servers. Backends: registry.modelcontextprotocol.io (default), registry.smithery.ai, or both merged."
+argument-hint: "[--limit N] [--url URL] [--json] [--backend mcp|smithery|both]"
 allowed-tools: mcp__clawtool__Bash, mcp__clawtool__SourceRegistry
 ---
 

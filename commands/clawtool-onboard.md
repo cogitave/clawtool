@@ -1,6 +1,6 @@
 ---
-description: Run clawtool's first-run onboarding wizard — detect host CLIs, offer bridge installs, bootstrap the BIAM identity, and record telemetry consent. Resumable; `--yes` for non-interactive, `--force` to wipe progress.
-argument-hint: [--yes] [--force] [--no-defaults]
+description: "Run clawtool's first-run onboarding wizard. Detects host CLIs, offers bridge installs, bootstraps the BIAM identity, records telemetry consent. --yes for non-interactive; --force to wipe progress."
+argument-hint: "[--yes] [--force] [--no-defaults]"
 allowed-tools: mcp__clawtool__Bash, mcp__clawtool__OnboardWizard, mcp__clawtool__OnboardStatus
 ---
 

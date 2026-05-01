@@ -1,6 +1,6 @@
 ---
-description: Apply project-setup recipes to the current repo (license, dependabot, release-please, conventional-commits, devcontainer, prettier, etc.) via the `clawtool init` wizard. Interactive by default; non-interactive with `--all` (Stable defaults) and machine-readable with `--summary-json`.
-argument-hint: [--all] [--summary-json] [--yes]
+description: "Apply project-setup recipes to the current repo via the clawtool init wizard. Interactive by default; --all for non-interactive Stable defaults; --summary-json for machine-readable output."
+argument-hint: "[--all] [--summary-json] [--yes]"
 allowed-tools: mcp__clawtool__Bash, mcp__clawtool__InitApply
 ---
 

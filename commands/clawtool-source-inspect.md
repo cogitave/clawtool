@@ -1,6 +1,6 @@
 ---
-description: Audit a configured source's exposed tool surface. Spawns the npm-published MCP Inspector against the source's stdio command and reports the tools it advertises. Read-only; doesn't touch local config or secrets.
-argument-hint: <instance> [--dry-run] [--format text|json]
+description: "Probe a configured source server with the npm-published MCP Inspector and report the tools it advertises. Read-only — does not touch local config or secrets."
+argument-hint: "<instance> [--dry-run] [--format text|json]"
 allowed-tools: mcp__clawtool__Bash
 ---
 

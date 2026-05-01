@@ -1,6 +1,6 @@
 ---
-description: List Archon (coleam00/Archon) DAG workflows under <dir>/.archon/workflows/. Read-only — phase 1 parses + surfaces; phase 2 will wire execution. Text or JSON output.
-argument-hint: [--dir <path>] [--format text|json]
+description: "List Archon (coleam00/Archon) DAG workflows under <dir>/.archon/workflows/. Read-only — phase 1 parses + surfaces; phase 2 will wire execution. Text or JSON output."
+argument-hint: "[--dir <path>] [--format text|json]"
 allowed-tools: mcp__clawtool__Bash
 ---
 

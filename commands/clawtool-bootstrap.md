@@ -1,6 +1,6 @@
 ---
-description: Zero-click setup. Spawn a BIAM peer's CLI with its elevation flag, pipe a prompt that drives OnboardWizard + InitApply via MCP, and stream the agent's reply back. One verb, fresh repo to wired host + onboarded project.
-argument-hint: [--agent <claude|codex|gemini|opencode|hermes|aider>] [--workdir <path>] [--dry-run]
+description: "Zero-click setup. Spawn a BIAM peer with elevation, pipe a prompt that drives OnboardWizard + InitApply via MCP, stream the reply. One verb, fresh repo to onboarded host."
+argument-hint: "[--agent <claude|codex|gemini|opencode|hermes|aider>] [--workdir <path>] [--dry-run]"
 allowed-tools: mcp__clawtool__Bash
 ---
 
