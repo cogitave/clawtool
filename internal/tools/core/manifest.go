@@ -785,5 +785,23 @@ func BuildManifest() *registry.Manifest {
 		},
 	})
 
+	// Mirror live `mcp.WithDescription(...)` strings back onto
+	// each spec so the bleve BM25 index (driven by SearchDocs,
+	// which reads spec.Description) stays in lockstep with what
+	// `tools/list` advertises. Pre-fix the manifest carried a
+	// hardcoded copy of every description and the v0.22.108
+	// rewrite touched only one of the two sources, so ToolSearch
+	// ranking kept regressing on stale prose for an entire
+	// release. Calling this collapses the two sources to one;
+	// internal/tools/core/manifest_test.go enforces the
+	// invariant in CI so any future drift fails the build.
+	//
+	// Runtime here passes nil Index / nil Secrets — every
+	// Register fn captures those inside its handler closure
+	// (see toolsearch.go / websearch.go), so registration is
+	// safe even when the deps are missing. The throwaway server
+	// is discarded immediately.
+	m.SyncDescriptionsFromRegistration(registry.Runtime{})
+
 	return m
 }

@@ -247,6 +247,92 @@ func (m *Manifest) Apply(s *server.MCPServer, rt Runtime, pred func(toolName str
 	}
 }
 
+// SyncDescriptionsFromRegistration mutates each ToolSpec.Description
+// in place to match what its Register fn ACTUALLY emits via
+// `mcp.WithDescription(...)`. The mechanism: register every spec
+// onto a throwaway *server.MCPServer, then walk
+// `s.ListTools()` and copy each registered Tool's Description back
+// onto the matching spec.
+//
+// Why this exists: BuildManifest historically hardcoded a
+// Description string per spec; the SAME description was also
+// hand-written in each tool's `RegisterX` body via
+// `mcp.WithDescription(...)`. Two parallel sources drifted (caught
+// post-v0.22.108: the description rewrite touched only one side,
+// so the bleve BM25 ToolSearch index — which reads from the
+// manifest — kept ranking on stale prose while `tools/list` —
+// which reads from the registered Tool — already saw the fresh
+// copy). Calling this function at the end of BuildManifest
+// collapses both sources to one and any future rewrite of either
+// side stays in sync automatically.
+//
+// Specs whose Register fn is nil (companion specs in multi-tool
+// bundles like RecipeStatus / RecipeApply) keep their hardcoded
+// Description — those bundles are registered through their first
+// spec's Register, so the live description still surfaces under
+// the bundle name; the unit-test invariant
+// (`TestManifestDescriptionsMatchRegistered`) explicitly walks
+// every registered tool, so drift on a companion spec still
+// trips CI.
+//
+// rt is the same Runtime callers pass to Apply; for description
+// sync it's safe for Index / Secrets to be nil because every
+// Register fn captures those values inside the call HANDLER (not
+// at registration time) — see internal/tools/core/toolsearch.go
+// + websearch.go for the canonical examples.
+func (m *Manifest) SyncDescriptionsFromRegistration(rt Runtime) {
+	if m == nil {
+		return
+	}
+	live := m.liveDescriptions(rt)
+	for i := range m.specs {
+		if d, ok := live[m.specs[i].Name]; ok {
+			m.specs[i].Description = d
+		}
+	}
+}
+
+// liveDescriptions registers every spec onto a throwaway
+// MCPServer and returns a {name → registered Description} map.
+// Helper for SyncDescriptionsFromRegistration AND for the
+// drift-prevention test in internal/tools/core/manifest_test.go
+// (the test asserts the manifest's resulting descriptions match
+// this map exactly).
+func (m *Manifest) liveDescriptions(rt Runtime) map[string]string {
+	if m == nil {
+		return nil
+	}
+	probe := server.NewMCPServer("clawtool-manifest-probe", "0")
+	for _, spec := range m.specs {
+		if spec.Register == nil {
+			continue
+		}
+		// Predicate is nil → every gateable tool registers,
+		// regardless of operator config. We want the index
+		// to know about every shipped tool's description; gating
+		// happens at SearchDocs time, not here.
+		spec.Register(probe, rt)
+	}
+	live := probe.ListTools()
+	out := make(map[string]string, len(live))
+	for name, st := range live {
+		if st == nil {
+			continue
+		}
+		out[name] = st.Tool.Description
+	}
+	return out
+}
+
+// LiveDescriptions is the exported probe for drift-detection
+// tests. Builds the same throwaway-server map
+// SyncDescriptionsFromRegistration uses internally so a unit test
+// can compare manifest specs against the canonical
+// `mcp.WithDescription(...)` source.
+func (m *Manifest) LiveDescriptions(rt Runtime) map[string]string {
+	return m.liveDescriptions(rt)
+}
+
 // Names returns every spec name in insertion order. Useful for
 // diff-against-something tests.
 func (m *Manifest) Names() []string {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cogitave/clawtool/internal/tools/registry"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 // TestBuildManifest_PanicFreeAndPopulated asserts BuildManifest
@@ -161,4 +162,135 @@ func TestBuildManifest_Step4FullCatalog(t *testing.T) {
 			t.Errorf("manifest missing %q — Step 4 should cover every shipped tool", name)
 		}
 	}
+}
+
+// TestManifestDescriptionsAreSourcedFromTools is the drift-prevention
+// invariant for ADR-related to the bleve BM25 ToolSearch index. It
+// guards a class of bug we caught post-v0.22.108: the description
+// rewrite (commit e195b30) edited every `mcp.WithDescription(...)`
+// string but did NOT update the parallel hardcoded copies in
+// internal/tools/core/manifest.go, so the bleve indexer (which
+// reads from the manifest via SearchDocs) kept ranking on stale
+// prose for an entire release. Production Hit@1 / Hit@3 / MRR
+// stayed flat instead of taking the +5pp / +10pp lift the
+// counterfactual bench predicted.
+//
+// What it asserts: for every tool whose Register fn actually
+// registers it onto an MCPServer, the manifest's spec.Description
+// MUST equal the registered Tool.Description. The single source
+// of truth is `mcp.WithDescription(...)`; manifest.go's hardcoded
+// strings are now mirrored from there at BuildManifest time via
+// Manifest.SyncDescriptionsFromRegistration. If a future contributor
+// rewrites a tool's mcp.WithDescription in one place but not the
+// other, this test fires before the change ships — and tells them
+// which tool drifted.
+//
+// What it does NOT assert: companion specs in multi-tool bundles
+// (e.g. RecipeStatus / RecipeApply / BridgeAdd / TaskWait / …)
+// share a Register fn with their bundle's first spec, so they
+// still appear in `s.ListTools()` after Apply runs — the
+// invariant covers them transparently.
+func TestManifestDescriptionsAreSourcedFromTools(t *testing.T) {
+	m := BuildManifest()
+
+	// Build the same throwaway-server probe that
+	// SyncDescriptionsFromRegistration uses internally; if the
+	// sync is doing its job, every spec.Description here equals
+	// its corresponding live tool description byte for byte.
+	live := m.LiveDescriptions(registry.Runtime{})
+	if len(live) == 0 {
+		t.Fatal("LiveDescriptions returned 0 tools — the throwaway-server probe broke")
+	}
+
+	// Index manifest specs by name for O(1) lookup.
+	specs := map[string]registry.ToolSpec{}
+	for _, s := range m.Specs() {
+		specs[s.Name] = s
+	}
+
+	// Every registered tool must have a manifest spec, and the
+	// descriptions MUST match. Drift on either side fails CI.
+	for name, liveDesc := range live {
+		spec, ok := specs[name]
+		if !ok {
+			t.Errorf("registered tool %q has no manifest spec — every shipped tool needs an entry in BuildManifest", name)
+			continue
+		}
+		if spec.Description != liveDesc {
+			t.Errorf("description drift for %q:\n  manifest spec: %q\n  registered  : %q",
+				name, truncateForTest(spec.Description, 200), truncateForTest(liveDesc, 200))
+		}
+	}
+
+	// Inverse direction — every manifest spec with a non-nil
+	// Register fn MUST have produced a registered tool. If a
+	// Register fn somehow failed silently (didn't call
+	// s.AddTool), the manifest entry is a phantom and ToolSearch
+	// would surface a tool the host can't actually invoke.
+	for _, s := range m.Specs() {
+		if s.Register == nil {
+			continue
+		}
+		if _, ok := live[s.Name]; !ok {
+			t.Errorf("manifest spec %q has Register fn but no tool registered — Register may have failed silently", s.Name)
+		}
+	}
+}
+
+// TestManifestDescriptions_NotEmpty is a coarse sanity check
+// catching one specific failure mode of
+// SyncDescriptionsFromRegistration: if the throwaway probe broke
+// (e.g. mcp-go renamed ListTools), every Description would silently
+// become empty, and ToolSearch would index empty docs. Asserting
+// "no spec is empty after BuildManifest" surfaces that regression
+// faster than any individual ranking test.
+func TestManifestDescriptions_NotEmpty(t *testing.T) {
+	for _, s := range BuildManifest().Specs() {
+		if strings.TrimSpace(s.Description) == "" {
+			t.Errorf("spec %q has empty Description after BuildManifest — sync probe likely failed", s.Name)
+		}
+	}
+}
+
+// TestSyncDescriptionsFromRegistration_DetectsDrift is the unit
+// test for the sync mechanism itself. It builds a manifest with an
+// intentionally-wrong Description, runs sync, and asserts the
+// description got overwritten with the canonical one from the
+// live mcp.Tool. Catches regressions where the sync silently
+// no-ops (e.g. typo on Spec.Description field, ListTools API
+// rename in mcp-go).
+func TestSyncDescriptionsFromRegistration_DetectsDrift(t *testing.T) {
+	m := registry.New()
+	m.Append(registry.ToolSpec{
+		Name:        "Bash",
+		Description: "STALE DESCRIPTION — should be overwritten by sync",
+		Keywords:    []string{"shell"},
+		Category:    registry.CategoryShell,
+		Gate:        "Bash",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterBash(s)
+		},
+	})
+
+	m.SyncDescriptionsFromRegistration(registry.Runtime{})
+
+	got := m.Specs()[0].Description
+	if strings.Contains(got, "STALE DESCRIPTION") {
+		t.Fatalf("sync did not overwrite stale Description: %q", got)
+	}
+	if strings.TrimSpace(got) == "" {
+		t.Fatalf("sync overwrote with empty string — probe broken")
+	}
+}
+
+// truncateForTest returns at most n bytes of s, suffixed with ellipsis
+// when truncation occurred. Used by description-mismatch error
+// messages to keep test failure output readable when one side is
+// very long. Renamed off the unexported `truncate` helper that
+// already lives in websearch_brave.go — same package.
+func truncateForTest(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
