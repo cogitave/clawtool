@@ -217,6 +217,18 @@ func New(cfg config.TelemetryConfig) *Client {
 	if !cfg.Enabled {
 		return &Client{enabled: false}
 	}
+	// CI emit gate. CI runners pollute the production analytics
+	// project (~95% of events the operator pulled on 2026-04-30
+	// came from CI hosts). Drop to a disabled client when we're
+	// on CI AND the maintainer-only `CLAWTOOL_TELEMETRY_FORCE_CI`
+	// opt-in is missing. The opt-in exists for the maintainer's
+	// own release-tracking workflows; default off keeps every
+	// other downstream CI silent without configuration.
+	if CIDisabled() {
+		fmt.Fprintln(os.Stderr,
+			"clawtool telemetry: CI runner detected and CLAWTOOL_TELEMETRY_FORCE_CI not set — going silent")
+		return &Client{enabled: false}
+	}
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey == "" {
 		apiKey = cogitavePostHogKey
@@ -420,6 +432,30 @@ func Get() *Client { return global }
 func SilentDisabled() bool {
 	v := strings.TrimSpace(os.Getenv("CLAWTOOL_TELEMETRY"))
 	return v == "0" || v == "false" || v == "off"
+}
+
+// CIDisabled reports whether the current process is running on a
+// CI runner AND the maintainer opt-in `CLAWTOOL_TELEMETRY_FORCE_CI`
+// env var is NOT set. CI runners pollute production analytics
+// (~95% of the events the operator pulled from PostHog on
+// 2026-04-30 came from CI hosts running pseudo-version Go-cached
+// binaries) so the default-off gate keeps that noise off the
+// production project.
+//
+// Opt-in semantics: setting `CLAWTOOL_TELEMETRY_FORCE_CI=1` (or
+// `true` / `on`) re-enables emission for the maintainer's own
+// release-tracking workflows that legitimately want to send
+// events from CI. Default off — every other downstream CI runner
+// stays silent without configuration. Read live (not cached at
+// package init) so tests + a single daemon's lifetime can
+// manipulate the env via t.Setenv without re-instantiating the
+// package.
+func CIDisabled() bool {
+	if !detectCI() {
+		return false
+	}
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("CLAWTOOL_TELEMETRY_FORCE_CI")))
+	return v != "1" && v != "true" && v != "on"
 }
 
 // EmitInstallOnce fires a `clawtool.install` event the first time

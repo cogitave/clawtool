@@ -20,6 +20,7 @@ func TestNew_DisabledIsNoop(t *testing.T) {
 	// the test will need to flip back. The post-v1 expectation
 	// is locked in TestNew_DisabledIsNoop_PostV1 below (driven
 	// by a swapped versionResolved hook).
+	t.Setenv("CLAWTOOL_TELEMETRY_FORCE_CI", "1") // bypass CI emit gate when running under GH Actions
 	c := New(config.TelemetryConfig{Enabled: false})
 	if !c.Enabled() {
 		t.Error("pre-v1.0 policy: disabled config must be force-overridden to enabled")
@@ -70,6 +71,7 @@ func TestNew_NoAPIKeyFallsBackToBakedDefault(t *testing.T) {
 	// baked-in cogitave PostHog project key. Same convention as
 	// posthog-js shipping a public client-side key. Operators
 	// override by setting their own [telemetry] api_key.
+	t.Setenv("CLAWTOOL_TELEMETRY_FORCE_CI", "1") // bypass CI emit gate when running under GH Actions
 	c := New(config.TelemetryConfig{Enabled: true})
 	if !c.Enabled() {
 		t.Error("Enabled=true with no APIKey should fall back to the embedded default and produce an enabled client")
@@ -78,6 +80,7 @@ func TestNew_NoAPIKeyFallsBackToBakedDefault(t *testing.T) {
 }
 
 func TestNew_OperatorAPIKeyOverridesBakedDefault(t *testing.T) {
+	t.Setenv("CLAWTOOL_TELEMETRY_FORCE_CI", "1") // bypass CI emit gate when running under GH Actions
 	c := New(config.TelemetryConfig{Enabled: true, APIKey: "phc_operator_override"})
 	if !c.Enabled() {
 		t.Error("explicit operator APIKey should produce an enabled client")
@@ -140,6 +143,7 @@ func TestAnonymousID_StableAcrossCalls(t *testing.T) {
 }
 
 func TestSetGetGlobal(t *testing.T) {
+	t.Setenv("CLAWTOOL_TELEMETRY_FORCE_CI", "1") // bypass CI emit gate when running under GH Actions
 	old := Get()
 	t.Cleanup(func() { SetGlobal(old) })
 	c := New(config.TelemetryConfig{Enabled: false})
@@ -230,6 +234,7 @@ func TestEmitInstallOnce_WritesMarkerOnFirstCall(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 	t.Setenv("CLAWTOOL_INSTALL_METHOD", "release")
+	t.Setenv("CLAWTOOL_TELEMETRY_FORCE_CI", "1") // bypass CI emit gate when running under GH Actions
 
 	c := New(config.TelemetryConfig{Enabled: true})
 	defer c.Close()
@@ -252,6 +257,7 @@ func TestEmitInstallOnce_WritesMarkerOnFirstCall(t *testing.T) {
 func TestEmitInstallOnce_NoOpAfterMarker(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("CLAWTOOL_TELEMETRY_FORCE_CI", "1") // bypass CI emit gate when running under GH Actions
 	if err := os.MkdirAll(filepath.Join(dir, "clawtool"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -287,5 +293,75 @@ func TestEmitInstallOnce_NilClientSafe(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(dir, "clawtool", "install-emitted")); err == nil {
 		t.Error("nil client should NOT write the marker — would dedupe a real install event later")
+	}
+}
+
+// TestCIDisabled_DefaultOffWithCI pins the new CI emit gate
+// (operator's 2026-04-30 PostHog audit: ~95% of events were
+// CI-runner noise). When detectCI() returns true (any standard
+// CI env var set) AND the maintainer-only opt-in
+// CLAWTOOL_TELEMETRY_FORCE_CI is unset, CIDisabled() must be
+// true so New() returns a no-op client.
+func TestCIDisabled_DefaultOffWithCI(t *testing.T) {
+	// Force a CI signal via the most-portable env var (detectCI
+	// reads "CI" first). Clear FORCE_CI to assert the default-off
+	// gate.
+	clearCIEnv(t)
+	t.Setenv("CI", "true")
+	t.Setenv("CLAWTOOL_TELEMETRY_FORCE_CI", "")
+
+	if !CIDisabled() {
+		t.Fatal("CIDisabled() must be true when CI=true and FORCE_CI is unset")
+	}
+	c := New(config.TelemetryConfig{Enabled: true})
+	if c.Enabled() {
+		t.Error("New() must return a disabled client when CIDisabled() is true")
+	}
+	// Even with a non-nil-receiver, Track is a clean no-op
+	// (covered by the Enabled() short-circuit).
+	c.Track("clawtool.smoke", map[string]any{"command": "test"})
+	_ = c.Close()
+}
+
+// TestCIDisabled_ForceCIBypass confirms the maintainer opt-in
+// re-enables emission. Setting CLAWTOOL_TELEMETRY_FORCE_CI=1
+// while CI=true should produce an enabled client (events flow).
+func TestCIDisabled_ForceCIBypass(t *testing.T) {
+	clearCIEnv(t)
+	t.Setenv("CI", "true")
+	t.Setenv("CLAWTOOL_TELEMETRY_FORCE_CI", "1")
+
+	if CIDisabled() {
+		t.Fatal("CIDisabled() must be false when FORCE_CI=1 is set")
+	}
+	c := New(config.TelemetryConfig{Enabled: true})
+	if !c.Enabled() {
+		t.Error("New() must return an enabled client when FORCE_CI=1 bypasses the CI gate")
+	}
+	_ = c.Close()
+}
+
+// TestCIDisabled_NotCI confirms the gate stays off on developer
+// laptops (no CI env vars set). Belt-and-suspenders against a
+// future regression where a non-CI host accidentally trips the
+// disable path.
+func TestCIDisabled_NotCI(t *testing.T) {
+	clearCIEnv(t)
+	if CIDisabled() {
+		t.Error("CIDisabled() must be false when no CI env var is set")
+	}
+}
+
+// clearCIEnv neutralises every CI-detection env var detectCI()
+// reads in fingerprint.go. Tests that want to assert the
+// "not on CI" branch need this because GitHub Actions / GitLab
+// runners pre-set several of them.
+func clearCIEnv(t *testing.T) {
+	t.Helper()
+	for _, v := range []string{
+		"CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS",
+		"JENKINS_HOME", "BUILDKITE", "DRONE", "TEAMCITY_VERSION",
+	} {
+		t.Setenv(v, "")
 	}
 }

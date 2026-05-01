@@ -30,6 +30,7 @@ package version
 
 import (
 	"encoding/json"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"sync"
@@ -76,6 +77,26 @@ func Resolved() string {
 	return resolvedVal
 }
 
+// pseudoVersionRE matches Go module pseudo-versions of the form
+// `v?0.0.0-YYYYMMDDHHMMSS-<12 hex>` that `runtime/debug.ReadBuildInfo`
+// returns for `go install`-ed binaries built from a non-tagged
+// commit (operator's 2026-04-30 PostHog audit: ~95% of inbound
+// events carried `properties.version=0.0.0-20260501001315-a5ac21717194`,
+// the unhelpful Go-cache pseudo-version). It is NOT a real semver
+// for downstream consumers (telemetry filter, A2A card, /v1/health
+// probe), so resolveVersion treats matches as if the build info
+// had returned "(devel)" — fall through to the release-please
+// constant. Operators who want the real tag should `go install`
+// at a tagged ref or build via goreleaser (which sets the
+// ldflags-baked Version).
+var pseudoVersionRE = regexp.MustCompile(`^v?0\.0\.0-\d{14}-[a-f0-9]{12}$`)
+
+// isPseudoVersion reports whether v looks like a Go module
+// pseudo-version. Exposed (lowercase) for the resolveVersion
+// fallthrough; tests assert the regex against synthesized
+// inputs.
+func isPseudoVersion(v string) bool { return pseudoVersionRE.MatchString(v) }
+
 func resolveVersion() string {
 	// Prefer ldflags-baked Version when it's a real version (not
 	// the dev-fallback "0.21.7"). goreleaser always sets this,
@@ -86,10 +107,12 @@ func resolveVersion() string {
 	// Module-cached `go install` binaries put the tag in
 	// debug.Main.Version. `go build` from a working tree returns
 	// "(devel)" — we want to skip that and fall through to the
-	// constant.
+	// constant. Same treatment for Go pseudo-versions
+	// (`v0.0.0-<ts>-<sha>`): they're not real semver and pollute
+	// downstream consumers (telemetry, A2A card, /v1/health).
 	if info, ok := debug.ReadBuildInfo(); ok {
 		v := info.Main.Version
-		if v != "" && v != "(devel)" {
+		if v != "" && v != "(devel)" && !isPseudoVersion(v) {
 			return strip(v)
 		}
 	}
