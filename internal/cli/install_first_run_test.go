@@ -13,8 +13,9 @@ import (
 // installStubs captures the calls a test wants to assert on, and
 // installs deterministic replacements for the package-level seams
 // (installLookPath, installDispatcher, installDaemonStarter,
-// installPeerRegister, installInitAll). Mirrors the bootstrap_test
-// pattern (stubBootstrap).
+// installPeerRegister, installInitAll, installTmuxRunner,
+// installAttachExec). Mirrors the bootstrap_test pattern
+// (stubBootstrap).
 type installStubs struct {
 	mu              sync.Mutex
 	hostsPresent    map[string]bool // which binaries LookPath should "find"
@@ -22,11 +23,39 @@ type installStubs struct {
 	daemonStarted   bool
 	daemonPort      int
 	daemonErr       error
-	peerCalls       []string // backend names passed to installPeerRegister
+	peerCalls       []peerCall // every (backend, tmuxPane) pair
 	initAllCalled   bool
 	initAllApplied  int
 	initAllErr      error
 	dispatchExitMap map[string]int // first-arg → rc override (default 0)
+	// tmuxCalls is the ordered argv list installTmuxRunner saw.
+	tmuxCalls [][]string
+	// tmuxHasSession controls what `has-session` returns: true →
+	// rc 0 (session exists, skip new-session), false → rc 1.
+	tmuxHasSession bool
+	// tmuxNextPaneID dispenses a synthetic pane id per
+	// new-window call so tests can assert it was wired into the
+	// peer register payload. %0, %1, %2…
+	tmuxNextPaneID int
+	// attachCalls records every session name installAttachExec
+	// was invoked with, in order. Empty when --attach wasn't
+	// passed.
+	attachCalls []string
+	// subprocCalls is a flat ordered log of every subprocess-shaped
+	// call the install verb makes through the seams: dispatch
+	// (joined argv prefixed "dispatch:"), tmux (prefixed "tmux:"),
+	// and attach (prefixed "tmux-attach:"). Lets the attach test
+	// assert ordering against everything else without juggling
+	// three slices.
+	subprocCalls []string
+}
+
+// peerCall is a (backend, tmux pane) pair captured from the
+// installPeerRegister stub. Empty pane = the pre-step-7.5 shell
+// registration; non-empty = a step-7.5 spawned-agent registration.
+type peerCall struct {
+	backend  string
+	tmuxPane string
 }
 
 func newInstallStubs() *installStubs {
@@ -45,6 +74,8 @@ func installStubsApply(t *testing.T, s *installStubs) {
 	prevDaemon := installDaemonStarter
 	prevPeer := installPeerRegister
 	prevInit := installInitAll
+	prevTmux := installTmuxRunner
+	prevAttach := installAttachExec
 
 	installLookPath = func(bin string) (string, error) {
 		s.mu.Lock()
@@ -58,6 +89,7 @@ func installStubsApply(t *testing.T, s *installStubs) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.dispatchCalls = append(s.dispatchCalls, append([]string(nil), argv...))
+		s.subprocCalls = append(s.subprocCalls, "dispatch:"+strings.Join(argv, " "))
 		key := ""
 		if len(argv) > 0 {
 			key = argv[0]
@@ -83,10 +115,10 @@ func installStubsApply(t *testing.T, s *installStubs) {
 		}
 		return port, nil
 	}
-	installPeerRegister = func(_ *App, backend string) error {
+	installPeerRegister = func(_ *App, backend, tmuxPane string) error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		s.peerCalls = append(s.peerCalls, backend)
+		s.peerCalls = append(s.peerCalls, peerCall{backend: backend, tmuxPane: tmuxPane})
 		return nil
 	}
 	installInitAll = func(_ *App, _ string) (int, error) {
@@ -95,6 +127,34 @@ func installStubsApply(t *testing.T, s *installStubs) {
 		s.initAllCalled = true
 		return s.initAllApplied, s.initAllErr
 	}
+	installTmuxRunner = func(args []string) (string, int, error) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.tmuxCalls = append(s.tmuxCalls, append([]string(nil), args...))
+		s.subprocCalls = append(s.subprocCalls, "tmux:"+strings.Join(args, " "))
+		// has-session: rc 0 when tmuxHasSession, else 1.
+		if len(args) >= 1 && args[0] == "has-session" {
+			if s.tmuxHasSession {
+				return "", 0, nil
+			}
+			return "", 1, nil
+		}
+		// new-window -P -F '#{pane_id}': dispense a synthetic id.
+		if len(args) >= 1 && args[0] == "new-window" {
+			id := s.tmuxNextPaneID
+			s.tmuxNextPaneID++
+			return paneIDFor(id) + "\n", 0, nil
+		}
+		// new-session, kill-session, anything else: rc 0.
+		return "", 0, nil
+	}
+	installAttachExec = func(session string) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.attachCalls = append(s.attachCalls, session)
+		s.subprocCalls = append(s.subprocCalls, "tmux-attach:"+session)
+		return nil
+	}
 
 	t.Cleanup(func() {
 		installLookPath = prevLook
@@ -102,7 +162,14 @@ func installStubsApply(t *testing.T, s *installStubs) {
 		installDaemonStarter = prevDaemon
 		installPeerRegister = prevPeer
 		installInitAll = prevInit
+		installTmuxRunner = prevTmux
+		installAttachExec = prevAttach
 	})
+}
+
+// paneIDFor renders the synthetic pane id %0, %1, %2…
+func paneIDFor(n int) string {
+	return "%" + itoa(n)
 }
 
 // TestInstall_DryRun: --dry-run prints the 10-step plan and does
@@ -257,8 +324,8 @@ func TestInstall_HostDetectionDispatchesHooks(t *testing.T) {
 	if len(stubs.peerCalls) != 1 {
 		t.Fatalf("peer register call count = %d, want 1; calls=%v", len(stubs.peerCalls), stubs.peerCalls)
 	}
-	if stubs.peerCalls[0] != "claude-code" {
-		t.Errorf("peer backend = %q, want claude-code", stubs.peerCalls[0])
+	if stubs.peerCalls[0].backend != "claude-code" {
+		t.Errorf("peer backend = %q, want claude-code", stubs.peerCalls[0].backend)
 	}
 }
 
@@ -425,6 +492,160 @@ func TestDetectInstallHosts_Stable(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("detect[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// TestInstall_AutoSpawnNoTmux: --auto-spawn with no tmux on PATH
+// must log a warning + skip step 7.5 cleanly. Daemon still up,
+// summary still printed, exit 0.
+func TestInstall_AutoSpawnNoTmux(t *testing.T) {
+	stubs := newInstallStubs()
+	stubs.daemonPort = 47900
+	stubs.hostsPresent["claude"] = true
+	// tmux NOT on PATH — the install verb should detect that and
+	// log a warning instead of dispatching tmux subprocess calls.
+	installStubsApply(t, stubs)
+
+	app, out, errb, _ := newApp(t)
+	rc := app.Run([]string{"install", "--skip-init", "--auto-spawn"})
+	if rc != 0 {
+		t.Fatalf("install rc = %d, want 0; stderr=%s", rc, errb.String())
+	}
+	if len(stubs.tmuxCalls) != 0 {
+		t.Errorf("tmux runner must not be called when tmux missing; got %d calls", len(stubs.tmuxCalls))
+	}
+	if !strings.Contains(errb.String(), "tmux not on PATH") {
+		t.Errorf("stderr must explain tmux skip; got: %q", errb.String())
+	}
+	if !strings.Contains(out.String(), "clawtool kuruldu") {
+		t.Errorf("summary must still print; got: %q", out.String())
+	}
+}
+
+// TestInstall_AutoSpawnCreatesPanes: with tmux + N hosts present,
+// step 7.5 must call tmux new-window once per detected host.
+func TestInstall_AutoSpawnCreatesPanes(t *testing.T) {
+	stubs := newInstallStubs()
+	stubs.daemonPort = 48000
+	stubs.hostsPresent["tmux"] = true
+	stubs.hostsPresent["claude"] = true
+	stubs.hostsPresent["codex"] = true
+	stubs.hostsPresent["gemini"] = true
+	installStubsApply(t, stubs)
+
+	app, out, errb, _ := newApp(t)
+	rc := app.Run([]string{"install", "--skip-init", "--auto-spawn"})
+	if rc != 0 {
+		t.Fatalf("install rc = %d, want 0; stderr=%s", rc, errb.String())
+	}
+	// Three detected hosts → three new-window calls.
+	newWindows := 0
+	for _, c := range stubs.tmuxCalls {
+		if len(c) > 0 && c[0] == "new-window" {
+			newWindows++
+		}
+	}
+	if newWindows != 3 {
+		t.Errorf("new-window count = %d, want 3 (one per host); calls=%v", newWindows, stubs.tmuxCalls)
+	}
+	// Default session name is "clawtool"; new-session must have
+	// been called once (has-session returned non-zero).
+	hasNewSession := false
+	for _, c := range stubs.tmuxCalls {
+		if len(c) >= 4 && c[0] == "new-session" && c[3] == "clawtool" {
+			hasNewSession = true
+			break
+		}
+	}
+	if !hasNewSession {
+		t.Errorf("new-session for 'clawtool' missing; calls=%v", stubs.tmuxCalls)
+	}
+	// Summary must reflect the 3 panes + session name.
+	if !strings.Contains(out.String(), "tmux session 'clawtool'") {
+		t.Errorf("summary must mention tmux session; got: %q", out.String())
+	}
+}
+
+// TestInstall_AutoSpawnRegistersPaneIDs: every step-7.5 spawned
+// agent's peer-register call must carry the captured pane id (the
+// synthetic "%0", "%1", "%2"… ids the tmux stub dispenses).
+func TestInstall_AutoSpawnRegistersPaneIDs(t *testing.T) {
+	stubs := newInstallStubs()
+	stubs.daemonPort = 48100
+	stubs.hostsPresent["tmux"] = true
+	stubs.hostsPresent["claude"] = true
+	stubs.hostsPresent["codex"] = true
+	installStubsApply(t, stubs)
+
+	app, _, errb, _ := newApp(t)
+	rc := app.Run([]string{"install", "--skip-init", "--auto-spawn", "--tmux-session-name", "alpha"})
+	if rc != 0 {
+		t.Fatalf("install rc = %d, want 0; stderr=%s", rc, errb.String())
+	}
+	// peerCalls has one shell-register (empty pane) + one per
+	// detected host (non-empty pane). Filter to the non-empty ones.
+	var paned []peerCall
+	for _, p := range stubs.peerCalls {
+		if p.tmuxPane != "" {
+			paned = append(paned, p)
+		}
+	}
+	if len(paned) != 2 {
+		t.Fatalf("paned peer-register count = %d, want 2; all=%v", len(paned), stubs.peerCalls)
+	}
+	// Pane ids must be the synthetic %0, %1 in order.
+	want := []string{"%0", "%1"}
+	for i, p := range paned {
+		if p.tmuxPane != want[i] {
+			t.Errorf("paned[%d].tmuxPane = %q, want %q", i, p.tmuxPane, want[i])
+		}
+	}
+	// Backends must be claude-code + codex (claimNameFor mapping).
+	wantBackends := map[string]bool{"claude-code": false, "codex": false}
+	for _, p := range paned {
+		if _, ok := wantBackends[p.backend]; ok {
+			wantBackends[p.backend] = true
+		}
+	}
+	for b, ok := range wantBackends {
+		if !ok {
+			t.Errorf("paned peer-register missing backend %q; got %v", b, paned)
+		}
+	}
+}
+
+// TestInstall_AttachFlagInvokesTmuxAttach: --auto-spawn --attach
+// must call installAttachExec exactly once with the session name,
+// AFTER all dispatch + tmux subprocess calls. Verifies the
+// "operator drops into the session" handoff is the last thing the
+// install verb does.
+func TestInstall_AttachFlagInvokesTmuxAttach(t *testing.T) {
+	stubs := newInstallStubs()
+	stubs.daemonPort = 48200
+	stubs.hostsPresent["tmux"] = true
+	stubs.hostsPresent["claude"] = true
+	installStubsApply(t, stubs)
+
+	app, _, errb, _ := newApp(t)
+	rc := app.Run([]string{"install", "--skip-init", "--auto-spawn", "--attach", "--tmux-session-name", "ops"})
+	if rc != 0 {
+		t.Fatalf("install rc = %d, want 0; stderr=%s", rc, errb.String())
+	}
+	if len(stubs.attachCalls) != 1 {
+		t.Fatalf("attachCalls = %d, want 1; got %v", len(stubs.attachCalls), stubs.attachCalls)
+	}
+	if stubs.attachCalls[0] != "ops" {
+		t.Errorf("attach session = %q, want %q", stubs.attachCalls[0], "ops")
+	}
+	// The attach must be the LAST subprocess call — every other
+	// dispatch / tmux call must come before it.
+	if len(stubs.subprocCalls) == 0 {
+		t.Fatalf("subprocCalls is empty — install ran no subprocs?")
+	}
+	last := stubs.subprocCalls[len(stubs.subprocCalls)-1]
+	if last != "tmux-attach:ops" {
+		t.Errorf("last subprocess call = %q, want tmux-attach:ops; full log=\n%s",
+			last, strings.Join(stubs.subprocCalls, "\n"))
 	}
 }
 

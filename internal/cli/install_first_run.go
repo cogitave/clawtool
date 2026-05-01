@@ -33,11 +33,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/daemon"
 )
 
+// elevationFlagFor wraps agents.ElevationFlag with the family-name
+// quirk: detection uses the binary name (claude/codex/gemini/opencode),
+// and ElevationFlag's table is keyed by family — they happen to
+// match for every install-detected host, but a thin wrapper keeps
+// the call site readable and gives one place to translate if a
+// future binary name diverges from its family.
+func elevationFlagFor(family string) string {
+	return agents.ElevationFlag(family)
+}
+
 const installUsage = `Usage:
   clawtool install [--dry-run] [--workdir <path>] [--skip-init]
+                   [--auto-spawn] [--tmux-session-name <name>] [--attach]
 
 Zero-touch first-run setup. Runs ten steps end-to-end:
 
@@ -53,11 +65,25 @@ Zero-touch first-run setup. Runs ten steps end-to-end:
   6. Hooks install    — append peer register/deregister entries to each
                         host's hooks config (idempotent).
   7. Peer registration — register the current shell session as a peer.
+  7.5. tmux bootstrap — when --auto-spawn is set, ensure tmux is on PATH,
+                        create (or reuse) the named session, open one
+                        window per detected host running its CLI with
+                        the family elevation flag, and re-register each
+                        spawned peer with its tmux pane_id. Logs a
+                        warning + skips when tmux is missing.
   8. Init --all       — apply every Core recipe to the cwd (skip if not
                         a git repo or --skip-init).
   9. Verify           — ping the daemon's /v1/agents and confirm at
                         least one agent surface is reachable.
   10. Exit            — single one-line summary on stdout.
+
+Flags:
+  --auto-spawn            Open detected agents in tmux panes (step 7.5).
+  --tmux-session-name N   Name of the tmux session created/reused
+                          when --auto-spawn is set (default: clawtool).
+  --attach                With --auto-spawn, exec 'tmux attach -t N'
+                          after the success summary so the operator
+                          drops straight into the session.
 
 Failures of steps 2–10 are logged non-fatally and the run continues.
 Step 1 is hard-required: if the daemon won't come up, install aborts.
@@ -84,8 +110,20 @@ var (
 	installLookPath      func(string) (string, error)
 	installDispatcher    func(*App, []string) (int, string)
 	installDaemonStarter func(context.Context) (int, error)
-	installPeerRegister  func(*App, string) error
+	installPeerRegister  func(*App, string, string) error
 	installInitAll       func(*App, string) (int, error)
+	// installTmuxRunner shells out to `tmux` and returns its
+	// stdout / exit code. Stubbed in install_first_run_test.go to
+	// assert step-7.5 dispatch without spawning a real tmux server.
+	// Returns (stdout, rc, err) — the stdout is captured so
+	// `tmux new-window -P -F '#{pane_id}'` can hand the pane id
+	// back for peer re-registration.
+	installTmuxRunner func(args []string) (string, int, error)
+	// installAttachExec replaces the current process with
+	// `tmux attach -t <session>` when --auto-spawn --attach is
+	// passed. Tests stub it to a recorder so the suite can assert
+	// the attach call without execve-ing the real tmux binary.
+	installAttachExec func(session string) error
 )
 
 func init() {
@@ -110,12 +148,16 @@ func init() {
 		return st.Port, nil
 	}
 
-	installPeerRegister = func(a *App, backend string) error {
-		rc, tail := installDispatcher(a, []string{
+	installPeerRegister = func(a *App, backend, tmuxPane string) error {
+		argv := []string{
 			"peer", "register",
 			"--backend", backend,
 			"--display-name", defaultDisplayName(backend),
-		})
+		}
+		if tmuxPane != "" {
+			argv = append(argv, "--tmux-pane", tmuxPane)
+		}
+		rc, tail := installDispatcher(a, argv)
 		if rc != 0 {
 			if tail != "" {
 				return fmt.Errorf("peer register exit %d: %s", rc, tail)
@@ -123,6 +165,38 @@ func init() {
 			return fmt.Errorf("peer register exit %d", rc)
 		}
 		return nil
+	}
+
+	// installTmuxRunner shells out to `tmux <args>` and returns
+	// (stdout, exit_code, err). Captures stdout so step 7.5 can
+	// pull pane_ids out of `tmux new-window -P -F '#{pane_id}'`.
+	installTmuxRunner = func(args []string) (string, int, error) {
+		cmd := exec.Command("tmux", args...)
+		out, err := cmd.Output()
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				return string(out), ee.ExitCode(), nil
+			}
+			return string(out), -1, err
+		}
+		return string(out), 0, nil
+	}
+
+	// installAttachExec replaces the current process with `tmux
+	// attach -t <session>` so the operator's terminal becomes the
+	// tmux client. Production uses syscall.Exec for a clean handoff;
+	// when unavailable (Windows / restricted env) it falls back to
+	// a Run + os.Exit so the install verb's lifecycle still ends.
+	installAttachExec = func(session string) error {
+		bin, err := installLookPath("tmux")
+		if err != nil {
+			return err
+		}
+		cmd := exec.Command(bin, "attach", "-t", session)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
 	}
 
 	installInitAll = func(a *App, cwd string) (int, error) {
@@ -165,13 +239,16 @@ func (t *teeWriter) Write(p []byte) (int, error) {
 
 // installArgs is the parsed flag bundle.
 type installArgs struct {
-	dryRun   bool
-	workdir  string
-	skipInit bool
+	dryRun      bool
+	workdir     string
+	skipInit    bool
+	autoSpawn   bool
+	tmuxSession string
+	attach      bool
 }
 
 func parseInstallArgs(argv []string) (installArgs, error) {
-	out := installArgs{}
+	out := installArgs{tmuxSession: "clawtool"}
 	for i := 0; i < len(argv); i++ {
 		v := argv[i]
 		switch v {
@@ -179,11 +256,21 @@ func parseInstallArgs(argv []string) (installArgs, error) {
 			out.dryRun = true
 		case "--skip-init":
 			out.skipInit = true
+		case "--auto-spawn":
+			out.autoSpawn = true
+		case "--attach":
+			out.attach = true
 		case "--workdir":
 			if i+1 >= len(argv) {
 				return out, fmt.Errorf("--workdir requires a value")
 			}
 			out.workdir = argv[i+1]
+			i++
+		case "--tmux-session-name":
+			if i+1 >= len(argv) {
+				return out, fmt.Errorf("--tmux-session-name requires a value")
+			}
+			out.tmuxSession = argv[i+1]
 			i++
 		case "--help", "-h":
 			return out, errInstallHelp
@@ -210,6 +297,11 @@ type installSummary struct {
 	stepsOK          int
 	stepsWarn        int
 	stepsFailed      int
+	// Step 7.5 tmux bootstrap fields. tmuxSession is the session
+	// name used (empty when --auto-spawn was off or tmux missing);
+	// tmuxPanes counts the windows spawned (one per detected host).
+	tmuxSession string
+	tmuxPanes   int
 }
 
 // runInstall is the verb dispatcher.
@@ -320,12 +412,17 @@ func (a *App) runInstall(argv []string) int {
 				break
 			}
 		}
-		if err := installPeerRegister(a, backend); err != nil {
+		if err := installPeerRegister(a, backend, ""); err != nil {
 			return stepResult{level: stepWarn, msg: err.Error()}
 		}
 		sum.peersRegistered++
 		return stepResult{level: stepOK, msg: "registered as " + backend}
 	}, sum)
+
+	// ── 7.5. tmux bootstrap (auto-spawn) ──────────────────────
+	if args.autoSpawn {
+		a.installAutoSpawn(args, hosts, sum)
+	}
 
 	// ── 8. init --all on cwd ──────────────────────────────────
 	if args.skipInit {
@@ -360,9 +457,109 @@ func (a *App) runInstall(argv []string) int {
 	}, sum)
 
 	// ── 10. exit summary ──────────────────────────────────────
-	fmt.Fprintf(a.Stdout, "clawtool kuruldu — %d agent(s) registered, %d recipe(s) applied, daemon @ 127.0.0.1:%d\n",
-		sum.agentsClaimed, sum.recipesApplied, sum.port)
+	if sum.tmuxSession != "" && sum.tmuxPanes > 0 {
+		fmt.Fprintf(a.Stdout,
+			"clawtool kuruldu — %d agent(s) registered in tmux session '%s', %d recipe(s) applied, daemon @ 127.0.0.1:%d. Attach: tmux attach -t %s\n",
+			sum.tmuxPanes, sum.tmuxSession, sum.recipesApplied, sum.port, sum.tmuxSession)
+	} else {
+		fmt.Fprintf(a.Stdout, "clawtool kuruldu — %d agent(s) registered, %d recipe(s) applied, daemon @ 127.0.0.1:%d\n",
+			sum.agentsClaimed, sum.recipesApplied, sum.port)
+	}
+
+	// --auto-spawn --attach: drop the operator straight into the
+	// freshly-built tmux session. Skipped when --attach was off,
+	// when --auto-spawn was off, or when step 7.5 didn't manage
+	// to spawn at least one pane (no tmux on PATH, etc.).
+	if args.autoSpawn && args.attach && sum.tmuxPanes > 0 {
+		if err := installAttachExec(sum.tmuxSession); err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool install: tmux attach: %v\n", err)
+			return 1
+		}
+	}
 	return 0
+}
+
+// installAutoSpawn is step 7.5: ensure tmux exists, build (or
+// reuse) the named session, and open one window per detected host
+// running its agent CLI with the family's elevation flag. Each
+// window's pane id is captured via `tmux new-window -P -F` and fed
+// back into installPeerRegister so the daemon's peer record carries
+// the tmux_pane field.
+//
+// Failures here are non-fatal: a missing tmux binary or a failed
+// new-window logs a warning + skips that host. The summary's
+// tmuxPanes counter only increments on the happy path.
+func (a *App) installAutoSpawn(args installArgs, hosts []string, sum *installSummary) {
+	if _, err := installLookPath("tmux"); err != nil {
+		a.installLine(stepWarn, 7, "tmux bootstrap", "tmux not on PATH — skipping --auto-spawn")
+		sum.stepsWarn++
+		return
+	}
+	session := args.tmuxSession
+	if session == "" {
+		session = "clawtool"
+	}
+	// Create the session if it doesn't already exist. tmux exits
+	// non-zero from `has-session` when the session is missing —
+	// we use that as the gate for `new-session -d`.
+	if _, rc, err := installTmuxRunner([]string{"has-session", "-t", session}); err != nil || rc != 0 {
+		if _, _, err := installTmuxRunner([]string{"new-session", "-d", "-s", session}); err != nil {
+			a.installLine(stepWarn, 7, "tmux bootstrap", fmt.Sprintf("new-session failed: %v", err))
+			sum.stepsWarn++
+			return
+		}
+	}
+	sum.tmuxSession = session
+
+	for _, h := range hosts {
+		family := h
+		paneID, err := installSpawnAgentPane(session, family)
+		if err != nil {
+			a.installLine(stepWarn, 7, fmt.Sprintf("tmux spawn %s", family), err.Error())
+			sum.stepsWarn++
+			continue
+		}
+		sum.tmuxPanes++
+		// Re-register the peer with the tmux pane id so peer push
+		// can target the live agent surface.
+		backend := claimNameFor(family)
+		if err := installPeerRegister(a, backend, paneID); err != nil {
+			a.installLine(stepWarn, 7, fmt.Sprintf("re-register %s pane", family),
+				err.Error())
+			sum.stepsWarn++
+			continue
+		}
+		a.installLine(stepOK, 7, fmt.Sprintf("tmux spawn %s", family),
+			fmt.Sprintf("pane %s (window in '%s')", paneID, session))
+		sum.stepsOK++
+	}
+}
+
+// installSpawnAgentPane runs `tmux new-window -P -F '#{pane_id}' -t
+// <session> -n <family> <family> <elevationFlag>` and returns the
+// captured pane id. Empty elevation flag (unknown family) skips the
+// flag arg so tmux doesn't see a bare empty string in argv.
+func installSpawnAgentPane(session, family string) (string, error) {
+	cmd := family
+	flag := elevationFlagFor(family)
+	shellCmd := cmd
+	if flag != "" {
+		shellCmd = cmd + " " + flag
+	}
+	stdout, rc, err := installTmuxRunner([]string{
+		"new-window",
+		"-P", "-F", "#{pane_id}",
+		"-t", session,
+		"-n", family,
+		shellCmd,
+	})
+	if err != nil {
+		return "", err
+	}
+	if rc != 0 {
+		return "", fmt.Errorf("tmux new-window exit %d", rc)
+	}
+	return strings.TrimSpace(stdout), nil
 }
 
 // runInstallDryRun emits the ten-step plan to stdout WITHOUT side
@@ -382,6 +579,11 @@ func (a *App) runInstallDryRun(args installArgs) int {
 	fmt.Fprintf(a.Stdout, "  5. MCP config:       written by step 4\n")
 	fmt.Fprintf(a.Stdout, "  6. hooks install:    'clawtool hooks install <h>' for each detected host\n")
 	fmt.Fprintf(a.Stdout, "  7. peer register:    register the current shell as a peer\n")
+	if args.autoSpawn {
+		fmt.Fprintf(a.Stdout, "  7.5 tmux bootstrap:  open %d agent(s) in tmux session %q\n", len(hosts), args.tmuxSession)
+	} else {
+		fmt.Fprintf(a.Stdout, "  7.5 tmux bootstrap:  SKIPPED (--auto-spawn not set)\n")
+	}
 	if args.skipInit {
 		fmt.Fprintf(a.Stdout, "  8. init --all:       SKIPPED (--skip-init)\n")
 	} else {
