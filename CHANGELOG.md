@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.79] - 2026-05-01
+## [0.22.80] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.79 [skip ci] (49e67df)
+### Fixes
+
+- **release:** Drop static header/footer templates that suppressed BODY.md + leaked ADR reference (a5ac217)## [0.22.79] - 2026-05-01
 
 ### Documentation
 
