@@ -146,7 +146,16 @@ else
 fi
 
 if [ "${CLAWTOOL_CI_FAST:-0}" = "1" ]; then
-    printf "${YELLOW}▶ smoke + e2e + docker stages skipped (CLAWTOOL_CI_FAST=1)${RESET}\n\n"
+    printf "${YELLOW}▶ smoke + stub-e2e + slow docker stages skipped (CLAWTOOL_CI_FAST=1)${RESET}\n\n"
+    # Honour CLAWTOOL_E2E_DOCKER=1 even under FAST, but ONLY for the
+    # fullstack fixture — it's the canonical end-to-end gate the
+    # autodev / lifecycle work depends on. The other docker stages
+    # (onboard / upgrade / realinstall / bootstrap / docker-smoke)
+    # stay skipped under FAST because each builds its own Alpine
+    # image and adds 3-5 min to the loop.
+    if [ "${CLAWTOOL_E2E_DOCKER:-0}" = "1" ]; then
+        run_stage e2e-fullstack env CLAWTOOL_E2E_DOCKER=1 "$GO_BIN" test -tags=e2e -count=1 -timeout=600s ./test/e2e/fullstack/... || true
+    fi
 else
     # CLI smoke-test: every verb's --help + every read-only listing.
     # Cheap (~20s) and gated behind the smoke build tag so the default

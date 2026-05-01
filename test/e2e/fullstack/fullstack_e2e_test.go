@@ -164,6 +164,57 @@ func TestFullstack_PeerSendRoundtrip(t *testing.T) {
 			t.Errorf("%s leaked the prompt: %q", key, body)
 		}
 	}
+
+	// ── Phase 2: lifecycle scenarios (ADR-034 Q1/Q2/Q3) ──────────
+	//
+	// The harness's Phase 2 block (run.sh after PEER_SEND assertions)
+	// exercises the three follow-up questions resolved in v0.22.109:
+	//
+	//   Q1 (window cleanup) — section LIFECYCLE_TEST_A asserts the
+	//                         pane AND its empty window are reaped.
+	//   Q2 (grace period)   — LIFECYCLE_TEST_B asserts the pane
+	//                         survives an immediate post-task tmux
+	//                         probe and is reaped after the window.
+	//   Q3 (per-task)       — LIFECYCLE_TEST_C asserts auto_close=
+	//                         false on a SendMessage call pins the
+	//                         pane open across a terminal task.
+	//
+	// Each section ends with a single PASS/FAIL/SKIP line. We assert
+	// PASS so a SKIP (e.g. dispatch socket missing) flags the
+	// problem rather than silently passing the lane.
+	lifecycleSections := []struct {
+		key string
+		// passLine is the substring the assertion looks for in
+		// the section body. Each scenario's run.sh path emits a
+		// unique passLine so a wedged scenario A doesn't satisfy
+		// scenario B's test.
+		passLine string
+	}{
+		{"LIFECYCLE_TEST_A", "PASS: pane + window reaped"},
+		{"LIFECYCLE_TEST_B", "PASS: pane survived grace, then was reaped"},
+		{"LIFECYCLE_TEST_C", "PASS: pane preserved across task done"},
+	}
+	for _, ls := range lifecycleSections {
+		body := strings.TrimSpace(sections[ls.key])
+		if body == "" {
+			t.Errorf("section %q missing entirely — run.sh aborted before reaching the lifecycle block", ls.key)
+			continue
+		}
+		if !strings.Contains(body, ls.passLine) {
+			// Dump the whole section body on failure so the
+			// operator can see why the scenario didn't pass.
+			t.Errorf("section %q did not record %q\nfull section body:\n%s",
+				ls.key, ls.passLine, body)
+		}
+	}
+
+	// LIFECYCLE_SUMMARY is the harness's compact roll-up:
+	// `A=0 B=0 C=0` on a clean run. Anything else means at least
+	// one scenario didn't reach its PASS line.
+	summary := strings.TrimSpace(sections["LIFECYCLE_SUMMARY"])
+	if summary != "" && summary != "A=0 B=0 C=0" {
+		t.Errorf("LIFECYCLE_SUMMARY = %q, want %q", summary, "A=0 B=0 C=0")
+	}
 }
 
 // TestSplitSections_FullstackParser is the docker-skipped unit

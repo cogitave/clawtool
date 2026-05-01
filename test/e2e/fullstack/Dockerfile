@@ -64,8 +64,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         jq \
         nodejs \
         procps \
+        socat \
         tmux \
     && rm -rf /var/lib/apt/lists/*
+# socat is required by the lifecycle scenarios appended to run.sh
+# (window cleanup / grace period / per-task auto_close override): they
+# talk to the daemon's Unix dispatch socket directly so we can pass
+# opts.auto_close=false (the `clawtool send` CLI doesn't surface that
+# flag yet — ADR-034 Q3 lives at the SendMessage opts layer). The
+# dispatch socket protocol is line-delimited JSON over UNIX-CONNECT
+# which socat handles in a single bidi pipe.
 
 # Built clawtool binary
 COPY --from=build /out/clawtool /usr/local/bin/clawtool
