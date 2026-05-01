@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.81] - 2026-05-01
+## [0.22.82] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.81 [skip ci] (0f9c7d5)
+### Tests
+
+- **e2e:** Add bootstrap container test verifying zero-click install flow (cc3d9ce)## [0.22.81] - 2026-05-01
 
 ### Documentation
 
