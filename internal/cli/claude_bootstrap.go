@@ -13,6 +13,7 @@ import (
 
 	"github.com/cogitave/clawtool/internal/telemetry"
 	"github.com/cogitave/clawtool/internal/version"
+	"github.com/cogitave/clawtool/internal/xdg"
 )
 
 // runClaudeBootstrap is the entry point for the clawtool-context
@@ -58,8 +59,21 @@ func (a *App) runClaudeBootstrap(argv []string) int {
 	fs := flag.NewFlagSet("claude-bootstrap", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	event := fs.String("event", "session-start", "Hook event name: session-start (legacy) or user-prompt-submit (canonical).")
+	resetFirstRun := fs.Bool("reset-first-run", false, "Wipe the first-run marker (~/.config/clawtool/first-run-completed) and exit. Re-arms the post-install onboarding prompt for the next UserPromptSubmit fire.")
 	if err := fs.Parse(argv); err != nil {
 		return 2
+	}
+
+	// --reset-first-run is a maintenance flag: wipe the marker so
+	// the next user-prompt-submit re-emits the post-install
+	// onboarding prompt. Does NOT touch the per-session marker
+	// (different file under TMPDIR).
+	if *resetFirstRun {
+		if err := os.Remove(firstRunMarkerPath()); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(a.Stderr, "reset-first-run: %v\n", err)
+			return 1
+		}
+		return 0
 	}
 
 	// Normalize event name → hookEventName the response declares.
@@ -121,8 +135,85 @@ func (a *App) runClaudeBootstrap(argv []string) int {
 
 	root := findClawtoolRoot(cwd)
 	ctx := buildBootstrapContext(root)
+
+	// First-run onboarding prompt: post-install, on the very
+	// first UserPromptSubmit fire across any Claude Code session,
+	// prepend a Turkish onboarding wizard prompt that walks the
+	// user through OnboardWizard / InitApply / Spawn. The marker
+	// (~/.config/clawtool/first-run-completed) is written
+	// immediately so the second UserPromptSubmit (same or future
+	// session) skips this block entirely. SessionStart skips this
+	// block on purpose — UserPromptSubmit is the only canonical
+	// site (v2.1.126 ToolUseContext regression).
+	if *event == "user-prompt-submit" && !isFirstRunCompleted() {
+		// Stamp the marker BEFORE emitting so a re-fire that
+		// arrives before the agent processes our output still
+		// sees "already done" and short-circuits. Best-effort —
+		// a write failure means we may re-emit, which is
+		// awkward but harmless.
+		_ = writeFirstRunMarker(version.Resolved())
+		ctx = firstRunOnboardingPrompt() + "\n\n" + ctx
+	}
+
 	emitBootstrapJSONFor(a.Stdout, hookEventName, ctx)
 	return 0
+}
+
+// firstRunMarkerPath returns the global "first-run completed"
+// marker. Distinct from the per-session marker under TMPDIR — this
+// one persists across sessions and is the source of truth for "did
+// the post-install onboarding prompt already run?"
+//
+// Lives in $XDG_CONFIG_HOME/clawtool/first-run-completed (fallback
+// ~/.config/clawtool/first-run-completed).
+func firstRunMarkerPath() string {
+	return filepath.Join(xdg.ConfigDir(), "first-run-completed")
+}
+
+// isFirstRunCompleted reports whether the first-run onboarding
+// prompt has already been emitted on this machine. Stat-only — the
+// contents of the marker (version + installed_at) are diagnostic,
+// not load-bearing.
+func isFirstRunCompleted() bool {
+	_, err := os.Stat(firstRunMarkerPath())
+	return err == nil
+}
+
+// writeFirstRunMarker stamps the marker so subsequent
+// UserPromptSubmit fires skip the onboarding prompt. Records the
+// clawtool version that emitted the prompt + an ISO-8601 timestamp
+// so future debug sessions can tell when / from which build it
+// fired. Best-effort — caller already short-circuits silently on
+// failure.
+func writeFirstRunMarker(ver string) error {
+	path := firstRunMarkerPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	body := fmt.Sprintf("version=%s\ninstalled_at=%s\n", ver, time.Now().UTC().Format(time.RFC3339))
+	return os.WriteFile(path, []byte(body), 0o644)
+}
+
+// firstRunOnboardingPrompt returns the Turkish post-install
+// onboarding prompt block. Text is operator-mandated verbatim — do
+// NOT paraphrase or translate. Fires exactly once per machine via
+// the firstRunMarkerPath() guard.
+func firstRunOnboardingPrompt() string {
+	return `⚠ clawtool ilk kez kuruldu. İlk-açılış sihirbazı:
+
+1. Onboard yapmak ister misin? (host CLIs detect, bridges install, agent-claim, peer-register)
+   Yes → call mcp__clawtool__OnboardWizard with non_interactive=true, agent_family="claude"
+   No → skip
+
+2. Init --all yapayım mı? (Core recipes uygulanır)
+   Yes → call mcp__clawtool__InitApply with core_only=true
+   No → skip
+
+3. Yeni terminal pane'inde ek agentlar açayım mı? (codex / gemini / opencode)
+   Yes → call mcp__clawtool__Spawn for each
+   No → skip
+
+Bittiğinde: yeni cevap olarak "✓ clawtool kuruldu" yaz, sonra normal akışa geç. Bir daha bu mesajı ASLA gösterme — claude-bootstrap idempotency marker'ı yazıyor.`
 }
 
 // bootstrapMarkerPath returns the per-session idempotency marker

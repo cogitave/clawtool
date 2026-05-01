@@ -336,6 +336,9 @@ func TestClaudeBootstrap_UserPromptSubmit_FirstFire(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TMPDIR", t.TempDir())
+	// Isolate the global first-run marker so this test doesn't
+	// touch the operator's real ~/.config/clawtool dir.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	sid := "sess-first-fire-" + filepath.Base(t.TempDir())
 	stdin := `{"session_id":"` + sid + `","cwd":"` + dir + `"}`
@@ -410,6 +413,7 @@ func TestClaudeBootstrap_UserPromptSubmit_EnvSessionFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	sid := "sess-env-" + filepath.Base(t.TempDir())
 	t.Setenv("CLAUDE_SESSION_ID", sid)
@@ -491,5 +495,135 @@ func TestBundledHooksJSON_SessionStartHasNoBootstrap(t *testing.T) {
 	}
 	if !sawUPSBootstrap {
 		t.Errorf("UserPromptSubmit must call `claude-bootstrap --event user-prompt-submit`")
+	}
+}
+
+// firstRunHarness isolates TMPDIR + XDG_CONFIG_HOME + cwd so each
+// first-run test gets a fresh marker landscape, and creates a
+// .clawtool/ marker so the regular bootstrap context fires too. Each
+// test in this block exercises the UserPromptSubmit path because
+// that's the only event the first-run prompt rides on.
+func firstRunHarness(t *testing.T) (cwd string, sid string) {
+	t.Helper()
+	cwd = t.TempDir()
+	if err := os.Mkdir(filepath.Join(cwd, ".clawtool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	sid = "sess-firstrun-" + filepath.Base(t.TempDir())
+	return cwd, sid
+}
+
+// TestClaudeBootstrap_FirstRun_EmitsOnboardingPrompt asserts the
+// post-install Turkish onboarding prompt rides on the very first
+// UserPromptSubmit fire when ~/.config/clawtool/first-run-completed
+// is absent. Marker text MUST stay verbatim — operator-mandated.
+func TestClaudeBootstrap_FirstRun_EmitsOnboardingPrompt(t *testing.T) {
+	cwd, sid := firstRunHarness(t)
+	stdin := `{"session_id":"` + sid + `"}`
+
+	out := runBootstrapEvent(t, cwd, "user-prompt-submit", stdin)
+	ctx := out.HookSpecificOutput.AdditionalContext
+
+	for _, want := range []string{
+		"clawtool ilk kez kuruldu",
+		"İlk-açılış sihirbazı",
+		"Onboard yapmak ister misin?",
+		"mcp__clawtool__OnboardWizard",
+		"Init --all yapayım mı?",
+		"mcp__clawtool__InitApply",
+		"ek agentlar açayım mı?",
+		"mcp__clawtool__Spawn",
+		`"✓ clawtool kuruldu"`,
+		"idempotency marker",
+	} {
+		if !strings.Contains(ctx, want) {
+			t.Errorf("first-run onboarding prompt missing %q\nfull context: %s", want, ctx)
+		}
+	}
+	// The regular bootstrap context still rides along.
+	if !strings.Contains(ctx, "clawtool is active") {
+		t.Errorf("regular bootstrap context should still appear after first-run prompt: %s", ctx)
+	}
+}
+
+// TestClaudeBootstrap_FirstRun_WritesMarker confirms the marker is
+// stamped immediately on first emit. Contents carry version + ISO
+// timestamp so future debugging can tell when / from which build the
+// prompt fired.
+func TestClaudeBootstrap_FirstRun_WritesMarker(t *testing.T) {
+	cwd, sid := firstRunHarness(t)
+	stdin := `{"session_id":"` + sid + `"}`
+
+	_ = runBootstrapEvent(t, cwd, "user-prompt-submit", stdin)
+
+	marker := firstRunMarkerPath()
+	body, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("first-run marker not written: %v", err)
+	}
+	got := string(body)
+	if !strings.Contains(got, "version=") {
+		t.Errorf("marker missing version= line: %q", got)
+	}
+	if !strings.Contains(got, "installed_at=") {
+		t.Errorf("marker missing installed_at= line: %q", got)
+	}
+}
+
+// TestClaudeBootstrap_FirstRun_SecondCallSkips confirms the second
+// UserPromptSubmit fire (with the marker present) does NOT inject
+// the onboarding prompt. The regular clawtool bootstrap context
+// still rides along — only the post-install ceremony is one-shot.
+func TestClaudeBootstrap_FirstRun_SecondCallSkips(t *testing.T) {
+	cwd, _ := firstRunHarness(t)
+	// Pre-stamp the global first-run marker so the run sees
+	// "already done". Use distinct session_ids so the per-session
+	// marker doesn't short-circuit before we hit the first-run
+	// branch.
+	if err := writeFirstRunMarker("test-version"); err != nil {
+		t.Fatalf("seed marker: %v", err)
+	}
+
+	stdin := `{"session_id":"sess-after-firstrun"}`
+	out := runBootstrapEvent(t, cwd, "user-prompt-submit", stdin)
+	ctx := out.HookSpecificOutput.AdditionalContext
+
+	if strings.Contains(ctx, "clawtool ilk kez kuruldu") {
+		t.Errorf("second call should NOT emit onboarding prompt:\n%s", ctx)
+	}
+	if !strings.Contains(ctx, "clawtool is active") {
+		t.Errorf("regular bootstrap context should still appear: %s", ctx)
+	}
+}
+
+// TestClaudeBootstrap_ResetFirstRun confirms `--reset-first-run`
+// wipes the marker file and exits 0. Used for re-running the
+// onboarding flow during test / debug.
+func TestClaudeBootstrap_ResetFirstRun(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := writeFirstRunMarker("test-version"); err != nil {
+		t.Fatalf("seed marker: %v", err)
+	}
+	if _, err := os.Stat(firstRunMarkerPath()); err != nil {
+		t.Fatalf("seeded marker missing: %v", err)
+	}
+
+	out := &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: &bytes.Buffer{}, Stdin: strings.NewReader("")}
+	rc := app.runClaudeBootstrap([]string{"--reset-first-run"})
+	if rc != 0 {
+		t.Fatalf("reset-first-run rc=%d stderr=%q", rc, app.Stderr)
+	}
+	if _, err := os.Stat(firstRunMarkerPath()); !os.IsNotExist(err) {
+		t.Errorf("marker should be wiped, stat err=%v", err)
+	}
+
+	// Idempotency: second --reset-first-run on an already-wiped
+	// marker should also succeed (no-op).
+	rc2 := app.runClaudeBootstrap([]string{"--reset-first-run"})
+	if rc2 != 0 {
+		t.Errorf("second reset-first-run rc=%d (should be no-op)", rc2)
 	}
 }
