@@ -607,8 +607,39 @@ func (s *supervisor) tryPeerRoute(ctx context.Context, primary Agent, prompt str
 		}
 		return nil, false, nil
 	}
+	// Lifecycle link: when the resolved peer is one that SendMessage
+	// auto-spawned itself (metadata flag MetaAutoSpawned=true), record
+	// the taskID → peerID mapping so the BIAM terminal-status hook
+	// can close the pane on completion. We never link user-attached
+	// peers — that path leaves auto_spawned absent and the hook
+	// short-circuits at the unlinkTask check, so an operator's
+	// manually-opened pane is safe from auto-close.
+	if router.IsAutoSpawnedPeer(peerID) {
+		if taskID := taskIDFromOpts(opts); taskID != "" {
+			LinkTaskToPeer(taskID, peerID)
+		}
+	}
 	_ = ctx // span attribution piggybacks on the parent dispatch span
 	return newPeerAckStream(peerID, displayName, msgID), true, nil
+}
+
+// taskIDFromOpts pulls CLAWTOOL_TASK_ID out of the BIAM-injected
+// opts["env"] map so the lifecycle hook has a key to dial. The
+// BIAM runner injects this via injectFanInEnv before calling
+// Supervisor.Send, so any in-process async dispatch carries it.
+// Returns empty string when the caller wasn't a BIAM-tracked
+// dispatch (synchronous CLI peer send, etc.) — the lifecycle
+// link is then skipped, which is correct: there's no terminal
+// status to wait on.
+func taskIDFromOpts(opts map[string]any) string {
+	if opts == nil {
+		return ""
+	}
+	env, _ := opts["env"].(map[string]string)
+	if env == nil {
+		return ""
+	}
+	return env["CLAWTOOL_TASK_ID"]
 }
 
 // tryAutoSpawn attempts to bring an agent of `family` to life when no

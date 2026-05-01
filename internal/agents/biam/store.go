@@ -53,9 +53,10 @@ type Task struct {
 // concurrent calls — the underlying connection pool serialises
 // writes; readers fan out via WAL.
 type Store struct {
-	mu       sync.Mutex
-	db       *sql.DB
-	taskHook func(taskID string)
+	mu        sync.Mutex
+	db        *sql.DB
+	taskHook  func(taskID string)
+	closeHook func(taskID string)
 }
 
 // SetTaskHook registers a callback fired after every successful task
@@ -75,6 +76,40 @@ func (s *Store) SetTaskHook(fn func(taskID string)) {
 func (s *Store) fireTaskHook(taskID string) {
 	s.mu.Lock()
 	fn := s.taskHook
+	s.mu.Unlock()
+	if fn != nil {
+		fn(taskID)
+	}
+}
+
+// SetTaskCloseHook registers a callback fired EXCLUSIVELY when a
+// task transitions into a terminal status (done / failed / cancelled
+// / expired). Idempotent — pass nil to clear. Distinct from
+// SetTaskHook (which fires on every state change) so one consumer
+// can subscribe to terminal events (e.g. peer-lifecycle auto-close)
+// without competing with another's broader subscription. The hook
+// runs synchronously after the store mutex is released; safe to
+// re-enter the store from inside.
+//
+// Why a second hook seam instead of overloading taskHook: the
+// daemon already binds taskHook to WatchHub.Broadcast for the live
+// `task watch` stream. Auto-close needs a separate dispatch point
+// because (a) it only cares about terminal transitions, (b) it
+// shouldn't fire on every PutEnvelope churn, and (c) overloading
+// the existing hook would mean a watchsocket replacement clobbers
+// auto-close (last-writer-wins on a single-slot mechanism).
+func (s *Store) SetTaskCloseHook(fn func(taskID string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closeHook = fn
+}
+
+// fireTaskCloseHook reads the close hook under the lock then calls
+// it without the lock held. Same re-entrant-safety contract as
+// fireTaskHook.
+func (s *Store) fireTaskCloseHook(taskID string) {
+	s.mu.Lock()
+	fn := s.closeHook
 	s.mu.Unlock()
 	if fn != nil {
 		fn(taskID)
@@ -277,6 +312,15 @@ func (s *Store) SetTaskStatus(ctx context.Context, taskID string, status TaskSta
 	s.mu.Unlock()
 	if err == nil {
 		s.fireTaskHook(taskID)
+		// Terminal-only fan-out for subscribers that ONLY care
+		// about close events (peer-lifecycle auto-close hook).
+		// Fired AFTER the broad taskHook so a watchsocket
+		// observer sees the terminal row before the pane goes
+		// away — otherwise a `task watch` operator could miss
+		// the final frame.
+		if status.IsTerminal() {
+			s.fireTaskCloseHook(taskID)
+		}
 	}
 	return err
 }

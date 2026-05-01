@@ -260,6 +260,94 @@ func TestPeerPush_Broadcast(t *testing.T) {
 	}
 }
 
+// TestTmuxSocketEnv asserts every tmux invocation prepends `-L
+// <socket>` when CLAWTOOL_TMUX_SOCKET is set. Covers send-keys (the
+// hot path), list-panes (liveness probe), and kill-pane (auto-close
+// hook). Without this, the e2e Docker harness's `tmux -L claw-test`
+// server is unreachable and the auto-close pane never fires.
+func TestTmuxSocketEnv(t *testing.T) {
+	t.Setenv("CLAWTOOL_TMUX_SOCKET", "claw-test")
+
+	// send-keys — verify the 3-call sequence each carries -L claw-test.
+	calls := withStubTmuxExec(t, func(args []string) string {
+		if containsArg(args, "list-panes") {
+			return "%1\n"
+		}
+		return ""
+	})
+	if err := tmuxSendKeys("%1", "ping"); err != nil {
+		t.Fatalf("tmuxSendKeys: %v", err)
+	}
+	for i, c := range *calls {
+		if !hasSocketFlag(c, "claw-test") {
+			t.Errorf("send-keys call[%d] missing -L claw-test: %v", i, c)
+		}
+	}
+
+	// list-panes (via tmuxPaneAlive) carries the same flag.
+	*calls = nil
+	if !tmuxPaneAlive("%1") {
+		t.Errorf("tmuxPaneAlive returned false unexpectedly")
+	}
+	if len(*calls) != 1 || !hasSocketFlag((*calls)[0], "claw-test") {
+		t.Errorf("list-panes call missing -L claw-test: %v", *calls)
+	}
+
+	// kill-pane carries the same flag.
+	*calls = nil
+	if err := tmuxKillPane("%42"); err != nil {
+		t.Fatalf("tmuxKillPane: %v", err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("expected 1 kill-pane call, got %d: %v", len(*calls), *calls)
+	}
+	if !hasSocketFlag((*calls)[0], "claw-test") {
+		t.Errorf("kill-pane call missing -L claw-test: %v", (*calls)[0])
+	}
+	wantKill := []string{"tmux", "-L", "claw-test", "kill-pane", "-t", "%42"}
+	if !equalSlice((*calls)[0], wantKill) {
+		t.Errorf("kill-pane argv = %v, want %v", (*calls)[0], wantKill)
+	}
+
+	// Sanity: with the env unset, no -L flag appears.
+	t.Setenv("CLAWTOOL_TMUX_SOCKET", "")
+	*calls = nil
+	if err := tmuxKillPane("%7"); err != nil {
+		t.Fatalf("tmuxKillPane (no env): %v", err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("expected 1 kill-pane call (no env), got %d", len(*calls))
+	}
+	for _, a := range (*calls)[0] {
+		if a == "-L" {
+			t.Errorf("CLAWTOOL_TMUX_SOCKET unset but -L flag leaked: %v", (*calls)[0])
+		}
+	}
+}
+
+// containsArg reports whether argv contains the literal arg.
+func containsArg(argv []string, arg string) bool {
+	for _, a := range argv {
+		if a == arg {
+			return true
+		}
+	}
+	return false
+}
+
+// hasSocketFlag returns true when argv contains a `-L <socket>`
+// adjacent pair. Order-sensitive: the flag must precede the
+// subcommand so tmux interprets it as a server-selection flag rather
+// than a subcommand argument.
+func hasSocketFlag(argv []string, socket string) bool {
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == "-L" && argv[i+1] == socket {
+			return true
+		}
+	}
+	return false
+}
+
 func equalSlice(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

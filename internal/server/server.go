@@ -151,6 +151,17 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	// legacy spawn-fresh-subprocess path on no-tmux hosts.
 	agents.SetGlobalPeerSpawner(agents.NewA2APeerSpawner(peerReg))
 
+	// Peer-lifecycle auto-close gate. Default = on (true);
+	// explicit `false` in cfg lets the operator keep auto-spawned
+	// panes around for post-mortem inspection. The actual close-
+	// pane bridge (agents → internal/cli.KillTmuxPane) is wired
+	// at internal/cli package init; here we just flip the master
+	// gate so the BIAM terminal-status hook (installed below) is
+	// a no-op when disabled.
+	if cfg.Peer.AutoClosePanes != nil {
+		agents.SetAutoClosePanes(*cfg.Peer.AutoClosePanes)
+	}
+
 	// Hooks subsystem (F3). Register the process-wide manager once
 	// so every callsite can emit without threading a handle through.
 	hookMgr := hooks.New(cfg.Hooks)
@@ -234,6 +245,20 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		})
 		agents.SetGlobalBiamRunner(runner)
 		core.SetBiamStore(store)
+
+		// Peer-lifecycle auto-close hook. Fires only on terminal
+		// task transitions (done / failed / cancelled / expired);
+		// MaybeAutoClosePane consults the in-memory taskID →
+		// peerID link table populated by tryPeerRoute and falls
+		// through silently when the dispatch wasn't an auto-spawn.
+		// Errors are swallowed so a flaky tmux server can't block
+		// task termination — pane stuck-open is a far smaller bug
+		// than task-row stuck-active.
+		store.SetTaskCloseHook(func(taskID string) {
+			if err := agents.MaybeAutoClosePane(taskID, peerReg); err != nil {
+				fmt.Fprintf(os.Stderr, "clawtool: peer auto-close pane (task=%s): %v\n", taskID, err)
+			}
+		})
 
 		// Shutdown order matters: cancel the runner FIRST so its
 		// in-flight goroutines stop touching the store, then

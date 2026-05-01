@@ -74,6 +74,17 @@ type PeerRouter interface {
 	// query message. Returns the assigned message ID so the
 	// caller can correlate replies later.
 	EnqueueToPeer(peerID, fromPeerID, prompt string) (msgID string, err error)
+
+	// IsAutoSpawnedPeer reports whether peerID's metadata carries
+	// MetaAutoSpawned=true — i.e. the peer was created by
+	// SendMessage's tmux auto-spawn fallback rather than an
+	// operator's manually-attached session. Used by tryPeerRoute
+	// to decide whether to register a taskID → peerID lifecycle
+	// link so the BIAM terminal-status hook can close the pane on
+	// completion. Returns false on unknown peer or any other
+	// uncertainty (the lifecycle hook's defence-in-depth check
+	// will recheck the metadata before firing tmux anyway).
+	IsAutoSpawnedPeer(peerID string) bool
 }
 
 // globalPeerRouter is the process-wide router NewSupervisor wires.
@@ -163,6 +174,22 @@ func (a *a2aRouter) EnqueueToPeer(peerID, fromPeerID, prompt string) (string, er
 		Text:     prompt,
 	})
 	return saved.ID, nil
+}
+
+// IsAutoSpawnedPeer checks the registry for peerID and inspects its
+// metadata for MetaAutoSpawned=true. Returns false on unknown peer
+// or missing/false metadata. The peer-lifecycle hook re-validates
+// before firing tmux kill-pane, so a borderline result here is
+// safe — worst case we log a no-op link.
+func (a *a2aRouter) IsAutoSpawnedPeer(peerID string) bool {
+	if a == nil || a.reg == nil || peerID == "" {
+		return false
+	}
+	p := a.reg.Get(peerID)
+	if p == nil {
+		return false
+	}
+	return p.Metadata[MetaAutoSpawned] == "true"
 }
 
 // resolveSendMode parses opts["mode"] into a typed SendMode. Empty

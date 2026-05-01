@@ -21,6 +21,7 @@ type stubPeerRouter struct {
 	peerID      string
 	displayName string
 	online      bool
+	autoSpawned bool // when true, IsAutoSpawnedPeer reports true for peerID
 	enqueued    []enqueueCall
 	enqueueErr  error
 }
@@ -77,6 +78,15 @@ func (s *stubPeerRouter) EnqueueToPeer(peerID, fromPeerID, prompt string) (strin
 	}
 	s.enqueued = append(s.enqueued, enqueueCall{peerID, fromPeerID, prompt})
 	return "msg-" + peerID, nil
+}
+
+// IsAutoSpawnedPeer is the stub's pass-through for the lifecycle
+// link check. The auto-spawn router test sets `autoSpawned` to true
+// before calling Send so tryPeerRoute exercises the
+// LinkTaskToPeer branch; default false keeps the legacy peer-prefer
+// tests untouched (no link table mutations).
+func (s *stubPeerRouter) IsAutoSpawnedPeer(peerID string) bool {
+	return s.autoSpawned && peerID == s.peerID
 }
 
 // noSpawnTransport panics if Send is invoked — used to assert that a

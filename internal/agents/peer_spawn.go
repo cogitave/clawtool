@@ -57,17 +57,33 @@ var tmuxBin = func() string {
 	return p
 }
 
-// tmuxNewWindow runs `tmux new-window` for the given command line
-// in the given cwd. Test seam — production wires it to the real
-// exec call; tests substitute a recorder.
-var tmuxNewWindow = func(ctx context.Context, cwd, cmdline string) error {
-	args := []string{"new-window"}
+// tmuxNewWindow runs `tmux new-window -P -F '#{pane_id}'` for the
+// given command line in the given cwd and returns the new pane id
+// (e.g. "%42") so the lifecycle hook has a handle to close later.
+// `-P` prints output, `-F '#{pane_id}'` selects the pane id format;
+// without these flags tmux returns nothing on stdout and we'd lose
+// track of the spawned pane (the auto-close hook would have no
+// target). Test seam — production wires the real exec.Command,
+// tests substitute a recorder that returns a deterministic id.
+//
+// Honors CLAWTOOL_TMUX_SOCKET via the same `-L <socket>` prefix as
+// the rest of the tmux callsites so a containerised tmux server
+// (e2e Docker harness) is reachable.
+var tmuxNewWindow = func(ctx context.Context, cwd, cmdline string) (string, error) {
+	args := []string{}
+	if sock := strings.TrimSpace(os.Getenv("CLAWTOOL_TMUX_SOCKET")); sock != "" {
+		args = append(args, "-L", sock)
+	}
+	args = append(args, "new-window", "-P", "-F", "#{pane_id}")
 	if cwd != "" {
 		args = append(args, "-c", cwd)
 	}
 	args = append(args, cmdline)
-	c := exec.CommandContext(ctx, "tmux", args...)
-	return c.Start()
+	out, err := exec.CommandContext(ctx, "tmux", args...).Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // TmuxAvailable reports whether $TMUX is set AND a `tmux` binary
@@ -108,23 +124,34 @@ func (a *a2aPeerSpawner) EnsurePeer(family, fromPeerID string) (string, string, 
 	cmdline := strings.Join(append([]string{bin}, argv...), " ")
 	ctx, cancel := contextWithDefaultDeadline()
 	defer cancel()
-	if err := tmuxNewWindow(ctx, cwd, cmdline); err != nil {
+	paneID, err := tmuxNewWindow(ctx, cwd, cmdline)
+	if err != nil {
 		return "", "", false, fmt.Errorf("auto-spawn: tmux new-window: %w", err)
 	}
 	displayName := fmt.Sprintf("%s:auto-spawn", family)
-	peer, err := a.reg.Register(a2a.RegisterInput{
+	// auto_spawned=true is the lifecycle hook's gate: peer-route's
+	// tryPeerRoute consults it before linking taskID → peerID, and
+	// MaybeAutoClosePane re-checks it before firing kill-pane.
+	// Without this metadata key, an operator's user-attached pane
+	// (registered through the normal SessionStart hook path) never
+	// becomes eligible for auto-close even if it shares the same
+	// family / cwd as the auto-spawn target.
+	in := a2a.RegisterInput{
 		DisplayName: displayName,
 		Path:        cwd,
 		Backend:     familyToBackend(family),
 		Role:        a2a.RoleAgent,
+		TmuxPane:    paneID,
 		Metadata: map[string]string{
 			"spawned_by":      "clawtool",
 			"spawn_terminal":  "tmux",
 			"spawn_bin":       bin,
 			"spawn_initiator": fromPeerID,
 			"spawn_trigger":   "sendmessage-auto",
+			MetaAutoSpawned:   "true",
 		},
-	})
+	}
+	peer, err := a.reg.Register(in)
 	if err != nil {
 		return "", "", false, fmt.Errorf("auto-spawn: register peer: %w", err)
 	}

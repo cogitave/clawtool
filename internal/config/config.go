@@ -47,6 +47,21 @@ type Config struct {
 	Portals       map[string]PortalConfig  `toml:"portals,omitempty"`
 	Sandboxes     map[string]SandboxConfig `toml:"sandboxes,omitempty"`
 	SandboxWorker SandboxWorkerConfig      `toml:"sandbox_worker,omitempty"`
+	Peer          PeerConfig               `toml:"peer,omitempty"`
+}
+
+// PeerConfig holds per-feature toggles for the peer registry / a2a
+// surface. Currently exposes a single knob: AutoClosePanes flips off
+// the SendMessage auto-close lifecycle hook for power users who want
+// auto-spawned tmux panes to stick around for post-mortem inspection.
+// Default is on (true) — without it, the user's "şişer" case
+// triggers within minutes of normal usage.
+type PeerConfig struct {
+	// AutoClosePanes is a pointer so nil means default-on. An
+	// explicit `false` (operator opt-out) round-trips to disk and
+	// flips agents.SetAutoClosePanes(false) at boot, leaving every
+	// auto-spawned pane open after its dispatch terminates.
+	AutoClosePanes *bool `toml:"auto_close_panes,omitempty"`
 }
 
 // SandboxWorkerConfig wires the daemon to a sandbox-worker
