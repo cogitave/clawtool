@@ -137,8 +137,16 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 		// (codex's HTTP MCP client) sends `Accept: text/event-stream`
 		// only and the upstream library always answers
 		// `application/json`. See mcp_http.go.
-		mux.Handle("/mcp", authed(mcpAcceptShim(streamable)))
-		mux.Handle("/mcp/", authed(http.StripPrefix("/mcp", mcpAcceptShim(streamable))))
+		//
+		// mcpHeaderMiddleware implements SEP-2243 (Mcp-Method /
+		// Mcp-Name request headers): exposes the resolved method
+		// + sub-target via context and echoes them on the
+		// response. Wraps OUTSIDE the accept shim so the body
+		// peek reads the original POST and the echoed response
+		// headers survive the SSE re-frame. See mcp_headers.go.
+		shimmed := mcpAcceptShim(streamable)
+		mux.Handle("/mcp", authed(mcpHeaderMiddleware(shimmed)))
+		mux.Handle("/mcp/", authed(mcpHeaderMiddleware(http.StripPrefix("/mcp", shimmed))))
 	}
 
 	// Catch-all for unknown paths — return 404 with a JSON body
