@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "clawtool peer register --backend claude-code",
+            "command": "clawtool peer register --backend claude-code --tmux-pane \"${TMUX_PANE:-}\"",
             "timeout": 2
           }
         ]

@@ -57,7 +57,21 @@ const peerUsage = `Usage:
                                            enqueue a notification into the
                                            target peer's inbox. --name resolves
                                            via display_name; --broadcast
-                                           fans out to every other peer.
+                                           fans out to every other peer. When
+                                           the target peer has a registered
+                                           tmux pane, ALSO drives that pane
+                                           via 'tmux send-keys' (real-time push
+                                           on top of the inbox write).
+                                           Pass --no-push to suppress the
+                                           tmux push for this call.
+  clawtool peer push <peer_id|--name N|--broadcast> "<text>"
+                                           Tmux-only delivery: drives the
+                                           recipient pane via 'tmux send-keys'
+                                           with NO inbox write. Useful for
+                                           notification-style delivery without
+                                           queue buildup. Silently no-ops on
+                                           peers without a registered tmux
+                                           pane.
   clawtool peer inbox [--session <id>] [--peek] [--format table|json|tsv]
                                            GET /v1/peers/{id}/messages — drain
                                            pending messages (or peek without
@@ -104,6 +118,8 @@ func (a *App) runPeer(argv []string) int {
 		return a.runPeerDeregister(argv[1:])
 	case "send":
 		return a.runPeerSend(argv[1:])
+	case "push":
+		return a.runPeerPush(argv[1:])
 	case "inbox":
 		return a.runPeerInbox(argv[1:])
 	case "drain":
@@ -122,6 +138,7 @@ func (a *App) runPeerSend(argv []string) int {
 	name := fs.String("name", "", "Resolve target by display_name (instead of bare peer_id positional).")
 	broadcast := fs.Bool("broadcast", false, "Fan out to every other peer (ignores positional peer_id).")
 	fromSession := fs.String("from-session", defaultSessionKey(), "Sender session id (resolves to from_peer).")
+	noPush := fs.Bool("no-push", false, "Suppress the additive tmux send-keys push (inbox-only delivery).")
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
@@ -167,6 +184,13 @@ func (a *App) runPeerSend(argv []string) int {
 			return 1
 		}
 		fmt.Fprintf(a.Stdout, "broadcast → %d peer(s)\n", out.DeliveredTo)
+		// Best-effort tmux push to every peer with a registered
+		// pane. Skips on --no-push. Failures stay silent: the
+		// broadcast inbox write is the canonical delivery and
+		// already landed.
+		if !*noPush {
+			a.broadcastTmuxPush(text)
+		}
 		return 0
 	}
 	body, _ := json.Marshal(msg)
@@ -176,6 +200,125 @@ func (a *App) runPeerSend(argv []string) int {
 		return 1
 	}
 	fmt.Fprintln(a.Stdout, saved.ID)
+	// Real-time tmux push (additive, best-effort). The inbox write
+	// above is canonical delivery; this just gives the recipient
+	// agent's live transcript a chance to see the message before
+	// the next session-tick drain.
+	if !*noPush {
+		a.peerTmuxPush(target, text)
+	}
+	return 0
+}
+
+// peerTmuxPush looks up the target peer's tmux_pane via /v1/peers/
+// <id> and, if populated AND the pane is still alive, drives the
+// 3-step send-keys sequence at it. Silent on every failure mode
+// (target has no pane, pane gone, tmux not on PATH, daemon GET
+// failed) — the canonical inbox write already landed in
+// runPeerSend, so a tmux miss is a no-op, not an error.
+//
+// On success, prints `→ pushed to tmux pane <pane_id>` to stderr
+// so the operator who ran the command sees what happened.
+func (a *App) peerTmuxPush(peerID, text string) {
+	if peerID == "" {
+		return
+	}
+	var p a2a.Peer
+	if err := daemon.HTTPRequest(http.MethodGet, "/v1/peers/"+peerID, nil, &p); err != nil {
+		return
+	}
+	if p.TmuxPane == "" || !validTmuxPaneID(p.TmuxPane) {
+		return
+	}
+	if !tmuxPaneAlive(p.TmuxPane) {
+		return
+	}
+	if err := tmuxSendKeys(p.TmuxPane, text); err != nil {
+		return
+	}
+	fmt.Fprintf(a.Stderr, "→ pushed to tmux pane %s\n", p.TmuxPane)
+}
+
+// broadcastTmuxPush enumerates /v1/peers and fires peerTmuxPush
+// at every peer with a non-empty TmuxPane (skipping the sender's
+// own pane to avoid echoing into the local transcript). Best-
+// effort: per-peer failures are swallowed so one stale pane
+// doesn't suppress delivery to the rest.
+func (a *App) broadcastTmuxPush(text string) {
+	var out struct {
+		Peers []a2a.Peer `json:"peers"`
+	}
+	if err := daemon.HTTPRequest(http.MethodGet, "/v1/peers", nil, &out); err != nil {
+		return
+	}
+	selfPane := os.Getenv("TMUX_PANE")
+	for _, p := range out.Peers {
+		if p.TmuxPane == "" || !validTmuxPaneID(p.TmuxPane) {
+			continue
+		}
+		if selfPane != "" && p.TmuxPane == selfPane {
+			continue
+		}
+		if !tmuxPaneAlive(p.TmuxPane) {
+			continue
+		}
+		if err := tmuxSendKeys(p.TmuxPane, text); err == nil {
+			fmt.Fprintf(a.Stderr, "→ pushed to tmux pane %s\n", p.TmuxPane)
+		}
+	}
+}
+
+// runPeerPush is the tmux-only sibling of runPeerSend: it resolves
+// the target the same way (peer_id | --name | --broadcast) but
+// performs ONLY the tmux send-keys step. No /v1/peers/{id}/messages
+// POST, no inbox write — useful when the operator wants
+// notification-style delivery without queue buildup on a chatty
+// recipient.
+//
+// Silently no-ops (exit 0) on peers that have no tmux_pane
+// registered: a "push" verb implies tmux, so callers tolerating a
+// non-tmux recipient should use `peer send` instead.
+func (a *App) runPeerPush(argv []string) int {
+	fs := flag.NewFlagSet("peer push", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	name := fs.String("name", "", "Resolve target by display_name.")
+	broadcast := fs.Bool("broadcast", false, "Fan out to every tmux-aware peer.")
+	if err := fs.Parse(argv); err != nil {
+		return 2
+	}
+	rest := fs.Args()
+	if !*broadcast && *name == "" && len(rest) < 2 {
+		fmt.Fprintln(a.Stderr, "usage: clawtool peer push <peer_id|--name N|--broadcast> \"<text>\"")
+		return 2
+	}
+	var text, target string
+	if *broadcast {
+		if len(rest) < 1 {
+			fmt.Fprintln(a.Stderr, "usage: clawtool peer push --broadcast \"<text>\"")
+			return 2
+		}
+		text = strings.Join(rest, " ")
+	} else if *name != "" {
+		text = strings.Join(rest, " ")
+		id, err := resolvePeerByName(*name)
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "clawtool peer push: %v\n", err)
+			return 1
+		}
+		target = id
+	} else {
+		target = rest[0]
+		text = strings.Join(rest[1:], " ")
+	}
+	if strings.TrimSpace(text) == "" {
+		fmt.Fprintln(a.Stderr, "clawtool peer push: text is required")
+		return 2
+	}
+	if *broadcast {
+		a.broadcastTmuxPush(text)
+		return 0
+	}
+	a.peerTmuxPush(target, text)
 	return 0
 }
 
