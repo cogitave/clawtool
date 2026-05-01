@@ -328,6 +328,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runClaudeBootstrap(argv[1:])
 	case "bootstrap":
 		return a.runBootstrap(argv[1:])
+	case "install", "first-run":
+		return a.runInstall(argv[1:])
 	case "apm":
 		return a.runApm(argv[1:])
 	case "playbook":
@@ -589,6 +591,16 @@ Usage:
                             the agent's reply back. Default agent: claude.
                             Pair with 'clawtool install' for hands-off
                             setup of a fresh repo.
+  clawtool install [--dry-run] [--workdir <path>] [--skip-init]
+                            Zero-touch first-run setup. One command runs
+                            the whole pipeline end-to-end: daemon up,
+                            host detection, bridge install per host,
+                            agent claim, MCP config write, hooks install,
+                            peer registration, init --all on the cwd,
+                            and a final daemon-health verify. Closes
+                            with a single one-line summary on stdout.
+                            Idempotent: running twice does no extra work.
+                            Alias: 'clawtool first-run'.
   clawtool agent use <i>    Set the sticky default agent (singular
                             'agent' = relay runtime; plural 'agents' =
                             adapter ownership for native tool replacement).
