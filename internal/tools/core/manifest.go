@@ -773,6 +773,17 @@ func BuildManifest() *registry.Manifest {
 			setuptools.RegisterFanout(s)
 		},
 	})
+	m.Append(registry.ToolSpec{
+		Name:        "RuntimeInstall",
+		Description: "Install a backend agent CLI (codex|gemini|opencode|aider) at runtime from chat. Detects platform, runs the right install command (npm / pip / curl-pipe-sh), and returns the resolved binary path + version. Idempotent: an already-installed runtime returns its existing version and skips the install. Pair with Spawn to immediately open the freshly-installed runtime.",
+		Keywords:    []string{"runtime", "install", "backend", "agent", "codex", "gemini", "opencode", "aider", "npm", "pip", "bootstrap", "chat", "ai-driven"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		UsageHint:   "Use when the user wants to add a new agent backend AND it isn't already installed. Detects platform, runs the right install command (npm/brew/apt), waits for completion. After this, you can immediately call Spawn to open it in a tmux pane. Idempotent: re-running on an already-installed runtime returns the existing version.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			setuptools.RegisterRuntimeInstall(s)
+		},
+	})
 
 	return m
 }
