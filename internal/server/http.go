@@ -133,8 +133,12 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 	// applies — the streamable handler is wrapped by authed.
 	if opts.MCPHTTP {
 		streamable := mcpserver.NewStreamableHTTPServer(mcpSrv)
-		mux.Handle("/mcp", authed(streamable))
-		mux.Handle("/mcp/", authed(http.StripPrefix("/mcp", streamable)))
+		// mcpAcceptShim honors the client's Accept header — rmcp
+		// (codex's HTTP MCP client) sends `Accept: text/event-stream`
+		// only and the upstream library always answers
+		// `application/json`. See mcp_http.go.
+		mux.Handle("/mcp", authed(mcpAcceptShim(streamable)))
+		mux.Handle("/mcp/", authed(http.StripPrefix("/mcp", mcpAcceptShim(streamable))))
 	}
 
 	// Catch-all for unknown paths — return 404 with a JSON body
