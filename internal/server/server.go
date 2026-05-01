@@ -398,10 +398,19 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	// internal/tools/registry/usage_hint.go for the rationale.
 	manifest := core.BuildManifest()
 	usageHints := manifest.UsageHints()
+	alwaysLoad := manifest.AlwaysLoadSet()
 
 	mcpHooks := &server.Hooks{}
 	mcpHooks.AddAfterListTools(func(_ context.Context, _ any, _ *mcp.ListToolsRequest, result *mcp.ListToolsResult) {
+		// Order matters: enrich + annotate first (they only
+		// mutate per-tool fields, never the slice), then
+		// sort last so the wire output is deterministic
+		// regardless of upstream filter / session-merge
+		// disturbances. Post-SEP-2133 the MCP spec calls out
+		// deterministic order for prompt-cache hits.
 		registry.EnrichListToolsResult(result, usageHints)
+		registry.AnnotateAlwaysLoad(result, alwaysLoad)
+		registry.SortToolsByName(result)
 	})
 
 	s := server.NewMCPServer(

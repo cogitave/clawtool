@@ -178,6 +178,7 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryShell,
 		Gate:        "Bash",
 		UsageHint:   "Bash runs commands via `/bin/bash -c`, so shell builtins and pipes work out of the box; structured JSON is returned for stdout/stderr/exit_code/duration_ms. For long-running work (build, test, server), pass `background=true` and poll with BashOutput / cancel with BashKill instead of letting the 2-minute default timeout kill it. To target a Linux mount path on WSL, set `cwd` explicitly — relative paths default to $HOME.",
+		AlwaysLoad:  true, // hot tool — Anthropic's Code-execution-with-MCP recipe
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterBash(s)
 		},
@@ -189,6 +190,7 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryFile,
 		Gate:        "Grep",
 		UsageHint:   "Pick Grep when you need to search file CONTENTS by regex; pick Glob when you only need filenames. By default it honors .gitignore via ripgrep — pass `path` to a directory outside the repo or set `glob` to broaden the search. Mistake to avoid: searching a literal `.` or `(` without escaping; the pattern is a regex.",
+		AlwaysLoad:  true,
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterGrep(s)
 		},
@@ -200,6 +202,7 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryFile,
 		Gate:        "Read",
 		UsageHint:   "Read returns clean text WITHOUT line numbers by default — pass `with_line_numbers=true` only when the agent's next step is an Edit and it needs to count lines. The Read-before-Write guardrail tracks whether this tool was called against a path before allowing Write to overwrite it. For binaries Read refuses with a typed error; use Glob to discover, then a format-aware engine inside Read for PDFs / .docx / .xlsx / .ipynb.",
+		AlwaysLoad:  true,
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterRead(s)
 		},
@@ -211,6 +214,7 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryFile,
 		Gate:        "Glob",
 		UsageHint:   "Pick Glob when you need a file LIST by name/path; pick Grep when you need to search file CONTENTS. Common mistake: using Glob with a substring like `config` — that won't match anything; the pattern is a glob, so use `**/*config*` instead. Honors .gitignore by default.",
+		AlwaysLoad:  true,
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterGlob(s)
 		},
@@ -222,6 +226,7 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryWeb,
 		Gate:        "WebFetch",
 		UsageHint:   "Pick WebFetch for static HTML / text endpoints; if the page is React / Next / hydrated SPA shell and comes back nearly empty, switch to BrowserFetch which renders via a real headless browser. WebFetch refuses binary MIME types and caps the body at 10 MB — that's intentional, not a bug. Returns Mozilla-Readability-extracted prose, not raw HTML.",
+		AlwaysLoad:  true,
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterWebFetch(s)
 		},
@@ -233,6 +238,7 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryFile,
 		Gate:        "Edit",
 		UsageHint:   "Use Edit for surgical line-level changes to an existing file; use Write only when replacing the whole file. Edit refuses ambiguous matches (old_string appearing more than once) by default — fix that by adding more surrounding context to the match string, NOT by setting `replace_all=true` unless you genuinely want every occurrence replaced. Whitespace counts: copy the indentation byte-for-byte.",
+		AlwaysLoad:  true,
 		Register: func(s *server.MCPServer, _ registry.Runtime) {
 			RegisterEdit(s)
 		},
@@ -359,6 +365,7 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryDiscovery,
 		Gate:        "ToolSearch",
 		UsageHint:   "Reach for ToolSearch FIRST when the catalog is large or you only know roughly what you want — BM25 ranking surfaces the right tool from a fuzzy query like 'commit changes' or 'long-running shell'. If you already know the exact tool name, call it directly; ToolSearch is for discovery, not as a wrapper for every call.",
+		AlwaysLoad:  true,
 		Register: func(s *server.MCPServer, rt registry.Runtime) {
 			RegisterToolSearch(s, rt.Index)
 		},
@@ -375,6 +382,7 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryWeb,
 		Gate:        "WebSearch",
 		UsageHint:   "Use WebSearch for general 'what's the current state of X' lookups; the result is ranked {title, url, snippet} from the configured backend (default Brave). It needs an API key configured under secrets[scope=websearch] — if calls fail with auth errors, the fix is configuration, not retry. For follow-up content extraction, hand the chosen URL to WebFetch or BrowserFetch.",
+		AlwaysLoad:  true,
 		Register: func(s *server.MCPServer, rt registry.Runtime) {
 			// rt.Secrets is `any`; the caller (server.go) always
 			// passes *secrets.Store, so a nil assertion here would

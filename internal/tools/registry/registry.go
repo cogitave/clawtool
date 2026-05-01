@@ -91,6 +91,18 @@ type ToolSpec struct {
 	// ignore it gracefully and tolerant clients (Claude Code,
 	// Codex 0.125+) can surface it as an inline guidance line.
 	UsageHint string
+
+	// AlwaysLoad marks a tool as eager-load on every Claude Code
+	// session. Anthropic's "Code execution with MCP" recipe lets
+	// hosts honor `_meta["anthropic/alwaysLoad"]: true` to keep
+	// hot tools materialised while deferring the long-tail
+	// catalog. Default false — only the eight canonical hot
+	// tools (Bash, Read, Edit, Glob, Grep, WebFetch, WebSearch,
+	// ToolSearch) flip this on so the manifest stays opt-in
+	// tight; a runaway flag flip would defeat the deferral
+	// optimisation. Surfaced at `_meta["anthropic/alwaysLoad"]`
+	// on each tool's `tools/list` entry.
+	AlwaysLoad bool
 }
 
 // Runtime carries the cross-cutting dependencies a register fn
@@ -374,6 +386,29 @@ func (m *Manifest) UsageHints() map[string]string {
 			continue
 		}
 		out[s.Name] = s.UsageHint
+	}
+	return out
+}
+
+// AlwaysLoadSet returns the set of tool names whose ToolSpec has
+// AlwaysLoad=true. Used by the MCP server's tools/list
+// post-processor to inject `_meta["anthropic/alwaysLoad"]: true`
+// onto each entry. Anthropic's Claude Code respects the hint to
+// keep specific tools eager while deferring the long-tail
+// catalog. The map is set-shaped so a TestHotToolsAlwaysLoad
+// invariant can assert exactly the canonical eight (Bash, Read,
+// Edit, Glob, Grep, WebFetch, WebSearch, ToolSearch) carry the
+// flag.
+func (m *Manifest) AlwaysLoadSet() map[string]struct{} {
+	if m == nil {
+		return nil
+	}
+	out := map[string]struct{}{}
+	for _, s := range m.specs {
+		if !s.AlwaysLoad {
+			continue
+		}
+		out[s.Name] = struct{}{}
 	}
 	return out
 }
