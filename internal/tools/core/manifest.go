@@ -730,6 +730,17 @@ func BuildManifest() *registry.Manifest {
 		},
 	})
 	m.Append(registry.ToolSpec{
+		Name:        "PeerList",
+		Description: "Snapshot of every BIAM peer (Claude Code / Codex / Gemini / OpenCode session, recipe-installed agent) currently registered + heartbeating with the local clawtool daemon. Returns peers + count + as_of (the same shape as GET /v1/peers). Read-only.",
+		Keywords:    []string{"peer", "list", "biam", "discovery", "registry", "claude-code", "codex", "gemini", "opencode", "session", "circle", "backend", "status"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		UsageHint:   "Use to discover what BIAM peers (Claude Code / Codex / Gemini sessions, recipe-installed agents) are currently registered + heartbeating with the daemon. Pair with PeerSend / SendMessage to dispatch to a specific peer_id. Read-only.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			setuptools.RegisterPeerList(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
 		Name:        "AutonomousRun",
 		Description: "Drive clawtool's autonomous self-paced dev loop from chat: dispatch a goal to a BIAM peer, iterate until done or max-iterations, return the final summary. Loop runs inside clawtool's binary — host-agnostic.",
 		Keywords:    []string{"autonomous", "loop", "biam", "dispatch", "goal", "self-paced", "chat", "ai-driven", "iterate"},

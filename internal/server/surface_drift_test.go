@@ -108,6 +108,7 @@ var surfaceAllowlist = map[string]string{
 	"OnboardStatus": "agent-facing primitive; CLI peer is `clawtool init --preview` / `clawtool recipe status`",
 	"InitApply":     "agent-facing primitive; CLI peer is `clawtool init` (interactive) / `clawtool init --all` (non-interactive)",
 	"OnboardWizard": "agent-facing primitive; CLI peer is `clawtool onboard` (interactive TUI). Chat tool covers only the non-TTY subset.",
+	"PeerList":      "agent-facing primitive; CLI peer is `clawtool peer list`. Read-only BIAM peer discovery; no slash command — agents reach it directly via mcp__clawtool__PeerList.",
 }
 
 // repoRoot walks up from this test file to the repo root (the

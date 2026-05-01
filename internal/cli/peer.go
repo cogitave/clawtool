@@ -26,9 +26,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/cogitave/clawtool/internal/a2a"
@@ -59,6 +62,13 @@ const peerUsage = `Usage:
                                            GET /v1/peers/{id}/messages — drain
                                            pending messages (or peek without
                                            consuming).
+  clawtool peer list [--circle <name>] [--backend <name>] [--status <s>]
+                     [--format text|json|tsv]
+                                           GET /v1/peers — operator-facing
+                                           snapshot of every peer the daemon
+                                           knows about. Sorted by last_seen
+                                           desc. Filters narrow the set
+                                           server-side via query params.
 
 This is the runtime-side primitive — claude-code's bundled hooks fire it
 automatically; for codex / gemini / opencode wire it from your runtime's
@@ -82,6 +92,8 @@ func (a *App) runPeer(argv []string) int {
 		return a.runPeerSend(argv[1:])
 	case "inbox":
 		return a.runPeerInbox(argv[1:])
+	case "list":
+		return a.runPeerList(argv[1:])
 	default:
 		fmt.Fprintf(a.Stderr, "clawtool peer: unknown subcommand %q\n\n%s", argv[0], peerUsage)
 		return 2
@@ -359,6 +371,132 @@ func (a *App) runPeerDeregister(argv []string) int {
 	}
 	_ = removePeerIDFile(*session)
 	return 0
+}
+
+// runPeerList renders an operator-facing snapshot of every peer
+// the daemon knows about. The daemon's GET /v1/peers is the only
+// authoritative source — peers.json on disk is a debounced
+// persistence side-effect, not a query surface — so this verb
+// dials the listener using the same auth/timeout path peer send
+// uses. Filters (--circle / --backend / --status) are forwarded as
+// query params; the daemon does the matching in a.Registry.List
+// so the operator never sees stale rows.
+//
+// Default sort is last_seen desc (most-recently-active first); the
+// table truncates display_name + circle so a 24-peer registry on a
+// dev laptop renders without wrapping in a tmux split.
+func (a *App) runPeerList(argv []string) int {
+	fs := flag.NewFlagSet("peer list", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	circle := fs.String("circle", "", "Filter to peers in this circle.")
+	backend := fs.String("backend", "", "Filter to peers with this backend (claude-code|codex|gemini|opencode|clawtool).")
+	status := fs.String("status", "", "Filter to peers with this status (online|busy|offline).")
+	format := fs.String("format", "text", "Output format: text | json | tsv.")
+	if err := fs.Parse(argv); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(a.Stderr, "clawtool peer list: unexpected positional arg %q\n", fs.Arg(0))
+		return 2
+	}
+
+	q := url.Values{}
+	if *circle != "" {
+		q.Set("circle", *circle)
+	}
+	if *backend != "" {
+		q.Set("backend", *backend)
+	}
+	if *status != "" {
+		q.Set("status", *status)
+	}
+	path := "/v1/peers"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+
+	var out struct {
+		Peers []a2a.Peer `json:"peers"`
+		Count int        `json:"count"`
+		AsOf  time.Time  `json:"as_of"`
+	}
+	if err := daemon.HTTPRequest(http.MethodGet, path, nil, &out); err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool peer list: %v\n", err)
+		return 1
+	}
+	// Sort last_seen desc — most recent first. Tie-break on
+	// peer_id so the order is deterministic in tests.
+	sort.SliceStable(out.Peers, func(i, j int) bool {
+		if out.Peers[i].LastSeen.Equal(out.Peers[j].LastSeen) {
+			return out.Peers[i].PeerID < out.Peers[j].PeerID
+		}
+		return out.Peers[i].LastSeen.After(out.Peers[j].LastSeen)
+	})
+
+	switch *format {
+	case "json":
+		body, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Fprintln(a.Stdout, string(body))
+		return 0
+	case "tsv":
+		fmt.Fprintln(a.Stdout, "PEER_ID\tBACKEND\tDISPLAY_NAME\tSTATUS\tLAST_SEEN\tROLE\tCIRCLE")
+		for _, p := range out.Peers {
+			fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				p.PeerID, p.Backend, p.DisplayName, p.Status,
+				p.LastSeen.UTC().Format(time.RFC3339), p.Role, p.Circle)
+		}
+		return 0
+	case "text", "":
+		// fall through
+	default:
+		fmt.Fprintf(a.Stderr, "clawtool peer list: unknown --format %q (want text|json|tsv)\n", *format)
+		return 2
+	}
+
+	if out.Count == 0 {
+		fmt.Fprintln(a.Stdout, "(no peers registered)")
+		return 0
+	}
+	tw := tabwriter.NewWriter(a.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "PEER_ID\tBACKEND\tDISPLAY_NAME\tSTATUS\tLAST_SEEN\tROLE\tCIRCLE")
+	now := time.Now()
+	for _, p := range out.Peers {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			shortenPath(p.PeerID, 16),
+			p.Backend,
+			shortenPath(p.DisplayName, 28),
+			p.Status,
+			humanAge(now, p.LastSeen),
+			p.Role,
+			shortenPath(p.Circle, 16),
+		)
+	}
+	_ = tw.Flush()
+	return 0
+}
+
+// humanAge renders a coarse "Nm ago" / "Ns ago" string for the
+// list view. RFC3339 is right for tsv/json (machine-readable),
+// but a 14-line table is unreadable when each row is a 25-char
+// timestamp — so the text path collapses it into a relative age.
+func humanAge(now, t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	d := now.Sub(t)
+	if d < 0 {
+		d = -d
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds ago", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
 
 // peerIDFile resolves the on-disk pointer for a session's saved
