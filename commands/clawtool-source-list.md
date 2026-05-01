@@ -1,6 +1,7 @@
 ---
 description: List configured clawtool source instances with their auth-readiness state.
 allowed-tools: Bash
+argument-hint: (no arguments)
 ---
 
 Wraps `clawtool source list`. Prints the table verbatim. If any source

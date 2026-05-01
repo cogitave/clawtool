@@ -1,6 +1,7 @@
 ---
 description: Manage clawtool's unattended-mode trust grants and inspect the audit log. Use this to pre-grant a repo for `clawtool send --unattended` without going through the disclosure flow each time.
 allowed-tools: mcp__clawtool__Bash
+argument-hint: <status|grant|revoke|audit>
 ---
 
 Manage `clawtool send --unattended`. Two situations:

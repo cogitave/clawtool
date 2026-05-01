@@ -1,6 +1,7 @@
 ---
-description: One-screen status of the running clawtool system — daemon, sandbox-worker, and detected agents. Lighter than `clawtool doctor` (deep diagnostic) and not live like `clawtool dashboard` (Bubble Tea tick). Use this when you just want to know "is everything wired?".
+description: One-screen status of the running clawtool system — daemon, sandbox-worker, and detected agents. Lighter than `clawtool doctor`, not live like `clawtool dashboard`.
 allowed-tools: mcp__clawtool__Bash
+argument-hint: (no arguments)
 ---
 
 The operator wants a quick "is everything wired?" answer without

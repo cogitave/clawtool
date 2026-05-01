@@ -1,6 +1,7 @@
 ---
 description: Stream BIAM task progress to the operator's chat as inline events. Pair with the Monitor tool so async dispatches become visible without polling TaskGet.
 allowed-tools: mcp__clawtool__Bash, Monitor
+argument-hint: <task_id> | --all
 ---
 
 The operator wants to SEE background dispatches as they progress —

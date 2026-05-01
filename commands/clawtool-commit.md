@@ -1,6 +1,7 @@
 ---
 description: Create a git commit through clawtool's Commit tool — Conventional Commits validation, hard Co-Authored-By block, pre_commit rules gate. Use this instead of running `git commit` from Bash.
 allowed-tools: mcp__clawtool__Commit, mcp__clawtool__Bash, mcp__clawtool__RulesCheck
+argument-hint: [<commit message>]
 ---
 
 Drive a clawtool-validated commit. This is the path the operator
@@ -38,3 +39,13 @@ exactly which rule fired and how to satisfy it before retrying.
 - Never append `Co-Authored-By: Claude` (or any AI attribution).
 - Never run `git commit` directly via Bash when Commit is available.
 - Never bypass `forbid_coauthor` without explicit user instruction.
+
+Example invocation once the message and staged paths are settled:
+
+```
+mcp__clawtool__Commit{
+  message: "feat(server): add commands lint",
+  files: ["internal/server/commands_lint_test.go"],
+  push: false
+}
+```

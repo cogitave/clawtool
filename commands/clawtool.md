@@ -1,6 +1,7 @@
 ---
 description: Show clawtool status — version, enabled tools, configured sources, secrets readiness.
 allowed-tools: Bash
+argument-hint: (no arguments)
 ---
 
 Run the full status check for the user's clawtool installation. Use the

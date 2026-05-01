@@ -1,6 +1,7 @@
 ---
 description: Inspect this clawtool instance's A2A Agent Card — the JSON contract peers will see when phase 2 lands the HTTP/mDNS surface.
 allowed-tools: mcp__clawtool__Bash
+argument-hint: [--name <override>]
 ---
 
 Show the user this clawtool instance's A2A Agent Card. Phase 1 is

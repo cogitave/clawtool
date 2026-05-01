@@ -1,6 +1,7 @@
 ---
 description: Scaffold a Claude Code subagent persona via clawtool. Asks for the agent name, description, allowed-tools, and optional default instance, then writes ~/.claude/agents/<name>.md.
 allowed-tools: mcp__clawtool__AgentNew
+argument-hint: (interactive — prompts for name + description + tools)
 ---
 
 Scaffold a Claude Code subagent persona for the user.
@@ -42,3 +43,14 @@ After the file lands, summarize for the user:
   Claude Code session via the `Agent` tool (or `subagent_type: <name>`)
 - That the body is a starting skeleton — they should edit it to
   refine the workflow and the When-to-fire heuristic
+
+Example MCP-tool invocation once the four fields are gathered:
+
+```
+mcp__clawtool__AgentNew{
+  name: "deep-grep",
+  description: "Dispatch when the parent agent needs a multi-file regex search synthesised across hits.",
+  allowed_tools: "mcp__clawtool__Grep, mcp__clawtool__Read, mcp__clawtool__SemanticSearch",
+  location: "user"
+}
+```

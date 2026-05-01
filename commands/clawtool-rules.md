@@ -1,6 +1,7 @@
 ---
 description: Manage clawtool rules (predicate-based invariants enforced at lifecycle events). List, show, add, or remove rules in .clawtool/rules.toml or ~/.config/clawtool/rules.toml.
 allowed-tools: mcp__clawtool__Bash, mcp__clawtool__RulesAdd, mcp__clawtool__RulesCheck
+argument-hint: <list|show|add|remove> [args]
 ---
 
 Manage operator-declared invariants. Rules fire at lifecycle

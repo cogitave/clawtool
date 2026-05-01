@@ -1,6 +1,7 @@
 ---
 description: List every clawtool core tool with its enabled state and the rule that resolved it.
 allowed-tools: Bash
+argument-hint: (no arguments)
 ---
 
 Wraps `clawtool tools list`. Print the full table verbatim then add a

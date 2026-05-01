@@ -1,6 +1,7 @@
 ---
 description: Launch clawtool's runtime TUI dashboard — three-pane view of BIAM dispatches, agent registry, and stats. Updates live every second.
 allowed-tools: mcp__clawtool__Bash
+argument-hint: (no arguments)
 ---
 
 The operator wants a live overhead view of every active BIAM
