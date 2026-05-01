@@ -69,6 +69,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Belt-and-braces: goreleaser v2.15.4 has been silently
+      # dropping --release-notes content, leaving the published
+      # release body empty (verified across v0.22.77/78/79/80).
+      # Force-set the body via gh CLI right after goreleaser
+      # creates the release. The script's BODY.md is the canonical
+      # source; this step just ensures GitHub displays it.
+      - name: Force release body from BODY.md (goreleaser bypass)
+        run: |
+          set -euo pipefail
+          if [ ! -s BODY.md ]; then
+            echo "::warning::BODY.md missing or empty; skipping body edit"
+            exit 0
+          fi
+          gh release edit "${GITHUB_REF_NAME}" --notes-file BODY.md
+          echo "release body force-set from BODY.md"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # Regenerate the FULL CHANGELOG.md (not just the latest body)
       # and commit it back to main so the in-repo changelog stays in
       # sync with what shipped. Operator's directive: "CHANGELOG.md
