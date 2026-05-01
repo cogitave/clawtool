@@ -76,28 +76,14 @@ release:
     name: clawtool
   draft: false
   prerelease: auto
-  # mode: removed 2026-05-01 — `append` was overriding --release-notes
-  # and producing release bodies with header + footer but an EMPTY
-  # middle section (the rich BODY.md content was silently dropped).
-  # Default mode (keep-existing) lets --release-notes=BODY.md
-  # populate the changelog body cleanly. Verified: v0.22.78 had
-  # `mode: append` and shipped without commit list; this comment
-  # change is paired with that diagnosis.
-  header: |
-    ## clawtool {{ .Tag }}
-
-    The canonical tool layer for AI coding agents. One binary, one
-    config, every agent. See ADR-009 for the versioning policy and
-    [CHANGELOG.md](https://github.com/cogitave/clawtool/blob/main/CHANGELOG.md)
-    for the full history.
-  footer: |
-    ---
-
-    **Install (user-local, no sudo)**
-
-    ```bash
-    curl -sSL https://github.com/cogitave/clawtool/releases/download/{{ .Tag }}/clawtool_{{ trimprefix .Tag "v" }}_linux_amd64.tar.gz \
-      | tar -xz -C ~/.local/bin clawtool
-    clawtool init
-    claude mcp add-json clawtool '{"type":"stdio","command":"'"$HOME"'/.local/bin/clawtool","args":["serve"]}' --scope user
-    ```
+  # release.header / release.footer / release.mode all REMOVED 2026-05-01.
+  # The rich self-hosted release-notes script (scripts/release-notes-rich.sh)
+  # now produces the COMPLETE body — dynamic per-tag header derived from
+  # the highest-impact commit, grouped commit list with scope emojis, the
+  # install snippet, and stats. Goreleaser passes that entire markdown
+  # blob through `--release-notes=BODY.md` unchanged.
+  #
+  # The previous templates duplicated content the script emits AND
+  # leaked an internal ADR reference (ADR-009) into user-facing UX,
+  # which violates the project's "no internal doc IDs in UX" rule.
+  # Single source of truth now lives in the script.
