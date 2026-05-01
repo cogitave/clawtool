@@ -38,7 +38,13 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/clawtool ./cmd/clawtool
+# Inject version via -ldflags to mirror goreleaser. Without this the
+# binary reports the dev-fallback "0.21.7" (release-please sentinel)
+# and harnesses that key on the version string see a stale value.
+ARG CLAWTOOL_VERSION=dev-e2e
+RUN CGO_ENABLED=0 go build \
+    -ldflags "-s -w -X github.com/cogitave/clawtool/internal/version.Version=${CLAWTOOL_VERSION}" \
+    -o /out/clawtool ./cmd/clawtool
 
 # ── run stage ───────────────────────────────────────────────────────
 FROM ubuntu:24.04

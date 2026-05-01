@@ -76,9 +76,18 @@ func TestFullstack_PeerSendRoundtrip(t *testing.T) {
 	requireDocker(t)
 	root := repoRoot(t)
 
+	clawVersion := os.Getenv("CLAWTOOL_VERSION")
+	if clawVersion == "" {
+		if tag, err := exec.Command("git", "describe", "--tags", "--abbrev=0").Output(); err == nil {
+			clawVersion = strings.TrimSpace(string(tag))
+		} else {
+			clawVersion = "dev-e2e"
+		}
+	}
 	build := exec.Command("docker", "build",
 		"-f", dockerfilePath,
 		"-t", imageTag,
+		"--build-arg", "CLAWTOOL_VERSION="+clawVersion,
 		".",
 	)
 	build.Dir = root
