@@ -145,8 +145,64 @@ For agents discovering the surface via `ToolSearch`:
   to use the CLI shortcut (these run in the operator's shell
   because they touch language toolchains).
 
+## Built-in MCP tools (v0.22.62 / .72 surface)
+
+`clawtool serve` registers a set of built-in tools alongside any
+scaffolded sources. The v0.22.62–.72 surface added four
+chat-driven setup + autonomous-loop tools to the built-in
+catalog:
+
+- `OnboardStatus` (v0.22.62) — read-only probe of a repo's
+  clawtool setup state. Returns `has_clawtool_dir`,
+  `has_claude_md`, `onboarded_marker`, per-recipe
+  `recipe_states` (`applied` / `partial` / `absent` / `error`),
+  and a `suggested_next_action` string. Pure read; never writes.
+  Use BEFORE `InitApply` / `OnboardWizard` to decide what's
+  worth running.
+- `InitApply` (v0.22.62) — chat-driven mirror of
+  `clawtool init`. Dispatches into the same `setup.Apply`
+  machinery. `core_only=true` (default) limits to Core recipes;
+  `dry_run=true` previews without writes. Returns `applied` /
+  `skipped` / `pending` / `failed` arrays plus
+  `pending_actions` and `next_steps`. Idempotent.
+- `OnboardWizard` (v0.22.62) — non-interactive subset of
+  `clawtool onboard`. Persists agent-family default + telemetry
+  preference + writes the `~/.config/clawtool/.onboarded`
+  marker. Requires `non_interactive=true` to confirm the caller
+  understands this is a SUBSET of the wizard (bridge installs +
+  daemon ensure + MCP host registration stay CLI-only). Valid
+  `agent_family` values: `claude` / `codex` / `gemini` /
+  `opencode` / `hermes` / `none` (or empty).
+- `AutonomousRun` (v0.22.72) — chat-driven entry point for
+  clawtool's self-paced dev loop. Args: `goal` (required),
+  `repo`, `agent` (default `claude`), `max_iterations` (default
+  10), `cooldown_seconds` (default 300), `dry_run`, `core_only`.
+  Returns `done`, `iterations_run`, `files_changed`, `summary`,
+  `final_json_path`, `ticks[]`. Refuses to run when the repo
+  lacks `.clawtool/` — surfaces a structured error pointing at
+  `OnboardWizard` + `InitApply` instead of auto-onboarding (the
+  calling agent owns that decision). See `docs/autonomous.md`
+  for the full loop contract.
+
+These four are wired through the registry in
+`internal/tools/core/manifest.go`; the implementations live in
+`internal/tools/setup/`. A single tool ladder for the calling
+agent looks like:
+
+```
+1. OnboardStatus → decide what to do next
+2. OnboardWizard (once per host) → register defaults
+3. InitApply → drop core recipes
+4. AutonomousRun → drive the dev loop in-process
+```
+
 ## Cross-references
 
 - `docs/portals.md`, `docs/browser-tools.md`, `docs/http-api.md` —
   for custom browser tooling beyond the built-in surface, scaffold
   a dedicated MCP server with `clawtool mcp new`.
+- `docs/autonomous.md` — `AutonomousRun` contract + tick.json
+  shape + `clawtool autonomous` CLI counterpart.
+- `docs/bootstrap.md` — `clawtool bootstrap` zero-click flow that
+  spawns an agent and chains `OnboardWizard` + `InitApply`
+  through MCP.

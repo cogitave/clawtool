@@ -233,6 +233,45 @@ non-empty last message).
 | login_check fails on first nav | cookies expired | re-export from a fresh browser session |
 | portal works once, then 403 | bot detection caught up | enable `[.browser] stealth = true`; if still blocked, the site doesn't tolerate automation, ToS doesn't permit it, accept it |
 
+## Compile-time drivers (Bifrost, v0.22.65)
+
+`portal list` surfaces two row kinds: config-stored
+`[portals.<name>]` stanzas (saved web-UI targets) and
+**compile-time drivers** — Go-native integrations registered at
+binary build via `internal/portal/RegisterDriver`. Drivers don't
+need a config block; they self-register and show up as a
+discovery row.
+
+The first driver landed in v0.22.65: a phase-1 stub for
+[maximhq/bifrost](https://github.com/maximhq/bifrost), the
+Apache-2.0 Go AI gateway that composes per-vendor portals under
+one config (unified failover, semantic caching, budget
+governance across OpenAI / Anthropic / Vertex / Bedrock / local
+llama backends).
+
+Today's surface:
+
+```text
+$ clawtool portal list
+NAME             STATUS     SOURCE
+my-deepseek      ready      config
+bifrost          deferred   driver — Bifrost AI gateway: unified
+                            failover, semantic cache, budget
+                            governance (phase 2)
+```
+
+Phase-1 ships **registration only**. Calling `portal ask bifrost`
+returns the typed `ErrBifrostDeferred` sentinel rather than
+silently no-oping — the CLI matches via `errors.Is` and prints a
+uniform deferred-feature message. Phase-2 lands the
+`bifrost/core` Go module behind the `clawtool_bifrost` build tag
+(it pulls a large transitive dep graph: every supported
+provider's SDK + an embedded SQLite for the semantic cache, so
+it's gated to keep the default binary small).
+
+Operators wanting the real gateway: build with
+`go build -tags clawtool_bifrost ./...` once phase-2 ships.
+
 ## Cross-references
 
 - `docs/browser-tools.md` — `BrowserFetch` / `BrowserScrape`
