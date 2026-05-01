@@ -4,7 +4,18 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.109] - 2026-05-01
+## [0.22.111] - 2026-05-01
+
+### Fixes
+
+- **e2e:** Inject real version into Dockerfile go build via -ldflags (dc5a71b)## [0.22.110] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.109 [skip ci] (7a37658)
+### Fixes
+
+- **toolsearch:** Mirror tool descriptions into bleve index manifest (dd7fc80)## [0.22.109] - 2026-05-01
 
 ### Documentation
 
