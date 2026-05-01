@@ -4,7 +4,12 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.107] - 2026-05-01
+## [0.22.108] - 2026-05-01
+
+### Documentation
+
+- **mcp:** Rewrite tool descriptions for proactive ToolSearch ranking (e195b30)
+- **changelog:** Regenerate for v0.22.107 [skip ci] (f675b39)## [0.22.107] - 2026-05-01
 
 ### Documentation
 
