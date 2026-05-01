@@ -67,13 +67,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         socat \
         tmux \
     && rm -rf /var/lib/apt/lists/*
-# socat is required by the lifecycle scenarios appended to run.sh
-# (window cleanup / grace period / per-task auto_close override): they
-# talk to the daemon's Unix dispatch socket directly so we can pass
-# opts.auto_close=false (the `clawtool send` CLI doesn't surface that
-# flag yet — ADR-034 Q3 lives at the SendMessage opts layer). The
-# dispatch socket protocol is line-delimited JSON over UNIX-CONNECT
-# which socat handles in a single bidi pipe.
+# socat is still required by lifecycle scenarios A (window cleanup)
+# and B (grace period) which dial the daemon's Unix dispatch socket
+# directly via run.sh's dispatch_submit helper — they pass
+# `mode:auto-tmux` only, no auto_close override, but the socket is
+# still the simplest way to drive an async dispatch with a custom
+# routing mode in a shell harness. Lifecycle scenario C (per-task
+# auto_close override) was migrated to the native
+# `clawtool send --no-auto-close` flag in v0.22.113 so the operator-
+# visible CLI surface is exercised end-to-end. Once `--mode` is
+# similarly absorbed into a first-class CLI flow on every dispatch
+# socket call this image makes, socat can be dropped entirely.
 
 # Built clawtool binary
 COPY --from=build /out/clawtool /usr/local/bin/clawtool

@@ -14,7 +14,7 @@ import (
 )
 
 const sendUsage = `Usage:
-  clawtool send [--agent <instance>] [--tag <label>] [--session <sid>] [--model <m>] [--format <f>] [--isolated [--keep-on-error]] [--unattended | --yolo] "<prompt>"
+  clawtool send [--agent <instance>] [--tag <label>] [--session <sid>] [--model <m>] [--format <f>] [--mode <m>] [--no-auto-close] [--isolated [--keep-on-error]] [--unattended | --yolo] "<prompt>"
                                 Stream a prompt to the resolved agent's
                                 upstream CLI. Output streams to stdout
                                 verbatim — wire format depends on the
@@ -33,6 +33,27 @@ Phase 4 dispatch policies (configured via [dispatch].mode in config.toml):
   tag-routed         — '--tag <label>' picks any callable instance whose
                        tags include the label (per-call --tag overrides
                        the configured mode).
+
+Routing mode (--mode, optional):
+  peer-prefer (default, empty) routes to a registered live BIAM peer
+                       when one matches the resolved family; falls back
+                       to spawning a fresh subprocess when no peer is
+                       online.
+  peer-only            fails when no peer matches — guarantees the
+                       prompt lands in the operator's open pane.
+  auto-tmux            requires the auto-spawn path: brings a fresh
+                       tmux pane up under a known agent CLI when no
+                       peer matches, so every dispatch is observable.
+  spawn-only           skips the peer registry and always spawns a
+                       fresh subprocess (legacy behaviour).
+
+Pane lifecycle:
+  --no-auto-close      pin the auto-spawned tmux pane open for THIS
+                       dispatch. Default = pane is reaped when the
+                       task hits a terminal status; pass this flag
+                       to keep the pane alive for inspection or
+                       follow-up dispatches. No effect on user-attached
+                       panes (those are never auto-closed).
 
 Isolation:
   --isolated         — create an ephemeral git worktree under
@@ -78,6 +99,7 @@ type sendArgs struct {
 	model       string
 	format      string
 	tag         string
+	mode        string // routing mode: peer-prefer (default) | peer-only | auto-tmux | spawn-only
 	prompt      string
 	list        bool
 	isolated    bool
@@ -86,6 +108,14 @@ type sendArgs struct {
 	wait        bool // --async + --wait blocks until terminal (legacy 10-min behaviour); without --wait, returns task_id immediately
 	unattended  bool // ADR-023: --unattended | --yolo flag
 	yoloAlias   bool // true when invoked via --yolo (changes banner text)
+	// noAutoClose mirrors the SendMessage MCP `auto_close=false` opt
+	// (ADR-034 Q3): pin the auto-spawned tmux pane open for this
+	// dispatch, even when the master gate is on. Threads through to
+	// supervisor opts as `auto_close=false`; the supervisor's
+	// tryPeerRoute then skips LinkTaskToPeer so the lifecycle hook
+	// finds no row when the task hits terminal status. Default
+	// false (current behaviour: pane is reaped).
+	noAutoClose bool
 }
 
 func parseSendArgs(argv []string) (sendArgs, error) {
@@ -125,6 +155,20 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 			}
 			out.tag = argv[i+1]
 			i++
+		case "--mode":
+			if i+1 >= len(argv) {
+				return out, fmt.Errorf("--mode requires a value")
+			}
+			out.mode = argv[i+1]
+			i++
+		case "--no-auto-close":
+			// ADR-034 Q3: per-task pane preservation. CLI-level
+			// alias for the SendMessage MCP `auto_close=false` opt
+			// — sets opts["auto_close"]=false in Send() so the
+			// supervisor's tryPeerRoute skips LinkTaskToPeer for
+			// this dispatch and the lifecycle hook never reaps
+			// the auto-spawned pane on terminal status.
+			out.noAutoClose = true
 		case "--isolated":
 			out.isolated = true
 		case "--keep-on-error":
@@ -156,9 +200,12 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 	return out, nil
 }
 
-// Send routes through Supervisor.Send and streams stdout.
-func (a *App) Send(args sendArgs) error {
-	sup := agents.NewSupervisor()
+// buildSendOpts translates parsed CLI args into the supervisor opts
+// map. Extracted from Send() so the unit test can assert the
+// auto_close / mode / etc. wiring without booting the supervisor /
+// daemon side-effects. Keep this in sync with the MCP
+// runSendMessage handler — both paths feed the same supervisor.
+func buildSendOpts(args sendArgs) map[string]any {
 	opts := map[string]any{}
 	if args.session != "" {
 		opts["session_id"] = args.session
@@ -172,6 +219,25 @@ func (a *App) Send(args sendArgs) error {
 	if args.tag != "" {
 		opts["tag"] = args.tag
 	}
+	if args.mode != "" {
+		opts["mode"] = args.mode
+	}
+	if args.noAutoClose {
+		// ADR-034 Q3 per-task override. Threaded as a typed bool
+		// (not the string form) so the supervisor's
+		// autoCloseFromOpts switch hits the bool branch directly
+		// — same shape the MCP SendMessage handler emits when the
+		// caller explicitly passed auto_close=false. Missing key
+		// continues to mean "default true" everywhere.
+		opts["auto_close"] = false
+	}
+	return opts
+}
+
+// Send routes through Supervisor.Send and streams stdout.
+func (a *App) Send(args sendArgs) error {
+	sup := agents.NewSupervisor()
+	opts := buildSendOpts(args)
 
 	// ADR-023 unattended mode: enforce trust + open audit session
 	// BEFORE we touch the supervisor. Disclosure refusal is a hard

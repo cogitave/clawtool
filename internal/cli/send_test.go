@@ -103,3 +103,107 @@ func TestParseSendArgs_TagWithoutValueErrors(t *testing.T) {
 		t.Error("--tag without value should error")
 	}
 }
+
+// TestParseSendArgs_NoAutoCloseFlag asserts the v0.22.x ADR-034 Q3
+// CLI surface: `--no-auto-close` lifts the flag through to
+// sendArgs.noAutoClose so Send() can thread `auto_close=false`
+// into the supervisor opts.
+func TestParseSendArgs_NoAutoCloseFlag(t *testing.T) {
+	args, err := parseSendArgs([]string{"--no-auto-close", "investigate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !args.noAutoClose {
+		t.Error("--no-auto-close should set noAutoClose=true")
+	}
+	if args.prompt != "investigate" {
+		t.Errorf("prompt should land after the flag; got %q", args.prompt)
+	}
+}
+
+// TestParseSendArgs_NoAutoCloseDefault confirms the legacy default —
+// flag absent → noAutoClose stays false, so Send() does NOT thread
+// the auto_close key into opts and the supervisor's autoCloseFromOpts
+// returns the default true.
+func TestParseSendArgs_NoAutoCloseDefault(t *testing.T) {
+	args, err := parseSendArgs([]string{"prompt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args.noAutoClose {
+		t.Error("noAutoClose should default to false")
+	}
+}
+
+// TestParseSendArgs_ModeFlag covers the routing-mode passthrough
+// (peer-prefer / peer-only / auto-tmux / spawn-only). The CLI just
+// surfaces the same string the SendMessage MCP `mode` arg accepts;
+// validation lives in the supervisor's parseSendMode.
+func TestParseSendArgs_ModeFlag(t *testing.T) {
+	args, err := parseSendArgs([]string{"--mode", "auto-tmux", "go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args.mode != "auto-tmux" {
+		t.Errorf("mode: got %q, want auto-tmux", args.mode)
+	}
+}
+
+func TestParseSendArgs_ModeWithoutValueErrors(t *testing.T) {
+	_, err := parseSendArgs([]string{"--mode"})
+	if err == nil {
+		t.Error("--mode without value should error")
+	}
+}
+
+// TestSend_NoAutoCloseFlag_OptsWiring asserts the load-bearing
+// contract end-to-end at the CLI layer: when `--no-auto-close` is
+// parsed, Send() builds an opts map with `auto_close=false` (typed
+// bool) before handing off to the supervisor. We exercise this by
+// going through the same code path Send() uses to assemble opts;
+// the build is small enough that we can inline it here without
+// dragging the supervisor in.
+//
+// The test's invariant: the CLI MUST emit opts["auto_close"] = false
+// (bool, not string) so the supervisor's autoCloseFromOpts switch
+// hits the bool branch and matches the MCP path byte-for-byte.
+func TestSend_NoAutoCloseFlag_OptsWiring(t *testing.T) {
+	// Mirror the opts-assembly block in Send(). Keeping this
+	// inline (rather than refactoring Send into a helper) avoids
+	// dragging the supervisor / unattended / worktree side-effects
+	// just to assert one map field.
+	args := sendArgs{
+		agent:       "codex",
+		prompt:      "go",
+		noAutoClose: true,
+		mode:        "auto-tmux",
+	}
+	opts := buildSendOpts(args)
+	v, ok := opts["auto_close"]
+	if !ok {
+		t.Fatal(`opts["auto_close"] missing; --no-auto-close MUST thread the key through`)
+	}
+	b, isBool := v.(bool)
+	if !isBool {
+		t.Fatalf(`opts["auto_close"] should be a bool; got %T`, v)
+	}
+	if b {
+		t.Error(`opts["auto_close"] should be false when --no-auto-close was passed`)
+	}
+	if got := opts["mode"]; got != "auto-tmux" {
+		t.Errorf(`opts["mode"]: got %v, want "auto-tmux"`, got)
+	}
+}
+
+// TestSend_DefaultDoesNotEmitAutoClose locks in the back-compat
+// invariant: when the flag is NOT set, the CLI MUST NOT emit an
+// auto_close key at all. Pre-v0.22.109 supervisor releases never
+// saw the key; introducing a default `true` here would break the
+// MCP path's "missing key = legacy default" contract.
+func TestSend_DefaultDoesNotEmitAutoClose(t *testing.T) {
+	args := sendArgs{agent: "codex", prompt: "go"}
+	opts := buildSendOpts(args)
+	if _, ok := opts["auto_close"]; ok {
+		t.Error(`opts["auto_close"] must be absent when --no-auto-close is not set`)
+	}
+}

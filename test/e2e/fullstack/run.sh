@@ -560,6 +560,13 @@ CFG
 fi
 
 # ─── Lifecycle test C — per-task auto_close=false override ─────────
+# Pre-v0.22.113 this scenario went through the daemon's Unix
+# dispatch socket via socat, because the `clawtool send` CLI didn't
+# expose `auto_close`. v0.22.113 lifts the override into a first-
+# class `--no-auto-close` flag — so this scenario now drives the
+# native CLI path that real operators will use, instead of synthesising
+# a JSON envelope on a private socket. The assertion is unchanged: the
+# pane MUST survive task completion when the override is in effect.
 emit_section "LIFECYCLE_TEST_C"
 
 if [ ! -S "$XDG_STATE_HOME/clawtool/dispatch.sock" ]; then
@@ -576,16 +583,24 @@ else
     wait_for_dispatch_socket || echo "WARN: dispatch socket slow to come up"
     DAEMON_PORT="$(jq -r '.port' "$DSF")"
 
-    # Submit with auto_close=false. Even with the master gate
-    # on (default) and grace=0 (so the immediate-kill code path
-    # runs), tryPeerRoute should skip LinkTaskToPeer when the opt
-    # is false, so MaybeAutoClosePane finds no row to close.
-    TASK_ID_C="$(dispatch_submit opencode \
-        '{"mode":"auto-tmux","auto_close":false}' \
-        "lifecycle-test-C-${STAMP}")"
+    # Native CLI dispatch with `--no-auto-close`. Even with the
+    # master gate on (default) and grace=0 (so the immediate-kill
+    # code path runs), tryPeerRoute should skip LinkTaskToPeer
+    # when the opt is false, so MaybeAutoClosePane finds no row
+    # to close. `--async` returns the task_id immediately on
+    # stdout (no `--wait`); `--mode auto-tmux` forces the
+    # auto-spawn path so the lifecycle hook is reachable in the
+    # first place.
+    TASK_ID_C="$(clawtool send \
+        --async \
+        --mode auto-tmux \
+        --no-auto-close \
+        --agent opencode \
+        "lifecycle-test-C-${STAMP}" 2>/dev/null \
+        | tail -1 | tr -d '[:space:]')"
     echo "task_id=$TASK_ID_C"
     if [ -z "$TASK_ID_C" ]; then
-        echo "FAIL: dispatch_submit returned no task_id"
+        echo "FAIL: clawtool send --no-auto-close returned no task_id"
         lifecycle_c_rc=1
     else
         for _ in 1 2 3 4 5 6 7 8 9 10; do
