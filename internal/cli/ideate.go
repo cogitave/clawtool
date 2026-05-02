@@ -68,8 +68,8 @@ const ideateUsage = `Usage:
 Flags:
   --top N                         Cap on returned ideas (default 10).
   --source <name>                 Restrict to one source (adr_questions,
-                                  todos, ci_failures, manifest_drift,
-                                  bench_regression).
+                                  adr_drafting, todos, ci_failures,
+                                  manifest_drift, bench_regression).
   --format text|json              Print format (default text).
   --apply                         Push selected ideas to the autopilot
                                   backlog at status=proposed.
@@ -79,6 +79,7 @@ Flags:
 
 Sources:
   adr_questions     wiki/decisions/*.md "## Open questions" blocks.
+  adr_drafting      wiki/decisions/*.md ADRs in 'drafting' status > 30 days.
   todos             TODO / FIXME / XXX comments in *.go files.
   ci_failures       Recent failed GitHub Actions runs (gh run list).
   manifest_drift    MCP tool description vs registered description.
@@ -235,6 +236,7 @@ func orderedSourceNames(m map[string]int) []string {
 func defaultIdeatorSources() []ideator.IdeaSource {
 	return []ideator.IdeaSource{
 		sources.NewADRQuestions(),
+		sources.NewADRDrafting(),
 		sources.NewTODOs(),
 		sources.NewCIFailures(),
 		sources.NewManifestDrift(),
