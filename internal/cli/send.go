@@ -194,6 +194,16 @@ type sendArgs struct {
 	// for testing) can set this to bypass the conflict check.
 	// Default off; the gate is fail-closed.
 	allowPortalInIsolated bool
+	// unsafeYes is the ADR-020 §Resolved (2026-05-02) confirmation
+	// flag that releases the danger-full-access sandbox profile
+	// for dispatch. Without this flag set, a `--sandbox
+	// danger-full-access` (or an [agents.X] sandbox =
+	// "danger-full-access" config block) is refused with a
+	// directive stderr message. Default false; the gate is
+	// fail-closed. Threaded into supervisor opts as
+	// opts["unsafe_yes"]=true so MCP / async / in-process
+	// callers see the same shape.
+	unsafeYes bool
 }
 
 func parseSendArgs(argv []string) (sendArgs, error) {
@@ -266,6 +276,13 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 			// their own daemon-side bridge bypass the
 			// fail-closed gate with this flag. Default off.
 			out.allowPortalInIsolated = true
+		case "--unsafe-yes":
+			// ADR-020 §Resolved (2026-05-02) confirmation
+			// flag for the danger-full-access sandbox
+			// profile. Without this, a dispatch resolving
+			// to that profile is refused. Default off; the
+			// gate is fail-closed.
+			out.unsafeYes = true
 		case "--async":
 			out.async = true
 		case "--wait":
@@ -388,6 +405,16 @@ func buildSendOpts(args sendArgs) map[string]any {
 		// caller explicitly passed auto_close=false. Missing key
 		// continues to mean "default true" everywhere.
 		opts["auto_close"] = false
+	}
+	if args.unsafeYes {
+		// ADR-020 §Resolved (2026-05-02): propagate the
+		// confirmation flag to the supervisor's
+		// danger-full-access gate. Threaded as a typed bool —
+		// the supervisor's unsafeYesFromOpts also accepts the
+		// string form for MCP / async paths that serialise
+		// through JSON, but the CLI emits the typed shape
+		// directly.
+		opts["unsafe_yes"] = true
 	}
 	return opts
 }
@@ -558,11 +585,21 @@ func (a *App) Send(args sendArgs) error {
 	}
 
 	if attendedSession != nil {
-		attendedSession.Emit(unattended.AuditEntry{
+		entry := unattended.AuditEntry{
 			Kind:   "dispatch",
 			Agent:  args.agent,
 			Prompt: truncateForAudit(args.prompt, 256),
-		})
+		}
+		// ADR-023 audit + ADR-020 §Resolved: stamp the
+		// unsafe_yes confirmation when set so the audit log
+		// records that the operator deliberately unlocked the
+		// danger-full-access sandbox for this dispatch. Field
+		// is omitted (not "false") when unset to keep older
+		// audit lines readable under the same schema.
+		if args.unsafeYes {
+			entry.Metadata = map[string]any{"unsafe_yes": true}
+		}
+		attendedSession.Emit(entry)
 	}
 
 	rc, err := sup.Send(context.Background(), args.agent, args.prompt, opts)

@@ -458,3 +458,68 @@ func TestParseSendArgs_PortalWithoutValueErrors(t *testing.T) {
 		t.Error("--portal without value should error")
 	}
 }
+
+// TestParseSendArgs_UnsafeYesFlag — ADR-020 §Resolved (2026-05-02)
+// CLI surface. `--unsafe-yes` parses into sendArgs.unsafeYes so
+// buildSendOpts can thread `unsafe_yes=true` through to the
+// supervisor's danger-full-access gate.
+func TestParseSendArgs_UnsafeYesFlag(t *testing.T) {
+	args, err := parseSendArgs([]string{"--unsafe-yes", "go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !args.unsafeYes {
+		t.Error("--unsafe-yes should set unsafeYes=true")
+	}
+	if args.prompt != "go" {
+		t.Errorf("prompt: got %q, want \"go\"", args.prompt)
+	}
+}
+
+// TestParseSendArgs_UnsafeYesDefault locks the fail-closed default —
+// when the flag isn't passed, the gate stays armed.
+func TestParseSendArgs_UnsafeYesDefault(t *testing.T) {
+	args, err := parseSendArgs([]string{"prompt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args.unsafeYes {
+		t.Error("unsafeYes must default to false (fail-closed gate)")
+	}
+}
+
+// TestSend_UnsafeYesFlag_OptsWiring asserts the load-bearing
+// contract: when --unsafe-yes is parsed, buildSendOpts emits
+// `unsafe_yes=true` (typed bool) into the supervisor opts so the
+// danger-full-access gate sees the confirmation.
+func TestSend_UnsafeYesFlag_OptsWiring(t *testing.T) {
+	args := sendArgs{
+		agent:     "codex",
+		prompt:    "go",
+		unsafeYes: true,
+	}
+	opts := buildSendOpts(args)
+	v, ok := opts["unsafe_yes"]
+	if !ok {
+		t.Fatal(`opts["unsafe_yes"] missing; --unsafe-yes MUST thread the key through`)
+	}
+	b, isBool := v.(bool)
+	if !isBool {
+		t.Fatalf(`opts["unsafe_yes"] should be a bool; got %T`, v)
+	}
+	if !b {
+		t.Error(`opts["unsafe_yes"] should be true when --unsafe-yes was passed`)
+	}
+}
+
+// TestSend_DefaultDoesNotEmitUnsafeYes — back-compat invariant.
+// Without the flag, the key MUST be absent so existing
+// supervisor + MCP callers continue to see the legacy "no
+// confirmation" shape (which the gate treats as fail-closed).
+func TestSend_DefaultDoesNotEmitUnsafeYes(t *testing.T) {
+	args := sendArgs{agent: "codex", prompt: "go"}
+	opts := buildSendOpts(args)
+	if _, ok := opts["unsafe_yes"]; ok {
+		t.Error(`opts["unsafe_yes"] must be absent when --unsafe-yes is not set`)
+	}
+}

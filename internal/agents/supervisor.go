@@ -471,6 +471,23 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 			}
 		}
 
+		// ADR-020 §Resolved (2026-05-02) — danger-full-access ×
+		// --unsafe-yes confirmation gate. The reserved profile
+		// name is the explicit no-isolation escape hatch; we
+		// refuse to dispatch under it without a separate
+		// confirmation flag so a stale `[agents.X] sandbox =
+		// "danger-full-access"` config block (or a typo) can't
+		// silently nuke the sandbox surface. Fires BEFORE
+		// withSandboxResolved so the refusal lands without ever
+		// touching the transport, limiter, or audit log.
+		if dangerErr := checkDangerSandboxGate(opts, a); dangerErr != nil {
+			s.observer.RecordError(sendCtx, dangerErr)
+			sendEnd()
+			release()
+			lastErr = dangerErr
+			continue
+		}
+
 		// Sandbox resolution per-iteration: when the agent has a
 		// sandbox name configured (AgentConfig.Sandbox), look the
 		// profile up in cfg.Sandboxes and stash it on a per-call
