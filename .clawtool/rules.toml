@@ -49,3 +49,19 @@ when      = "post_edit"
 condition = "changed(\".clawtool/rules.toml\") OR changed(\".gitignore\")"
 severity  = "warn"
 hint      = "After updating private-pattern rules, ensure .gitignore has matching entries. Currently covered: .autodev-notes.md, autodev-notes.md, .autodev/, /wiki/, /playbooks/_personal/*, /BODY.md, /.obsidian/, .obsidian/workspace.json. If you added a new pattern to no-autodev-private-files or no-credentials-in-staged rules, mirror it in .gitignore so the file never even reaches the index."
+
+[[rule]]
+name      = "version-manifests-in-sync"
+description = "When internal/version/version.go's Version const changes, the .claude-plugin manifests must be regenerated from it."
+when      = "pre_commit"
+condition = "changed(\"internal/version/version.go\") OR changed(\".claude-plugin/plugin.json\") OR changed(\".claude-plugin/marketplace.json\")"
+severity  = "warn"
+hint      = "internal/version.Version is the single source of truth for the release tag. Run: make sync-versions (or `go generate ./internal/version/...`) — that rewrites .claude-plugin/plugin.json + .claude-plugin/marketplace.json from the const and only touches the version line(s). CI runs `make sync-versions-check` which fails if drift exists, and TestReleasePipeline_VersionsAreCodegenSynced asserts byte-identical manifests on every test run."
+
+[[rule]]
+name      = "no-version-version-outside-version-pkg"
+description = "Hardcoded clawtool version strings (literal semvers like 0.22.x) outside internal/version/ are an anti-pattern."
+when      = "post_edit"
+condition = "changed(\"**/*.go\") OR changed(\"**/*.json\") OR changed(\"**/*.yaml\") OR changed(\"**/*.yml\") OR changed(\"**/*.sh\") OR changed(\"**/*.md\")"
+severity  = "warn"
+hint      = "internal/version.Version is canonical. .claude-plugin/plugin.json + marketplace.json are generated from it (cmd/version-sync). Any other file that bakes a clawtool semver is a future drift source — call version.Resolved() at runtime, or accept that release-please bumps will leave the literal stale. Test fixtures with explicit versions are fine; user-facing docs / install scripts / Dockerfiles should source the version dynamically (e.g. install.sh hits the GitHub releases API)."

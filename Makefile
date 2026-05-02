@@ -21,7 +21,7 @@ VERSION_PKG := github.com/cogitave/clawtool/internal/version
 VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.1.0-dev")
 LDFLAGS     := -s -w
 
-.PHONY: all build test e2e install clean fmt vet lint help
+.PHONY: all build test e2e install clean fmt vet lint help sync-versions sync-versions-check
 
 all: build
 
@@ -161,3 +161,21 @@ release-snapshot: ## Run GoReleaser in snapshot mode (no publish, useful for loc
 	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser not found; install via 'go install github.com/goreleaser/goreleaser/v2@latest'"; exit 1; }
 	goreleaser release --clean --snapshot
 	@echo "✓ snapshot artifacts in dist/"
+
+# ─── version sync ────────────────────────────────────────────────
+# Single source of truth: internal/version.Version is canonical.
+# `make sync-versions` regenerates .claude-plugin/plugin.json +
+# .claude-plugin/marketplace.json from the const so the three are
+# always in lockstep. release-please bumps the const at tag time;
+# this target picks up the bump and rewrites the manifests (the
+# rewrite is byte-identical except for the version line, so review
+# stays trivial).
+#
+# `make sync-versions-check` is the CI-side gate: same logic but
+# refuses to mutate the tree, exiting 1 if a write would change
+# anything. Pair with `git diff --exit-code` for belt-and-braces.
+sync-versions: ## Regenerate plugin.json + marketplace.json from internal/version.Version.
+	$(GO) run ./cmd/version-sync
+
+sync-versions-check: ## Verify plugin.json + marketplace.json match internal/version.Version (CI gate).
+	$(GO) run ./cmd/version-sync --check

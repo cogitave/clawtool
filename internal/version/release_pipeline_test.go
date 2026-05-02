@@ -194,3 +194,51 @@ func TestReleasePipeline_VersionStringsInSync(t *testing.T) {
 			binVer, count)
 	}
 }
+
+// TestReleasePipeline_VersionsAreCodegenSynced is the architectural
+// follow-up to VersionStringsInSync: instead of just *checking* the
+// three files agree, it runs the same SyncPluginJSON /
+// SyncMarketplaceJSON helpers cmd/version-sync uses against the
+// canonical Version variable and asserts the output is byte-identical
+// to the live manifests.
+//
+// What this catches that VersionStringsInSync doesn't:
+//
+//   - A manifest version field that *contains* the right substring
+//     but has trailing garbage (e.g. accidentally adding "+dev").
+//   - A manifest with the right version pinned but other fields
+//     mangled by a half-applied search-and-replace.
+//   - A manifest that drifted in formatting (extra whitespace, lost
+//     trailing newline) — Claude Code's marketplace JSON parser
+//     tolerates it but reviewers shouldn't have to.
+//
+// The fix when this test fails is always: run `make sync-versions`
+// (or `go generate ./internal/version/...`) and commit the diff.
+// The diff is guaranteed to be the version line(s) only — the
+// helpers preserve every other byte verbatim.
+func TestReleasePipeline_VersionsAreCodegenSynced(t *testing.T) {
+	root := repoRoot(t)
+
+	for _, tc := range []struct {
+		name string
+		path string
+		fn   func([]byte, string) ([]byte, error)
+	}{
+		{".claude-plugin/plugin.json", filepath.Join(root, ".claude-plugin", "plugin.json"), SyncPluginJSON},
+		{".claude-plugin/marketplace.json", filepath.Join(root, ".claude-plugin", "marketplace.json"), SyncMarketplaceJSON},
+	} {
+		live, err := os.ReadFile(tc.path)
+		if err != nil {
+			t.Fatalf("read %s: %v", tc.name, err)
+		}
+		want, err := tc.fn(live, Version)
+		if err != nil {
+			t.Fatalf("sync %s: %v (the helper rejected the live manifest — likely a structural drift, see manifestsync.go)", tc.name, err)
+		}
+		if string(live) != string(want) {
+			t.Errorf("%s is out of sync with internal/version.Version=%s\n"+
+				"  run `make sync-versions` (or `go generate ./internal/version/...`) and commit.",
+				tc.name, Version)
+		}
+	}
+}

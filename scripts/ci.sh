@@ -7,11 +7,15 @@
 # Stages (each is a labelled section; failures abort with the
 # offending stage's name + log tail):
 #
-#   1. fmt         — gofmt -l . (offenders on stderr, fail if non-empty)
-#   2. vet         — go vet ./...
-#   3. build       — go build ./... + the cmd binary into ./bin/
-#   4. test        — go test -race -count=1 ./...
-#   5. deadcode    — golang.org/x/tools/cmd/deadcode -test ./...
+#   1. fmt              — gofmt -l . (offenders on stderr, fail if non-empty)
+#   2. vet              — go vet ./...
+#   3. build            — go build ./... + the cmd binary into ./bin/
+#   4. version-sync-check — `go run ./cmd/version-sync --check` ensures
+#                       .claude-plugin manifests still match the
+#                       internal/version.Version const. Fix: `make
+#                       sync-versions` + commit.
+#   5. test             — go test -race -count=1 ./...
+#   6. deadcode         — golang.org/x/tools/cmd/deadcode -test ./...
 #   6. smoke       — go test -tags=smoke ./internal/cli/ (every verb's
 #                    --help + read-only listings; ~20s, skipped under
 #                    CLAWTOOL_CI_FAST=1).
@@ -133,6 +137,11 @@ printf "${DIM}repo: %s${RESET}\n\n" "$REPO_ROOT"
 run_stage fmt fmt_check || true
 run_stage vet "$GO_BIN" vet ./... || true
 run_stage build "$GO_BIN" build -o bin/clawtool ./cmd/clawtool || true
+# version-sync gate: refuse to ship if internal/version.Version
+# disagrees with .claude-plugin/plugin.json or .claude-plugin/marketplace.json.
+# Fix is always: `make sync-versions` + commit. The codegen helper
+# rewrites only the version line(s), so review stays trivial.
+run_stage version-sync-check "$GO_BIN" run ./cmd/version-sync --check || true
 run_stage test "$GO_BIN" test -race -count=1 -timeout=120s ./... || true
 
 # deadcode comes from a tool we install on demand; if it's not on
