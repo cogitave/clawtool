@@ -11,7 +11,7 @@ permissions:
 env:
   # 2026-04-27: bumped 1.25.5 → 1.26.0 to match ci.yml — chromedp
   # (pulled by ADR-018 portal feature) requires Go 1.26.
-  GO_VERSION: "1.26.0"
+  GO_VERSION: "1.26.2"
 
 jobs:
   goreleaser:
