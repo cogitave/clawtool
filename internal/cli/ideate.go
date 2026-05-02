@@ -89,6 +89,7 @@ Sources:
   vuln_advisories   Go security advisories (govulncheck -json ./...).
   stale_files       .go files untouched > N days (heuristic review).
   pr_review_pending Open PRs awaiting review > N hours (gh pr list).
+  stale_branches    Remote branches whose tip is already merged into default.
 
 Stack:
   ideate → autopilot accept → autopilot next → autonomous
@@ -251,5 +252,6 @@ func defaultIdeatorSources() []ideator.IdeaSource {
 		sources.NewVulnAdvisories(),
 		sources.NewStaleFiles(),
 		sources.NewPRReviewPending(),
+		sources.NewStaleBranches(),
 	}
 }
