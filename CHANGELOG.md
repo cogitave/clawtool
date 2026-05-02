@@ -4,552 +4,605 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.122] - 2026-05-02
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.121 [skip ci] (7b8277a)
-### Fixes
-
-- **version:** Sync internal/version/version.go to manifest version (0.22.119) (142ba61)## [0.22.121] - 2026-05-02
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.120 [skip ci] (651d851)
-### Fixes
-
-- **ideator:** Filter superseded CI runs, vendored paths, broken ADR parser (dc8add8)## [0.22.120] - 2026-05-02
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.119 [skip ci] (47c3428)
-### Fixes
-
-- **plugin:** Rename inner mcpServers key to break "plugin:clawtool:clawtool" double-namespace + bump stale 0.21.7 manifest version (7213c3b)## [0.22.119] - 2026-05-02
+## [0.22.124] - 2026-05-02
 
 ### Features
 
-- **ideator:** Self-feature-generation top of autonomy stack (proposed→pending operator gate) (a69659b)## [0.22.118] - 2026-05-02
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.116 [skip ci] (bbacbca)
-### Features
-
-- **autopilot:** Self-direction backlog primitive for non-stalling agent loop (d073d2e)## [0.22.117] - 2026-05-02
-
-### Features
-
-- **otel:** MCP _meta traceparent/tracestate propagation per SEP-414 (d2705f8)## [0.22.116] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.115 [skip ci] (130fea2)
-### Features
-
-- **mcp:** Mcp-Method and Mcp-Name headers on Streamable HTTP per SEP-2243 (c1ef522)## [0.22.115] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.113 [skip ci] (e5000df)
-### Features
-
-- **mcp:** Name-sorted tools/list + alwaysLoad hot tools + ToolSearch detail_level (faf2703)## [0.22.114] - 2026-05-01
-
-### Features
-
-- **send:** --no-auto-close CLI flag for per-task pane preservation (c16bac3)## [0.22.113] - 2026-05-01
-
-### Fixes
-
-- **upgrade-test:** Drop bearer-token read in --no-auth health probe (e3c084d)## [0.22.112] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.111 [skip ci] (d24d40a)
-### Tests
-
-- **e2e:** Exercise v0.22.109 lifecycle features (window cleanup + grace + per-task override) (a18ebeb)## [0.22.111] - 2026-05-01
-
-### Fixes
-
-- **e2e:** Inject real version into Dockerfile go build via -ldflags (dc5a71b)## [0.22.110] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.109 [skip ci] (7a37658)
-### Fixes
-
-- **toolsearch:** Mirror tool descriptions into bleve index manifest (dd7fc80)## [0.22.109] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.108 [skip ci] (5247c1c)
-### Features
-
-- **agents:** Resolve follow-up questions (window cleanup, grace period, per-task override) (b7651c2)## [0.22.108] - 2026-05-01
-
-### Documentation
-
-- **mcp:** Rewrite tool descriptions for proactive ToolSearch ranking (e195b30)
-- **changelog:** Regenerate for v0.22.107 [skip ci] (f675b39)## [0.22.107] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.106 [skip ci] (04b470c)
-### Features
-
-- **peer:** Auto-close auto-spawned tmux panes on terminal task status (6e4b78e)## [0.22.106] - 2026-05-01
-
-### Features
-
-- **install:** Install.sh handles tmux + claude-code + node deps; add RuntimeInstall MCP tool for chat-driven backend install (9eecc8e)
-### Tests
-
-- **e2e:** Add fullstack Docker harness exercising install→daemon→tmux→peer-register→peer-send (3f7fc4d)## [0.22.105] - 2026-05-01
-
-### Features
-
-- **agents:** SendMessage auto-spawns tmux pane when no live peer (zero-touch peer creation) (02b8150)## [0.22.104] - 2026-05-01
-
-### Features
-
-- **bootstrap:** First-run onboarding prompt on UserPromptSubmit (idempotent via marker) (691cba0)## [0.22.103] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.102 [skip ci] (5deec46)
-### Fixes
-
-- **peer:** Make tmux send-keys stub path-portable (macos-latest CI red) (7ed27d7)## [0.22.102] - 2026-05-01
-
-### Features
-
-- **peer:** Add tmux send-keys push for real-time agent-to-agent delivery (repowire-style) (c579a52)## [0.22.101] - 2026-05-01
-
-### Features
-
-- **install:** --auto-spawn flag opens detected agents in tmux panes + auto-registers pane_ids (c7e3983)## [0.22.100] - 2026-05-01
-
-### Fixes
-
-- **hooks:** Auto-deliver peer inbox on UserPromptSubmit (Stop drain never reached agent context) (99118a5)## [0.22.99] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.98 [skip ci] (67f0aec)
-### Fixes
-
-- **hooks:** Move SessionStart context-load to UserPromptSubmit (Claude Code v2.1.126 ToolUseContext regression workaround) (639fb87)## [0.22.98] - 2026-05-01
-
-### Features
-
-- **spawn:** Add 'spawn' verb + Spawn MCP tool to open new terminals running agents (auto peer-registered) (2438c74)## [0.22.97] - 2026-05-01
-
-### Features
-
-- **agents:** SendMessage prefers live BIAM peer over spawning fresh subprocess (peer-prefer mode default) (ced7440)## [0.22.96] - 2026-05-01
-
-### Features
-
-- **peer:** Add 'peer drain' verb + bundled session-tick inbox hook for live message delivery (128f140)## [0.22.95] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.94 [skip ci] (0fcb170)
-### Features
-
-- **cli:** Add 'install' verb for zero-touch first-run setup (daemon + hosts + hooks + peer + init) (5485725)## [0.22.94] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.93 [skip ci] (b0ed860)
-### Features
-
-- **peer:** Add peer list verb + PeerList MCP tool for BIAM peer discovery (13c352c)## [0.22.93] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.92 [skip ci] (8354924)
-### Fixes
-
-- **mcp:** Accept-header-aware /mcp content negotiation for rmcp Streamable-HTTP clients (9c4f96c)## [0.22.92] - 2026-05-01
-
-### Fixes
-
-- **commands:** Repair YAML frontmatter that broke ubuntu-latest CI (e7914c4)## [0.22.91] - 2026-05-01
-
-### Tests
-
-- **server:** Add commands/ slash-command lint covering frontmatter + verb-existence + allowed-tools (f70494d)## [0.22.90] - 2026-05-01
-
-### Build
-
-- **docker:** Finalize unified Dockerfile by removing legacy ones + swapping all consumers (f0bf60f)
-### Documentation
-
-- **changelog:** Regenerate for v0.22.88 [skip ci] (366a4e5)## [0.22.89] - 2026-05-01
-
-### Fixes
-
-- **mcp:** Make CLAWTOOL_TOKEN optional in default install (codex was refusing to start without it) (a89946e)## [0.22.88] - 2026-05-01
-
-### Documentation
-
-- **playbooks:** Add aider/semble/mcp-toolbox/shell-mcp/promptfoo/rtk/archon setup playbooks (3d2cfeb)## [0.22.87] - 2026-05-01
-
-### Documentation
-
-- Add autonomous/bootstrap/fanout/release-notes/telemetry pages + refresh rules/portals/mcp-authoring for v0.22.50-.82 surface (440665f)## [0.22.86] - 2026-05-01
-
-### Documentation
-
-- **commands:** Add slash-commands for new verbs (init/onboard/bootstrap/autonomous/fanout/apm/source-inspect/source-registry/playbook-list-archon) (857581e)## [0.22.85] - 2026-05-01
-
-### Features
-
-- **fanout:** Add 'fanout' verb + Fanout MCP tool for parallel-subgoal orchestration (026dca4)## [0.22.84] - 2026-05-01
-
-### Documentation
-
-- **readme:** Audit + update for v0.22.50-.74 surface (BIAM peers, MCP tools, catalog, autonomous mode) (c68be5f)## [0.22.83] - 2026-05-01
-
-### Build
-
-- **docker:** Consolidate Dockerfiles into unified multi-stage Dockerfile.unified (6892a09)
-### Documentation
-
-- **changelog:** Regenerate for v0.22.82 [skip ci] (28c9d89)## [0.22.82] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.81 [skip ci] (0f9c7d5)
-### Tests
-
-- **e2e:** Add bootstrap container test verifying zero-click install flow (cc3d9ce)## [0.22.81] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.80 [skip ci] (e4b8bab)
-### Fixes
-
-- **ci:** Force release body via gh CLI post-step (goreleaser silently drops --release-notes) (ba1da75)
-- **telemetry:** No-op in CI by default + filter Go pseudo-versions from version reporting (853f511)## [0.22.80] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.79 [skip ci] (49e67df)
-### Fixes
-
-- **release:** Drop static header/footer templates that suppressed BODY.md + leaked ADR reference (a5ac217)## [0.22.79] - 2026-05-01
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.78 [skip ci] (3c2caac)
-### Fixes
-
-- **release:** Drop release.mode=append so --release-notes=BODY.md actually populates body (8dbfdf8)## [0.22.78] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.76 [skip ci] (eeae5a5)
-### Fixes
-
-- **ci:** Drop pre-goreleaser stash that swept BODY.md, breaking rich release notes (9721118)## [0.22.77] - 2026-04-30
-
-### Features
-
-- **ci:** Replace git-cliff release body with rich self-hosted release-notes script (fcf687c)## [0.22.76] - 2026-04-30
-
-### Features
-
-- **cli:** Add 'bootstrap' verb spawning chosen agent + auto-running init from chat (db8ebd1)## [0.22.75] - 2026-04-30
-
-### Features
-
-- **rules:** Add guardians taint+Z3 pre_send predicate (phase 1 stub) (ff76b0e)## [0.22.74] - 2026-04-30
-
-### Features
-
-- **cli:** Add 'autonomous --resume' + '--watch' for chat-driven loop continuity (4518cac)## [0.22.73] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.72 [skip ci] (da7a6b3)
-### Features
-
-- **recipes:** Add clawtool-autonomous-loop SKILL.md teaching tick.json contract (2df7512)## [0.22.72] - 2026-04-30
-
-### Features
-
-- **tools:** Expose AutonomousRun MCP tool for chat-driven self-paced dev loops (a266e5e)## [0.22.71] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.70 [skip ci] (e562396)
-### Features
-
-- **cli:** Add 'autonomous' verb for self-paced single-message dev loop (8fc73f8)## [0.22.70] - 2026-04-30
-
-### Features
-
-- **catalog:** Add shell-mcp sandbox-aware shell MCP source entry + recipe (0c755ed)## [0.22.69] - 2026-04-30
-
-### Features
-
-- **rules:** Add interceptor:pre_tool_use alias mirroring MCP upstream RFC (f52477c)## [0.22.68] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.67 [skip ci] (4429703)
-### Features
-
-- **catalog:** Add MinishLab/semble code-search MCP source entry + recipe (c078414)## [0.22.67] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.66 [skip ci] (38db2ff)
-### Features
-
-- **playbooks:** Add Archon YAML workflow loader + recipe (phase 1, read-only) (1294ad8)## [0.22.66] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.65 [skip ci] (9444c87)
-### Fixes
-
-- **ci:** Stop CHANGELOG.md drift breaking goreleaser checkout + add release-health helper (2a6685c)## [0.22.65] - 2026-04-30
-
-### Features
-
-- **portal:** Add Bifrost portal stub + config template (phase 1, no runtime dep) (3f69c0d)## [0.22.64] - 2026-04-30
-
-### Features
-
-- **cli:** Add 'apm import' verb (apm.yml → clawtool source registry, phase 1) (126795e)## [0.22.63] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.62 [skip ci] (b43445f)
-### Features
-
-- **catalog:** Add mcp-toolbox source entry + recipe for DB-MCP onboarding (9e2a2b7)## [0.22.62] - 2026-04-30
-
-### Features
-
-- **tools:** Expose chat-driven Onboard + Init MCP tools (OnboardStatus / InitApply / OnboardWizard) (f7782dd)## [0.22.61] - 2026-04-30
-
-### Features
-
-- **tools:** Populate UsageHint on every registered tool + coverage test (86c27e4)## [0.22.60] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.58 [skip ci] (1f1a5ff)
-### Features
-
-- **cli:** Emit structured InitSummary + ChatRender for chat-driven onboarding (d9110db)## [0.22.59] - 2026-04-30
-
-### Tests
-
-- **cli:** Add smoke-test covering every verb's --help and read-only listings (4683988)## [0.22.58] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.57 [skip ci] (01683b9)
-### Features
-
-- **tools:** Add UsageHint field surfacing curated guidance via annotations.clawtool (48cc03a)## [0.22.57] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.56 [skip ci] (92336d5)
-### Features
-
-- **rules:** Add rtk pre_tool_use rewrite rule + recipe for Bash token compression (8f4ed6f)## [0.22.56] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.54 [skip ci] (fc27276)
-### Features
-
-- **recipes:** Mark mattpocock-skills as Core for default install (4899fe2)
-- **setup:** Add Core recipe flag + auto-install path in onboard / init --all (deb3f45)## [0.22.55] - 2026-04-30
-
-### Fixes
-
-- **cli:** Distinguish dev-build-ahead-of-latest from already-on-latest in upgrade UX (d6ea921)## [0.22.54] - 2026-04-30
-
-### Features
-
-- **recipes:** Add mattpocock skills recipe for engineering daily-use playbook (db972aa)## [0.22.53] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.50 [skip ci] (18675f3)
-### Features
-
-- **agents:** Wire rules engine pre_send evaluation into dispatch path (dd38f88)## [0.22.52] - 2026-04-30
-
-### Features
-
-- **cli:** Add 'source inspect' verb wrapping MCP Inspector (d106334)## [0.22.51] - 2026-04-30
-
-### Features
-
-- **recipes:** Add promptfoo redteam recipe for BIAM dispatch eval (18cff98)## [0.22.50] - 2026-04-30
-
-### Features
-
-- **cli:** Add --backend flag to 'source registry' for Smithery probe (34a166a)## [0.22.49] - 2026-04-30
-
-### Documentation
-
-- **playbooks:** Add Mastra HTTP-agent setup playbook (93b9575)## [0.22.48] - 2026-04-30
-
-### Features
-
-- **agents:** Add Aider as BIAM transport peer #6 (9748391)## [0.22.47] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.46 [skip ci] (03324b5)
-### Features
-
-- **catalog:** Add Smithery registry probe alongside MCP Registry (1b22a81)## [0.22.46] - 2026-04-30
-
-### Chores
-
-- **deps:** Bump charmbracelet x/ansi v0.11.7 + colorprofile v0.4.3 (d09daaf)
-### Features
-
-- **playbooks:** Add 10xProductivity-style markdown playbook layer (d49230a)## [0.22.45] - 2026-04-30
-
-### Tests
-
-- **server:** Extend surface-drift to slash-command body references (9856982)## [0.22.44] - 2026-04-30
-
-### Features
-
-- **tools:** Expose `SourceRegistry` MCP tool for ecosystem discovery (20d4f6a)## [0.22.43] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.42 [skip ci] (1a8bf08)
-### Features
-
-- **cli:** Add `source registry` verb to probe the MCP Registry (cdecb8c)## [0.22.42] - 2026-04-30
-
-### Features
-
-- **catalog:** Add MCP Registry probe foundation (bcfb0c3)## [0.22.41] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.40 [skip ci] (c131a2a)
-### Features
-
-- **cli:** Add `--dry-run` to `agent new` (2ec79b9)## [0.22.40] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.39 [skip ci] (eb72756)
-### Features
-
-- **cli:** Add `--dry-run` to `portal remove` (7043893)
-- **cli:** Add `--dry-run` to `source rename` (ca918b8)
-- **cli:** Add `--dry-run` to `source remove` (b364ec6)
-- **tools:** Expose `SourceCheck` MCP tool for credential probe (61b9828)
-- **cli:** Add --json + single-instance filter to `source check` (ddabc05)
-- **cli:** Add --json output to `bridge add` and `bridge upgrade` (63dea0c)
-- **tools:** Expose `AgentDetect` MCP tool for host-adapter probe (47dba2f)
-- **cli:** Add --json output to `sandbox doctor` (0759329)
-- **cli:** Add `agents detect <agent>` exit-code probe (ef4c698)
-- **cli:** Add --dry-run to `skill new` (44a9819)
-- **cli:** Add --dry-run to `rules remove` (71f07fc)
-- **cli:** Add --dry-run to `rules new` (5824012)
-- **cli:** Add --json output to `agents claim` and `agents release` (64e02fc)
-- **cli:** Add --format json|tsv|table to `skill list` (49c4bc5)
-- **cli:** Add --json output to `rules show` (278bc1f)
-- **cli:** Add --json output to `rules list` (7d337a8)
-- **cli:** `version --check` exit-code probe for monitoring scripts (df8ab31)
-- **tools:** Expose `Version` MCP tool with BuildInfo snapshot (45a79f2)
-- **server:** Expose BuildInfo on /v1/health under `build` key (54bf658)
-- **version:** Structured `clawtool version --json` output (239eede)
-- **cli:** Onboard wizard `b` keybind navigates back one step (c85d974)
-- **cli:** Add --json output to agents list (7dc8ad0)
-- **cli:** Add --json output to agents status (6ae3fbf)
-### Fixes
-
-- **cli:** Emit header-only TSV from `skill list` on empty state (012abc0)
-- **cli:** Emit `[]` from `hooks list --format json` on empty state (3af47eb)
-- **cli:** Emit `[]` from `portal list --format json` on empty state (d71b78e)
-- **cli:** Emit `[]` from `sandbox list --format json` on empty state (83436bf)
-- **cli:** Emit `[]` from `source list --format json` on empty state (18aed7e)
-- **build:** Makefile resolves GO via PATH first, fallback to legacy (7c16197)
-- **test/e2e:** Switch echo|grep assertions to here-strings (d53ee15)
-- **version:** Update-check reads Resolved() instead of bare const (3acf2ee)
-- **bash:** Drain stdout/stderr before cmd.Wait to satisfy os/exec contract (acbb134)
-### Refactor
-
-- **cli:** Migrate `hooks list` to listfmt.RenderOrHint (ff1e9cb)
-- **cli:** Migrate `portal list` to listfmt.RenderOrHint (7b5be2e)
-- **cli:** Migrate `sandbox list` to listfmt.RenderOrHint (b6d7caf)
-- **cli:** Migrate `source list` to listfmt.RenderOrHint (f024f06)
-- **cli:** Introduce listfmt.RenderOrHint helper for empty-state contract (d7cbe60)## [0.22.39] - 2026-04-30
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.38 [skip ci] (2857f25)
-### Features
-
-- **cli:** Responsive onboard layout for narrow terminals (2720a87)
-- **cli:** Polish onboard TUI with sidebar layout + ASCII banner (35cd4d8)
-- **cli:** Onboard wizard resume + re-entry guard (492f544)
-- **cli:** Rewrite onboard as Bubble Tea wizard with alt-screen (9551018)
-### Fixes
-
-- **a2a:** Drain in-flight peer-registry saves before t.TempDir cleanup (cfba933)
-- **cli:** Onboard form renders all options at natural size (d1a5e74)
-- **cli:** Onboard form fills card area instead of compressing to one row (8540a69)
-- **cli:** Onboard TUI gate falls back to os.Stdin when App.Stdin nil (df44f29)
-### Refactor
-
-- **cli:** Pin onboard step card to fixed silhouette + centre content (695bce6)
-- **cli:** Drop huh embed; ship custom Select / MultiSelect / Confirm (9ed5304)
-- **cli:** Bring back outer rounded card; fix form clamping properly (bb7202c)
-- **cli:** Drop nested card frame around onboard step content (67a107b)
-- **cli:** Onboard TUI fills viewport responsively (2ec851c)
-- **cli:** Redesign onboard TUI per Charm style patterns (7b5980d)
-### Style
-
-- **cli:** Bottom-align logo with metaCol + balance body slack vertically (bed72f5)
-- **cli:** Vertically centre logo against meta column in header (ba404aa)
-- **cli:** Move animation onto the clawtool logo (gradient shimmer) (fe5e269)
-- **cli:** Fix W glyph in logo + add Braille spinner to step indicator (062e012)
-- **cli:** Swap onboard logo + animate active progress dot (b6c8534)
-- **cli:** Widen onboard card + polish header banner (c30561b)
-- **cli:** Centre onboard wizard horizontally in viewport (e17bd19)## [0.22.38] - 2026-04-29
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.36 [skip ci] (4a4448c)
-### Features
-
-- **onboard:** Clear-screen entry + boxed header + structured phase output (9749d4f)
-- **telemetry:** Host fingerprint + GeoIP suppression for Microsoft-level diagnostics (bec137f)## [0.22.36] - 2026-04-29
+- Feat(sandbox): expose SandboxRun MCP tool wrapping internal/sandbox/runner §"MCP-side SandboxRun" reverses the v0.18 "no MCP" stance: chat-driven
+callers (Claude / Codex / Gemini) can now run a one-shot command inside a named
+sandbox profile without dropping the operator to a shell.
+
+Implementation:
+
+- internal/sandbox/runner.go — new RunOneShot primitive shared by the future
+  CLI `sandbox run` verb and the MCP tool. Takes (Profile, Command, Args,
+  Stdin, Timeout); wraps the host-native engine via SelectEngine().Wrap;
+  returns a structured RunResult mirroring the Bash tool's wire shape so
+  chat-driven callers can compose the two without translation.
+- runner_unix.go / runner_other.go — per-OS process-group SIGKILL helper so
+  output is preserved when the timeout fires (same contract as core.Bash).
+- internal/tools/core/sandbox_tool.go — RegisterSandboxTools now also
+  registers SandboxRun. Description follows the v0.22.108 anatomy
+  (front-loaded "Use when" / "NOT for" / cross-disambiguation against
+  Bash / SandboxList / SandboxShow). Args: profile (req), command (req),
+  args ([]string), stdin (string), timeout_ms (60_000 default, 600_000 max).
+  Wire shape: stdout/stderr/exit_code/timed_out/profile + BaseResult's
+  engine/duration_ms/error_reason.
+- internal/tools/core/manifest.go — bare ToolSpec entry; SyncDescriptions
+  FromRegistration auto-mirrors the live mcp.WithDescription string at boot,
+  so manifest_drift reports zero items.
+- skills/clawtool/SKILL.md — added mcp__clawtool__SandboxRun to the
+  allowed-tools frontmatter so the surface_drift_test guard stays green.
+
+Tests:
+
+- sandbox_run_tool_test.go: HappyPath (stub runner, assert wire shape),
+  ProfileNotFound (config miss → ErrorReason without runner dispatch),
+  TimeoutPropagates (1500ms / default 60s / max-clamp 600s),
+  StdinForwarding, MissingProfileArg.
+- runner_test.go: NoopEngineRefuses, RejectsEmptyCommand, RejectsNilProfile,
+  DefaultTimeoutApplied (negative timeout clamp).
+
+CI: CLAWTOOL_CI_FAST=1 scripts/ci.sh — fmt + vet + build + test + deadcode
+all green. `clawtool ideate --source manifest_drift` returns 0 items. (05bf230)## [0.22.123] - 2026-05-02
 
 ### CI
 
-- **scripts:** Single-command CI runner with all gates including container e2e (7e173e1)
+- **integration:** Bump Go to 1.26.0 to match go.mod (687784f)
+### Chores
+
+- **privacy:** Remove .autodev-notes.md and gitignore future autodev artifacts (57a4010)
 ### Documentation
 
-- Surface peer mesh + audit cleanup in README (57af3f8)
-- **changelog:** Regenerate for v0.22.35 [skip ci] (44fc8f6)
+- **changelog:** Regenerate for v0.22.122 [skip ci] (7839d69)
 ### Features
 
-- **telemetry:** Auto-stamp $lib_version on every event for PostHog version filtering (2370d8b)
-- **telemetry:** Forward classified daemon log events to PostHog (2c184e4)
+- **rules:** Add 3 privacy + secret-leak guards after .autodev-notes.md incident (36dd171)## [0.22.122] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.121 [skip ci] (3167515)
+### Fixes
+
+- **version:** Sync internal/version/version.go to manifest version (0.22.119) (a95e50d)## [0.22.121] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.120 [skip ci] (5ad070c)
+### Fixes
+
+- **ideator:** Filter superseded CI runs, vendored paths, broken ADR parser (61704e9)## [0.22.120] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.119 [skip ci] (69cc44d)
+### Fixes
+
+- **plugin:** Rename inner mcpServers key to break "plugin:clawtool:clawtool" double-namespace + bump stale 0.21.7 manifest version (cdf4868)## [0.22.119] - 2026-05-02
+
+### Features
+
+- **ideator:** Self-feature-generation top of autonomy stack (proposed→pending operator gate) (87b89ed)## [0.22.118] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.116 [skip ci] (0f2000c)
+### Features
+
+- **autopilot:** Self-direction backlog primitive for non-stalling agent loop (4f81ece)## [0.22.117] - 2026-05-02
+
+### Features
+
+- **otel:** MCP _meta traceparent/tracestate propagation per SEP-414 (403a019)## [0.22.116] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.115 [skip ci] (2229a39)
+### Features
+
+- **mcp:** Mcp-Method and Mcp-Name headers on Streamable HTTP per SEP-2243 (dedfc0a)## [0.22.115] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.113 [skip ci] (0e43d8e)
+### Features
+
+- **mcp:** Name-sorted tools/list + alwaysLoad hot tools + ToolSearch detail_level (9414ddb)## [0.22.114] - 2026-05-01
+
+### Features
+
+- **send:** --no-auto-close CLI flag for per-task pane preservation (4aa8406)## [0.22.113] - 2026-05-01
+
+### Fixes
+
+- **upgrade-test:** Drop bearer-token read in --no-auth health probe (ddb1519)## [0.22.112] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.111 [skip ci] (317fb32)
+### Tests
+
+- **e2e:** Exercise v0.22.109 lifecycle features (window cleanup + grace + per-task override) (4312fae)## [0.22.111] - 2026-05-01
+
+### Fixes
+
+- **e2e:** Inject real version into Dockerfile go build via -ldflags (819c7d5)## [0.22.110] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.109 [skip ci] (35315af)
+### Fixes
+
+- **toolsearch:** Mirror tool descriptions into bleve index manifest (b1d19c5)## [0.22.109] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.108 [skip ci] (297a962)
+### Features
+
+- **agents:** Resolve follow-up questions (window cleanup, grace period, per-task override) (ab485a9)## [0.22.108] - 2026-05-01
+
+### Documentation
+
+- **mcp:** Rewrite tool descriptions for proactive ToolSearch ranking (765d05c)
+- **changelog:** Regenerate for v0.22.107 [skip ci] (6cd5245)## [0.22.107] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.106 [skip ci] (4feccc6)
+### Features
+
+- **peer:** Auto-close auto-spawned tmux panes on terminal task status (10571f0)## [0.22.106] - 2026-05-01
+
+### Features
+
+- **install:** Install.sh handles tmux + claude-code + node deps; add RuntimeInstall MCP tool for chat-driven backend install (5126bae)
+### Tests
+
+- **e2e:** Add fullstack Docker harness exercising install→daemon→tmux→peer-register→peer-send (c1193a5)## [0.22.105] - 2026-05-01
+
+### Features
+
+- **agents:** SendMessage auto-spawns tmux pane when no live peer (zero-touch peer creation) (e71d9a6)## [0.22.104] - 2026-05-01
+
+### Features
+
+- **bootstrap:** First-run onboarding prompt on UserPromptSubmit (idempotent via marker) (cc4fe9f)## [0.22.103] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.102 [skip ci] (49ee185)
+### Fixes
+
+- **peer:** Make tmux send-keys stub path-portable (macos-latest CI red) (4eec40c)## [0.22.102] - 2026-05-01
+
+### Features
+
+- **peer:** Add tmux send-keys push for real-time agent-to-agent delivery (repowire-style) (fa53892)## [0.22.101] - 2026-05-01
+
+### Features
+
+- **install:** --auto-spawn flag opens detected agents in tmux panes + auto-registers pane_ids (a963f43)## [0.22.100] - 2026-05-01
+
+### Fixes
+
+- **hooks:** Auto-deliver peer inbox on UserPromptSubmit (Stop drain never reached agent context) (8d4d9cc)## [0.22.99] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.98 [skip ci] (defd2ea)
+### Fixes
+
+- **hooks:** Move SessionStart context-load to UserPromptSubmit (Claude Code v2.1.126 ToolUseContext regression workaround) (3c77af9)## [0.22.98] - 2026-05-01
+
+### Features
+
+- **spawn:** Add 'spawn' verb + Spawn MCP tool to open new terminals running agents (auto peer-registered) (69bf654)## [0.22.97] - 2026-05-01
+
+### Features
+
+- **agents:** SendMessage prefers live BIAM peer over spawning fresh subprocess (peer-prefer mode default) (d45c307)## [0.22.96] - 2026-05-01
+
+### Features
+
+- **peer:** Add 'peer drain' verb + bundled session-tick inbox hook for live message delivery (4fb3a47)## [0.22.95] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.94 [skip ci] (37e8c74)
+### Features
+
+- **cli:** Add 'install' verb for zero-touch first-run setup (daemon + hosts + hooks + peer + init) (29147b8)## [0.22.94] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.93 [skip ci] (767dbb3)
+### Features
+
+- **peer:** Add peer list verb + PeerList MCP tool for BIAM peer discovery (bac1377)## [0.22.93] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.92 [skip ci] (057f5a8)
+### Fixes
+
+- **mcp:** Accept-header-aware /mcp content negotiation for rmcp Streamable-HTTP clients (f9a36c9)## [0.22.92] - 2026-05-01
+
+### Fixes
+
+- **commands:** Repair YAML frontmatter that broke ubuntu-latest CI (5e35a61)## [0.22.91] - 2026-05-01
+
+### Tests
+
+- **server:** Add commands/ slash-command lint covering frontmatter + verb-existence + allowed-tools (2273f02)## [0.22.90] - 2026-05-01
+
+### Build
+
+- **docker:** Finalize unified Dockerfile by removing legacy ones + swapping all consumers (ae1ab77)
+### Documentation
+
+- **changelog:** Regenerate for v0.22.88 [skip ci] (522cffa)## [0.22.89] - 2026-05-01
+
+### Fixes
+
+- **mcp:** Make CLAWTOOL_TOKEN optional in default install (codex was refusing to start without it) (c23f0e3)## [0.22.88] - 2026-05-01
+
+### Documentation
+
+- **playbooks:** Add aider/semble/mcp-toolbox/shell-mcp/promptfoo/rtk/archon setup playbooks (0506422)## [0.22.87] - 2026-05-01
+
+### Documentation
+
+- Add autonomous/bootstrap/fanout/release-notes/telemetry pages + refresh rules/portals/mcp-authoring for v0.22.50-.82 surface (6f75649)## [0.22.86] - 2026-05-01
+
+### Documentation
+
+- **commands:** Add slash-commands for new verbs (init/onboard/bootstrap/autonomous/fanout/apm/source-inspect/source-registry/playbook-list-archon) (0c7e8aa)## [0.22.85] - 2026-05-01
+
+### Features
+
+- **fanout:** Add 'fanout' verb + Fanout MCP tool for parallel-subgoal orchestration (d513f00)## [0.22.84] - 2026-05-01
+
+### Documentation
+
+- **readme:** Audit + update for v0.22.50-.74 surface (BIAM peers, MCP tools, catalog, autonomous mode) (825bf61)## [0.22.83] - 2026-05-01
+
+### Build
+
+- **docker:** Consolidate Dockerfiles into unified multi-stage Dockerfile.unified (5ef6f62)
+### Documentation
+
+- **changelog:** Regenerate for v0.22.82 [skip ci] (7ffdd14)## [0.22.82] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.81 [skip ci] (7f30241)
+### Tests
+
+- **e2e:** Add bootstrap container test verifying zero-click install flow (e458a6a)## [0.22.81] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.80 [skip ci] (05dc068)
+### Fixes
+
+- **ci:** Force release body via gh CLI post-step (goreleaser silently drops --release-notes) (8ab7cb1)
+- **telemetry:** No-op in CI by default + filter Go pseudo-versions from version reporting (fcaa7c7)## [0.22.80] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.79 [skip ci] (146e6c8)
+### Fixes
+
+- **release:** Drop static header/footer templates that suppressed BODY.md + leaked ADR reference (4780dad)## [0.22.79] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.78 [skip ci] (72915c0)
+### Fixes
+
+- **release:** Drop release.mode=append so --release-notes=BODY.md actually populates body (8f3a92f)## [0.22.78] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.76 [skip ci] (b6db15b)
+### Fixes
+
+- **ci:** Drop pre-goreleaser stash that swept BODY.md, breaking rich release notes (e8fd363)## [0.22.77] - 2026-04-30
+
+### Features
+
+- **ci:** Replace git-cliff release body with rich self-hosted release-notes script (eac66bd)## [0.22.76] - 2026-04-30
+
+### Features
+
+- **cli:** Add 'bootstrap' verb spawning chosen agent + auto-running init from chat (4d22c2a)## [0.22.75] - 2026-04-30
+
+### Features
+
+- **rules:** Add guardians taint+Z3 pre_send predicate (phase 1 stub) (f7d1bf9)## [0.22.74] - 2026-04-30
+
+### Features
+
+- **cli:** Add 'autonomous --resume' + '--watch' for chat-driven loop continuity (014ce3a)## [0.22.73] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.72 [skip ci] (594037a)
+### Features
+
+- **recipes:** Add clawtool-autonomous-loop SKILL.md teaching tick.json contract (e623e25)## [0.22.72] - 2026-04-30
+
+### Features
+
+- **tools:** Expose AutonomousRun MCP tool for chat-driven self-paced dev loops (144a700)## [0.22.71] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.70 [skip ci] (5f14866)
+### Features
+
+- **cli:** Add 'autonomous' verb for self-paced single-message dev loop (f640122)## [0.22.70] - 2026-04-30
+
+### Features
+
+- **catalog:** Add shell-mcp sandbox-aware shell MCP source entry + recipe (a2d9efe)## [0.22.69] - 2026-04-30
+
+### Features
+
+- **rules:** Add interceptor:pre_tool_use alias mirroring MCP upstream RFC (77b658f)## [0.22.68] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.67 [skip ci] (b75c66e)
+### Features
+
+- **catalog:** Add MinishLab/semble code-search MCP source entry + recipe (a8d96b0)## [0.22.67] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.66 [skip ci] (8e4b04d)
+### Features
+
+- **playbooks:** Add Archon YAML workflow loader + recipe (phase 1, read-only) (49822ce)## [0.22.66] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.65 [skip ci] (4ae9a82)
+### Fixes
+
+- **ci:** Stop CHANGELOG.md drift breaking goreleaser checkout + add release-health helper (cc4cc03)## [0.22.65] - 2026-04-30
+
+### Features
+
+- **portal:** Add Bifrost portal stub + config template (phase 1, no runtime dep) (2f3d2f5)## [0.22.64] - 2026-04-30
+
+### Features
+
+- **cli:** Add 'apm import' verb (apm.yml → clawtool source registry, phase 1) (1f6909d)## [0.22.63] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.62 [skip ci] (0b39de7)
+### Features
+
+- **catalog:** Add mcp-toolbox source entry + recipe for DB-MCP onboarding (a461b82)## [0.22.62] - 2026-04-30
+
+### Features
+
+- **tools:** Expose chat-driven Onboard + Init MCP tools (OnboardStatus / InitApply / OnboardWizard) (48a76a6)## [0.22.61] - 2026-04-30
+
+### Features
+
+- **tools:** Populate UsageHint on every registered tool + coverage test (914ee90)## [0.22.60] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.58 [skip ci] (ee6f952)
+### Features
+
+- **cli:** Emit structured InitSummary + ChatRender for chat-driven onboarding (9c585a0)## [0.22.59] - 2026-04-30
+
+### Tests
+
+- **cli:** Add smoke-test covering every verb's --help and read-only listings (ba69c50)## [0.22.58] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.57 [skip ci] (60bffaa)
+### Features
+
+- **tools:** Add UsageHint field surfacing curated guidance via annotations.clawtool (f60a040)## [0.22.57] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.56 [skip ci] (1e88fb0)
+### Features
+
+- **rules:** Add rtk pre_tool_use rewrite rule + recipe for Bash token compression (3499a0d)## [0.22.56] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.54 [skip ci] (451330a)
+### Features
+
+- **recipes:** Mark mattpocock-skills as Core for default install (ada2c90)
+- **setup:** Add Core recipe flag + auto-install path in onboard / init --all (de1c9cf)## [0.22.55] - 2026-04-30
+
+### Fixes
+
+- **cli:** Distinguish dev-build-ahead-of-latest from already-on-latest in upgrade UX (a0e9b92)## [0.22.54] - 2026-04-30
+
+### Features
+
+- **recipes:** Add mattpocock skills recipe for engineering daily-use playbook (1af552c)## [0.22.53] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.50 [skip ci] (6f46985)
+### Features
+
+- **agents:** Wire rules engine pre_send evaluation into dispatch path (55738e8)## [0.22.52] - 2026-04-30
+
+### Features
+
+- **cli:** Add 'source inspect' verb wrapping MCP Inspector (b8e2a6f)## [0.22.51] - 2026-04-30
+
+### Features
+
+- **recipes:** Add promptfoo redteam recipe for BIAM dispatch eval (be51b75)## [0.22.50] - 2026-04-30
+
+### Features
+
+- **cli:** Add --backend flag to 'source registry' for Smithery probe (1d27b56)## [0.22.49] - 2026-04-30
+
+### Documentation
+
+- **playbooks:** Add Mastra HTTP-agent setup playbook (9149220)## [0.22.48] - 2026-04-30
+
+### Features
+
+- **agents:** Add Aider as BIAM transport peer #6 (787d87a)## [0.22.47] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.46 [skip ci] (4968e93)
+### Features
+
+- **catalog:** Add Smithery registry probe alongside MCP Registry (8a2b3a0)## [0.22.46] - 2026-04-30
+
+### Chores
+
+- **deps:** Bump charmbracelet x/ansi v0.11.7 + colorprofile v0.4.3 (72c8fbe)
+### Features
+
+- **playbooks:** Add 10xProductivity-style markdown playbook layer (4b5cfba)## [0.22.45] - 2026-04-30
+
+### Tests
+
+- **server:** Extend surface-drift to slash-command body references (6b59e50)## [0.22.44] - 2026-04-30
+
+### Features
+
+- **tools:** Expose `SourceRegistry` MCP tool for ecosystem discovery (1cc6359)## [0.22.43] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.42 [skip ci] (892cbaa)
+### Features
+
+- **cli:** Add `source registry` verb to probe the MCP Registry (3b2e2c6)## [0.22.42] - 2026-04-30
+
+### Features
+
+- **catalog:** Add MCP Registry probe foundation (fd2ef48)## [0.22.41] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.40 [skip ci] (a2cc3ac)
+### Features
+
+- **cli:** Add `--dry-run` to `agent new` (d8c9c90)## [0.22.40] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.39 [skip ci] (5760cd9)
+### Features
+
+- **cli:** Add `--dry-run` to `portal remove` (f6911e3)
+- **cli:** Add `--dry-run` to `source rename` (bf289be)
+- **cli:** Add `--dry-run` to `source remove` (ab9721f)
+- **tools:** Expose `SourceCheck` MCP tool for credential probe (a9d517e)
+- **cli:** Add --json + single-instance filter to `source check` (7efc9ee)
+- **cli:** Add --json output to `bridge add` and `bridge upgrade` (0df345b)
+- **tools:** Expose `AgentDetect` MCP tool for host-adapter probe (9ba98c2)
+- **cli:** Add --json output to `sandbox doctor` (898a7ff)
+- **cli:** Add `agents detect <agent>` exit-code probe (3bc022f)
+- **cli:** Add --dry-run to `skill new` (9b63c54)
+- **cli:** Add --dry-run to `rules remove` (b32fd6b)
+- **cli:** Add --dry-run to `rules new` (557c287)
+- **cli:** Add --json output to `agents claim` and `agents release` (817a1c5)
+- **cli:** Add --format json|tsv|table to `skill list` (57ace3f)
+- **cli:** Add --json output to `rules show` (517ed28)
+- **cli:** Add --json output to `rules list` (0396cbb)
+- **cli:** `version --check` exit-code probe for monitoring scripts (d0416c0)
+- **tools:** Expose `Version` MCP tool with BuildInfo snapshot (a5a497b)
+- **server:** Expose BuildInfo on /v1/health under `build` key (5f1a74f)
+- **version:** Structured `clawtool version --json` output (4e8289e)
+- **cli:** Onboard wizard `b` keybind navigates back one step (6547aa1)
+- **cli:** Add --json output to agents list (a68ae57)
+- **cli:** Add --json output to agents status (089f20a)
+### Fixes
+
+- **cli:** Emit header-only TSV from `skill list` on empty state (668e820)
+- **cli:** Emit `[]` from `hooks list --format json` on empty state (0a36a98)
+- **cli:** Emit `[]` from `portal list --format json` on empty state (39f7af9)
+- **cli:** Emit `[]` from `sandbox list --format json` on empty state (23cd3ac)
+- **cli:** Emit `[]` from `source list --format json` on empty state (3bc9d1f)
+- **build:** Makefile resolves GO via PATH first, fallback to legacy (0032ac6)
+- **test/e2e:** Switch echo|grep assertions to here-strings (6000ab8)
+- **version:** Update-check reads Resolved() instead of bare const (c612a03)
+- **bash:** Drain stdout/stderr before cmd.Wait to satisfy os/exec contract (ae58a95)
+### Refactor
+
+- **cli:** Migrate `hooks list` to listfmt.RenderOrHint (19e4e2e)
+- **cli:** Migrate `portal list` to listfmt.RenderOrHint (2249fbe)
+- **cli:** Migrate `sandbox list` to listfmt.RenderOrHint (569a543)
+- **cli:** Migrate `source list` to listfmt.RenderOrHint (1fec43a)
+- **cli:** Introduce listfmt.RenderOrHint helper for empty-state contract (57d6f74)## [0.22.39] - 2026-04-30
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.38 [skip ci] (e726a1f)
+### Features
+
+- **cli:** Responsive onboard layout for narrow terminals (143afe7)
+- **cli:** Polish onboard TUI with sidebar layout + ASCII banner (40eb15d)
+- **cli:** Onboard wizard resume + re-entry guard (9e12b28)
+- **cli:** Rewrite onboard as Bubble Tea wizard with alt-screen (3d4dd2b)
+### Fixes
+
+- **a2a:** Drain in-flight peer-registry saves before t.TempDir cleanup (a38fc39)
+- **cli:** Onboard form renders all options at natural size (521c482)
+- **cli:** Onboard form fills card area instead of compressing to one row (c4caeca)
+- **cli:** Onboard TUI gate falls back to os.Stdin when App.Stdin nil (b4f89d3)
+### Refactor
+
+- **cli:** Pin onboard step card to fixed silhouette + centre content (4daedab)
+- **cli:** Drop huh embed; ship custom Select / MultiSelect / Confirm (5b90f84)
+- **cli:** Bring back outer rounded card; fix form clamping properly (8a35081)
+- **cli:** Drop nested card frame around onboard step content (3403e6f)
+- **cli:** Onboard TUI fills viewport responsively (77d21df)
+- **cli:** Redesign onboard TUI per Charm style patterns (532bfe4)
+### Style
+
+- **cli:** Bottom-align logo with metaCol + balance body slack vertically (179d347)
+- **cli:** Vertically centre logo against meta column in header (908cd24)
+- **cli:** Move animation onto the clawtool logo (gradient shimmer) (10e1a31)
+- **cli:** Fix W glyph in logo + add Braille spinner to step indicator (1ad3c3a)
+- **cli:** Swap onboard logo + animate active progress dot (ee0e5dd)
+- **cli:** Widen onboard card + polish header banner (0b36006)
+- **cli:** Centre onboard wizard horizontally in viewport (ada93ce)## [0.22.38] - 2026-04-29
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.36 [skip ci] (6442d54)
+### Features
+
+- **onboard:** Clear-screen entry + boxed header + structured phase output (0b7249f)
+- **telemetry:** Host fingerprint + GeoIP suppression for Microsoft-level diagnostics (66494dd)## [0.22.36] - 2026-04-29
+
+### CI
+
+- **scripts:** Single-command CI runner with all gates including container e2e (26df886)
+### Documentation
+
+- Surface peer mesh + audit cleanup in README (278bf49)
+- **changelog:** Regenerate for v0.22.35 [skip ci] (de4f39e)
+### Features
+
+- **telemetry:** Auto-stamp $lib_version on every event for PostHog version filtering (f04240a)
+- **telemetry:** Forward classified daemon log events to PostHog (45c2383)
 - Feat(a2a): peer-to-peer messaging — inbox primitive + status-fidelity hooks Phase 1 was discovery-only (registry + listing). This adds
 the *messaging* half so two live sessions on the same host actually
 talk to each other without going through MCP or the BIAM bridge
@@ -589,15 +642,15 @@ Verified live round-trip: alice (claude-code) → bob (codex) by
 display_name delivers; second drain empty; broadcast hits bob but
 not alice's own inbox; peek-twice shows same messages without
 consuming; UserPromptSubmit-style busy heartbeat flips status
-correctly. (4431499)
-- **a2a:** Peer discovery — registry, REST surface, runtime-side primitives (336d6b6)
-- **telemetry:** Pre-v1.0 opt-out lock — telemetry stays on through the development cycle (9c100bd)
-- **telemetry:** PostHog session boundaries + LLM observability allow-list (95bc9b7)
-- **doctor:** Repowire uninstall-plan section + close SetContext drift (f0ad75f)
-- **tools:** Octopus SetContext + GetContext — ambient editor context for the daemon (c39519e)
-- **cli:** Repowire listfmt rollout — source/sandbox/portal/hooks list grow --format (bd3e25e)
-- **cli:** Repowire listfmt — table | tsv | json output for `clawtool bridge list` (ae05078)
-- **secrets:** Octopus env-scrub — strip secret-shaped vars from Bash + bg subprocess spawn (7fb9f3c)
+correctly. (2722e3e)
+- **a2a:** Peer discovery — registry, REST surface, runtime-side primitives (11dbd65)
+- **telemetry:** Pre-v1.0 opt-out lock — telemetry stays on through the development cycle (6bfb944)
+- **telemetry:** PostHog session boundaries + LLM observability allow-list (bea6e6a)
+- **doctor:** Repowire uninstall-plan section + close SetContext drift (76d997c)
+- **tools:** Octopus SetContext + GetContext — ambient editor context for the daemon (fa3e7da)
+- **cli:** Repowire listfmt rollout — source/sandbox/portal/hooks list grow --format (3cfeb35)
+- **cli:** Repowire listfmt — table | tsv | json output for `clawtool bridge list` (a2937a7)
+- **secrets:** Octopus env-scrub — strip secret-shaped vars from Bash + bg subprocess spawn (196a39c)
 - Feat(telemetry): wire $session_id + $lib so PostHog Sessions view lights up's first parking-table row (sessions) was the operator's
 2026-04-29 observation: events flow but PostHog's Sessions tab is
 empty + the live feed reads as sparse. Root cause: we never set
@@ -632,281 +685,281 @@ Tests:
   $lib, $lib_version into the allow-list against future blind
   removals.
 - TestNewSessionID_UniquePerCall — 100-iteration uniqueness
-  smoke test (no collisions, ≥16-byte length, never empty). (0ddaeaa)
-- **star:** Clawtool star — OAuth Device Flow (no CSRF replay) (31e350e)
-- **upgrade:** Polished UX — boxed header, phased progress, release notes, next steps (ac2bfe5)
-- **upgrade:** Self-restart daemon + auto-reconnect dashboard/orchestrator (6bc2e2e)
-- **tools:** Redact secrets in BaseResult MarshalJSON + ErrorLine (96c3f0e)
+  smoke test (no collisions, ≥16-byte length, never empty). (f374618)
+- **star:** Clawtool star — OAuth Device Flow (no CSRF replay) (bccb023)
+- **upgrade:** Polished UX — boxed header, phased progress, release notes, next steps (6610a4e)
+- **upgrade:** Self-restart daemon + auto-reconnect dashboard/orchestrator (c508366)
+- **tools:** Redact secrets in BaseResult MarshalJSON + ErrorLine (84e9844)
 ### Fixes
 
-- **upgrade:** Respawn daemon from install path, not the CLI's own executable (11295f5)
-- **tools:** Drop BaseResult.MarshalJSON shadowing every tool's structured fields (5df6675)
-- **a2a:** Thread session_id into identity tuple + read os.Stdin in peer (2cabe62)
-- **e2e:** Unblock both container tests — version-prefix + Dockerfile heredoc + Debian base-files username collision (7d20a07)
+- **upgrade:** Respawn daemon from install path, not the CLI's own executable (9fd908b)
+- **tools:** Drop BaseResult.MarshalJSON shadowing every tool's structured fields (8c3de89)
+- **a2a:** Thread session_id into identity tuple + read os.Stdin in peer (395ca20)
+- **e2e:** Unblock both container tests — version-prefix + Dockerfile heredoc + Debian base-files username collision (1892470)
 ### Refactor
 
-- **xdg:** Add ConfigDirIfHome / DataDirIfHome / CacheDirIfHome (f7f21b0)
-- **unattended:** Trust file round-trips through go-toml (b75a8cd)
-- **xdg:** Add CacheDirOrTemp + collapse setup.WriteAtomic onto atomicfile (66e2c9c)
-- **xdg:** Collapse 17 inline XDG-env-resolution callsites (b26a925)
-- **atomicfile:** Collapse 14 inline temp+rename copies into one helper (fb093b7)
-- **daemon:** Lift daemonRequest to internal/daemon as exported HTTPRequest (a32efb1)
-- **cli:** A2a peers reuses peer.go's daemonRequest helper (5e81679)
-- **core:** DefaultCwd helper for the cwd-defaulting pattern (0a547ca)
-- **xdg:** One helper for XDG_CONFIG_HOME / STATE / DATA / CACHE (4376ad9)
-- Bağla veya sil — yarım-kalmış test seam'leri (60be7fa)
-- Drop 5 dead helpers, keep 6 yarım-kalmış future seams (b883ff1)
-- Collapse 12-line + 8-line micro-files into their callers (a8608d3)
-- Drop 4 dead min() shims + rename misleading read_legacy.go (2d97211)
-- **cli:** Merge dashboard+orchestrator into one handler, share peers.d helper (9d508b1)
-- **tui:** Collapse dashboard into orchestrator + add Peers tab (786eb2a)
+- **xdg:** Add ConfigDirIfHome / DataDirIfHome / CacheDirIfHome (60f4791)
+- **unattended:** Trust file round-trips through go-toml (92c452d)
+- **xdg:** Add CacheDirOrTemp + collapse setup.WriteAtomic onto atomicfile (8d8dab0)
+- **xdg:** Collapse 17 inline XDG-env-resolution callsites (15dcfa3)
+- **atomicfile:** Collapse 14 inline temp+rename copies into one helper (f5eeef6)
+- **daemon:** Lift daemonRequest to internal/daemon as exported HTTPRequest (4d54d33)
+- **cli:** A2a peers reuses peer.go's daemonRequest helper (595da40)
+- **core:** DefaultCwd helper for the cwd-defaulting pattern (885b08f)
+- **xdg:** One helper for XDG_CONFIG_HOME / STATE / DATA / CACHE (bd4dc0e)
+- Bağla veya sil — yarım-kalmış test seam'leri (5cc8d66)
+- Drop 5 dead helpers, keep 6 yarım-kalmış future seams (9dd06ab)
+- Collapse 12-line + 8-line micro-files into their callers (d26881e)
+- Drop 4 dead min() shims + rename misleading read_legacy.go (5f7a401)
+- **cli:** Merge dashboard+orchestrator into one handler, share peers.d helper (3c520cb)
+- **tui:** Collapse dashboard into orchestrator + add Peers tab (91639b8)
 ### Tests
 
-- **worker:** Cover Client.Read / Client.Write transport-error path (f22c193)
-- **e2e:** Real-install Alpine fixture — install.sh + GitHub release + onboard end-to-end (568c542)
-- **e2e:** Name + label e2e containers + add live-container upgrade scenario (befe1fe)
-- **e2e:** Container test for binary-swap + daemon-restart flow (e887441)## [0.22.35] - 2026-04-29
+- **worker:** Cover Client.Read / Client.Write transport-error path (652b932)
+- **e2e:** Real-install Alpine fixture — install.sh + GitHub release + onboard end-to-end (6ac15e3)
+- **e2e:** Name + label e2e containers + add live-container upgrade scenario (07a037f)
+- **e2e:** Container test for binary-swap + daemon-restart flow (8cf1721)## [0.22.35] - 2026-04-29
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.34 [skip ci] (5ba4491)
+- **changelog:** Regenerate for v0.22.34 [skip ci] (6681e74)
 ### Tests
 
-- **tui:** Orchestrator regression suite + LocalRulesPath walk-up (e0c81f7)## [0.22.34] - 2026-04-29
+- **tui:** Orchestrator regression suite + LocalRulesPath walk-up (e2c0e6c)## [0.22.34] - 2026-04-29
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.33 [skip ci] (6cd1418)
+- **changelog:** Regenerate for v0.22.33 [skip ci] (565671e)
 ### Features
 
-- **serve:** --debug flag + loud telemetry init + version.Resolved() in every emit (91f3d20)
+- **serve:** --debug flag + loud telemetry init + version.Resolved() in every emit (a425c71)
 ### Fixes
 
-- **rules:** Walk up to project root for .clawtool/rules.toml + RulesCheck wiring (c6bf1d2)## [0.22.33] - 2026-04-29
+- **rules:** Walk up to project root for .clawtool/rules.toml + RulesCheck wiring (0589164)## [0.22.33] - 2026-04-29
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.32 [skip ci] (745a055)
+- **changelog:** Regenerate for v0.22.32 [skip ci] (dead3b2)
 ### Fixes
 
-- **config:** Round-2 audit batch — secret leak, races, signal handling (eea198f)## [0.22.32] - 2026-04-29
+- **config:** Round-2 audit batch — secret leak, races, signal handling (3a5a9c7)## [0.22.32] - 2026-04-29
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.31 [skip ci] (86c5fd6)
+- **changelog:** Regenerate for v0.22.31 [skip ci] (2bf4d4e)
 ### Features
 
-- **tui:** Orchestrator probes daemon /v1/health on connect, banners on version mismatch (0a677e1)## [0.22.31] - 2026-04-28
-
-### Features
-
-- **cli:** Tools export-typescript — code-mode stub generator (MVP) (0a261a0)## [0.22.30] - 2026-04-28
-
-### Documentation
-
-- **changelog:** Regenerate for v0.22.29 [skip ci] (d4024e4)
-### Fixes
-
-- **egress:** Join CONNECT tunnels + force-close on shutdown (de4ece9)
-- **daemon:** Flock spawn race + Runner.Stop join + ordered teardown (a5080f9)
-- **biam:** Error-aware result publish, locked Close, awaited HTTP shutdown (a182a4f)## [0.22.29] - 2026-04-28
-
-### Fixes
-
-- **security:** Unattended trust+audit files 0o600; hooks shared-buffer race; SKILL routing for TaskReply (d96d23b)## [0.22.28] - 2026-04-28
+- **tui:** Orchestrator probes daemon /v1/health on connect, banners on version mismatch (4d87ed1)## [0.22.31] - 2026-04-28
 
 ### Features
 
-- **biam:** TaskReply MCP tool + CLAWTOOL_TASK_ID env injection (fan-in) (5e7b44e)## [0.22.27] - 2026-04-28
+- **cli:** Tools export-typescript — code-mode stub generator (MVP) (cf215da)## [0.22.30] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.26 [skip ci] (e2bb088)
+- **changelog:** Regenerate for v0.22.29 [skip ci] (516194c)
 ### Fixes
 
-- **tui:** Orchestrator right pane streams frames + uses real CreatedAt (c3b6389)## [0.22.26] - 2026-04-28
+- **egress:** Join CONNECT tunnels + force-close on shutdown (eca17f6)
+- **daemon:** Flock spawn race + Runner.Stop join + ordered teardown (e063b4a)
+- **biam:** Error-aware result publish, locked Close, awaited HTTP shutdown (f12a91c)## [0.22.29] - 2026-04-28
+
+### Fixes
+
+- **security:** Unattended trust+audit files 0o600; hooks shared-buffer race; SKILL routing for TaskReply (2c4629e)## [0.22.28] - 2026-04-28
+
+### Features
+
+- **biam:** TaskReply MCP tool + CLAWTOOL_TASK_ID env injection (fan-in) (7d492d2)## [0.22.27] - 2026-04-28
 
 ### Documentation
 
-- Strip ADR refs from runtime user-facing strings (2f41735)
+- **changelog:** Regenerate for v0.22.26 [skip ci] (30bfd88)
 ### Fixes
 
-- **concurrency:** Join in-flight handlers + bound mergeCtx watcher (7feaf24)## [0.22.25] - 2026-04-28
+- **tui:** Orchestrator right pane streams frames + uses real CreatedAt (1b1dbc8)## [0.22.26] - 2026-04-28
 
 ### Documentation
 
-- Strip internal doc IDs from user-facing surface (bbbdeda)
-- **changelog:** Regenerate for v0.22.24 [skip ci] (521a7f0)
+- Strip ADR refs from runtime user-facing strings (53a676b)
 ### Fixes
 
-- **bash:** Join drain goroutines before flipping bg task to terminal (91eb514)## [0.22.24] - 2026-04-28
+- **concurrency:** Join in-flight handlers + bound mergeCtx watcher (b3735cc)## [0.22.25] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.23 [skip ci] (0fac54d)
+- Strip internal doc IDs from user-facing surface (3f0c1b2)
+- **changelog:** Regenerate for v0.22.24 [skip ci] (7a7a922)
 ### Fixes
 
-- **server:** Use version.Resolved() for /v1/health + MCP serverInfo.version (f4d92c9)## [0.22.23] - 2026-04-28
+- **bash:** Join drain goroutines before flipping bg task to terminal (da0cddb)## [0.22.24] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.22 [skip ci] (154fc91)
+- **changelog:** Regenerate for v0.22.23 [skip ci] (0a53bc6)
 ### Fixes
 
-- **server:** Kill stdio update_check spam + tag transport on every server.* event (b92783b)## [0.22.22] - 2026-04-28
+- **server:** Use version.Resolved() for /v1/health + MCP serverInfo.version (7fbad05)## [0.22.23] - 2026-04-28
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.22 [skip ci] (2bb4991)
+### Fixes
+
+- **server:** Kill stdio update_check spam + tag transport on every server.* event (5af8bbc)## [0.22.22] - 2026-04-28
 
 ### Fixes
 
-- **biam:** Close broadcast-vs-unsubscribe race in WatchHub (573d9af)
+- **biam:** Close broadcast-vs-unsubscribe race in WatchHub (d39720a)
 ### Refactor
 
-- **biam:** Collapse no-op if/else in recordResult into linear flow (35ca6ff)## [0.22.21] - 2026-04-28
+- **biam:** Collapse no-op if/else in recordResult into linear flow (3733636)## [0.22.21] - 2026-04-28
 
 ### Features
 
-- **cli:** Tools list now shows the full MCP surface (dispatch, agent, task, recipe, bridge…) (4304148)## [0.22.20] - 2026-04-28
+- **cli:** Tools list now shows the full MCP surface (dispatch, agent, task, recipe, bridge…) (040d5e4)## [0.22.20] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.19 [skip ci] (049111f)
+- **changelog:** Regenerate for v0.22.19 [skip ci] (6057304)
 ### Fixes
 
-- **config:** Make telemetry default-on honest on upgrade + persist explicit opt-out (5daa42b)## [0.22.19] - 2026-04-28
+- **config:** Make telemetry default-on honest on upgrade + persist explicit opt-out (f7b03bc)## [0.22.19] - 2026-04-28
 
 ### Documentation
 
-- **readme:** Note v0.22.18 telemetry verb + e2e harness, drop done roadmap items (9e0d992)
+- **readme:** Note v0.22.18 telemetry verb + e2e harness, drop done roadmap items (6cf8afe)
 ### Features
 
-- **config:** Default telemetry on so the wizard's "pre-1.0 default = on" claim is honest (2493fcc)
-- **doctor:** Add [telemetry] section with config-vs-process drift detection (54a092e)
+- **config:** Default telemetry on so the wizard's "pre-1.0 default = on" claim is honest (3e0e628)
+- **doctor:** Add [telemetry] section with config-vs-process drift detection (5093e3e)
 ### Tests
 
-- **e2e:** Finish docker harness for `clawtool onboard --yes` (bd4e278)## [0.22.18] - 2026-04-28
+- **e2e:** Finish docker harness for `clawtool onboard --yes` (1a44f1b)## [0.22.18] - 2026-04-28
 
 ### CI
 
-- **release:** Handle goreleaser drift + concurrent-tag race in changelog regen (7278a5b)
+- **release:** Handle goreleaser drift + concurrent-tag race in changelog regen (368b5d2)
 ### Documentation
 
-- **readme:** Refresh roadmap — split shipped from pending, drop done items (51dedfb)
-- **changelog:** Regenerate for v0.22.17 [skip ci] (612c8bd)
+- **readme:** Refresh roadmap — split shipped from pending, drop done items (29769e0)
+- **changelog:** Regenerate for v0.22.17 [skip ci] (85956af)
 ### Features
 
-- **cli:** Wire `clawtool telemetry` subcommand + onboard `--yes` for unattended runs (0be7694)## [0.22.17] - 2026-04-28
+- **cli:** Wire `clawtool telemetry` subcommand + onboard `--yes` for unattended runs (843084b)## [0.22.17] - 2026-04-28
 
 ### Documentation
 
-- **cli:** Drop "Future:" section + dead "long form" hint from help (0ec89dc)## [0.22.16] - 2026-04-28
+- **cli:** Drop "Future:" section + dead "long form" hint from help (2cd9240)## [0.22.16] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.15 [skip ci] (1960b5c)
+- **changelog:** Regenerate for v0.22.15 [skip ci] (a323227)
 ### Features
 
-- **onboard:** Auto-launch from install.sh + per-step telemetry + star CTA + dashboard banner (b1fc838)## [0.22.15] - 2026-04-28
+- **onboard:** Auto-launch from install.sh + per-step telemetry + star CTA + dashboard banner (3dda6b7)## [0.22.15] - 2026-04-28
 
 ### Tests
 
-- **biam:** Also short-path the missing-socket dial test on darwin (d7eb4c6)## [0.22.14] - 2026-04-28
+- **biam:** Also short-path the missing-socket dial test on darwin (292b396)## [0.22.14] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.13 [skip ci] (30e5a64)
+- **changelog:** Regenerate for v0.22.13 [skip ci] (f1c9523)
 ### Tests
 
-- **biam:** Use /tmp-rooted sockpath helper to dodge darwin 104-byte limit (3e7e992)## [0.22.13] - 2026-04-28
+- **biam:** Use /tmp-rooted sockpath helper to dodge darwin 104-byte limit (35c52a4)## [0.22.13] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.12 [skip ci] (d17f7e7)
+- **changelog:** Regenerate for v0.22.12 [skip ci] (37de1dc)
 ### Features
 
-- **onboard:** Post-install nudges + README expansion (40c8778)## [0.22.12] - 2026-04-28
+- **onboard:** Post-install nudges + README expansion (f7f5594)## [0.22.12] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.11 [skip ci] (7bac219)
+- **changelog:** Regenerate for v0.22.11 [skip ci] (a025bd2)
 ### Features
 
-- **tui:** Orchestrator renders SystemNotification banner with 30s auto-fade (75d875c)## [0.22.11] - 2026-04-28
+- **tui:** Orchestrator renders SystemNotification banner with 30s auto-fade (bc74a16)## [0.22.11] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.10 [skip ci] (8b7da7b)
+- **changelog:** Regenerate for v0.22.10 [skip ci] (6bf14ae)
 ### Features
 
-- **cli:** Onboard wizard asks for primary CLI + drives smart defaults (0f8617a)## [0.22.10] - 2026-04-28
+- **cli:** Onboard wizard asks for primary CLI + drives smart defaults (8b4acc7)## [0.22.10] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.9 [skip ci] (fc2679c)
+- **changelog:** Regenerate for v0.22.9 [skip ci] (64f48a9)
 ### Fixes
 
-- **tui:** Orchestrator pane alignment + bound order list against snapshot floods (764a02b)## [0.22.9] - 2026-04-28
+- **tui:** Orchestrator pane alignment + bound order list against snapshot floods (449aece)## [0.22.9] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.8 [skip ci] (4fe0d59)
+- **changelog:** Regenerate for v0.22.8 [skip ci] (a5756ce)
 ### Features
 
-- **version:** Daemon-side update poller pushes inline banner via WatchHub on new release (454d092)## [0.22.8] - 2026-04-28
+- **version:** Daemon-side update poller pushes inline banner via WatchHub on new release (5fcd846)## [0.22.8] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.7 [skip ci] (99b254f)
+- **changelog:** Regenerate for v0.22.7 [skip ci] (2b70dff)
 ### Fixes
 
-- **version:** Unify Resolved() so overview / upgrade / bootstrap report the same number (3167a7f)## [0.22.7] - 2026-04-28
+- **version:** Unify Resolved() so overview / upgrade / bootstrap report the same number (cbf0a61)## [0.22.7] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.6 [skip ci] (651a232)
+- **changelog:** Regenerate for v0.22.6 [skip ci] (e412e33)
 ### Features
 
-- **plugin:** SessionStart surfaces "clawtool update available" when newer release ships (2216e97)## [0.22.6] - 2026-04-28
+- **plugin:** SessionStart surfaces "clawtool update available" when newer release ships (95e1bcf)## [0.22.6] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.5 [skip ci] (1cb5809)
+- **changelog:** Regenerate for v0.22.5 [skip ci] (cd3b7ca)
 ### Fixes
 
-- **biam:** Route `clawtool send --async` through daemon dispatch socket so frames reach the orchestrator (6979e71)## [0.22.5] - 2026-04-28
+- **biam:** Route `clawtool send --async` through daemon dispatch socket so frames reach the orchestrator (4233b20)## [0.22.5] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.4 [skip ci] (d8925c5)
+- **changelog:** Regenerate for v0.22.4 [skip ci] (4aa6958)
 ### Features
 
-- **tui:** Orchestrator Active/Done tabs + viewport-bounded sidebar; task list active-default (e54bce2)## [0.22.4] - 2026-04-28
+- **tui:** Orchestrator Active/Done tabs + viewport-bounded sidebar; task list active-default (24bc71b)## [0.22.4] - 2026-04-28
 
 ### Features
 
-- **telemetry:** Emit clawtool.install event once per fresh host (96a631a)
+- **telemetry:** Emit clawtool.install event once per fresh host (94e7048)
 ### Fixes
 
-- **biam:** Summary lifts NDJSON agent_message text instead of thread.started header (fccbea5)## [0.22.3] - 2026-04-28
+- **biam:** Summary lifts NDJSON agent_message text instead of thread.started header (6767edc)## [0.22.3] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.2 [skip ci] (2ec9f0f)
+- **changelog:** Regenerate for v0.22.2 [skip ci] (1348c67)
 ### Features
 
-- **plugin:** SessionStart auto-bootstrap hook — clawtool engages on first prompt of a fresh Claude Code session (83afb7d)## [0.22.2] - 2026-04-28
+- **plugin:** SessionStart auto-bootstrap hook — clawtool engages on first prompt of a fresh Claude Code session (9f8a0b0)## [0.22.2] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.1 [skip ci] (b752be6)
+- **changelog:** Regenerate for v0.22.1 [skip ci] (a434f5a)
 ### Features
 
-- **source:** Add `clawtool source rename` verb (alias `mv`) (2431c15)
+- **source:** Add `clawtool source rename` verb (alias `mv`) (599832e)
 ### Fixes
 
-- **tui:** Reap orphan tasks at daemon boot + drop stale snapshots from live UIs (f0105f6)## [0.22.1] - 2026-04-28
+- **tui:** Reap orphan tasks at daemon boot + drop stale snapshots from live UIs (603d9f8)## [0.22.1] - 2026-04-28
 
 ### Documentation
 
-- **changelog:** Regenerate for v0.22.0 [skip ci] (d340fd0)
+- **changelog:** Regenerate for v0.22.0 [skip ci] (189f4ad)
 ### Features
 
 - Feat(tui): orchestrator Phase 3 — live byte stream + theme + sidebar layout Phase 3. Orchestrator becomes the production "teammate panel":
@@ -956,172 +1009,172 @@ Tests:
 
 - internal/tui/orchestrator_test.go rewritten — insert / terminal-
   stamp / sweep grace window / frame appending / ringbuffer cap.
-- All packages race-clean (`go test -race ./...` green). (5e76d75)
-- **telemetry:** Expand event coverage + pre-1.0 default-on consent (bb00e1b)
-- **telemetry:** Bake cogitave PostHog defaults so opt-in Just Works (9de8e2e)
+- All packages race-clean (`go test -race ./...` green). (ded1b78)
+- **telemetry:** Expand event coverage + pre-1.0 default-on consent (1eeab6f)
+- **telemetry:** Bake cogitave PostHog defaults so opt-in Just Works (b62ed30)
 ### Tests
 
-- **biam:** Cover stream-frame broadcasting + watchsocket envelope multiplex (74b4a76)## [0.22.0] - 2026-04-28
+- **biam:** Cover stream-frame broadcasting + watchsocket envelope multiplex (c36fee7)## [0.22.0] - 2026-04-28
 
 ### CI
 
-- **integration:** Drop setup-node `cache: npm` — no lockfile in a Go repo (fd2b03e)
+- **integration:** Drop setup-node `cache: npm` — no lockfile in a Go repo (1c38e82)
 ### Chores
 
-- **rules:** Add race-clean pre_commit rule (5da4187)
-- **rules:** Add gofmt-clean pre_commit rule (9b61a38)
+- **rules:** Add race-clean pre_commit rule (98b495f)
+- **rules:** Add gofmt-clean pre_commit rule (7109335)
 ### Documentation
 
-- **changelog:** Regenerate for v0.21.7 [skip ci] (289958e)
+- **changelog:** Regenerate for v0.21.7 [skip ci] (dd2622b)
 ### Features
 
-- **tui:** Orchestrator Phase 2 — split-pane streaming TUI per dispatch (718107b)
-- **cli:** Setup wizard Phase 2 — single huh form + per-feature matrix (aa585bf)
-- **tui:** Orchestrator Phase 1 — dashboard subscribes to task-watch socket (7d5181b)
-- **cli:** Clawtool setup — unified first-run entry (Phase 1) (cbc5bda)
-- **biam:** Cross-host bidi via from_instance — codex/gemini/opencode can dispatch back (be7a5fa)
-- **biam:** Push-based task watch via Unix socket — kill the 250ms poll (592ff37)
+- **tui:** Orchestrator Phase 2 — split-pane streaming TUI per dispatch (71c0293)
+- **cli:** Setup wizard Phase 2 — single huh form + per-feature matrix (05cc27b)
+- **tui:** Orchestrator Phase 1 — dashboard subscribes to task-watch socket (57ae42e)
+- **cli:** Clawtool setup — unified first-run entry (Phase 1) (4d86e79)
+- **biam:** Cross-host bidi via from_instance — codex/gemini/opencode can dispatch back (8a7ddd1)
+- **biam:** Push-based task watch via Unix socket — kill the 250ms poll (6493ab9)
 ### Refactor
 
-- **ux:** Strip internal doc IDs from user-facing surfaces (cabd434)
+- **ux:** Strip internal doc IDs from user-facing surfaces (5e27d18)
 ### Style
 
-- Gofmt across all sources (6524b46)
+- Gofmt across all sources (c5bc32e)
 ### Tests
 
-- **biam:** Fix data race in HonoursFromInstance — submit before goroutine (59b302f)## [0.21.7] - 2026-04-28
+- **biam:** Fix data race in HonoursFromInstance — submit before goroutine (1954476)## [0.21.7] - 2026-04-28
 
 ### Chores
 
-- **release:** V0.21.7 — UX polish (overview + doctor sandbox-worker + ambiguity) (b25eed3)
+- **release:** V0.21.7 — UX polish (overview + doctor sandbox-worker + ambiguity) (d202b09)
 ### Documentation
 
-- **onboard:** Surface sandbox-worker setup hint (387e65d)
+- **onboard:** Surface sandbox-worker setup hint (1f6e3c2)
 ### Features
 
-- **cli:** `clawtool overview` — one-screen system status (ca98eb7)
-- **doctor:** Sandbox-worker section + guided agent-ambiguity error (ddeb308)## [0.21.6] - 2026-04-28
+- **cli:** `clawtool overview` — one-screen system status (e6e810b)
+- **doctor:** Sandbox-worker section + guided agent-ambiguity error (3d8d186)## [0.21.6] - 2026-04-28
 
 ### Chores
 
-- **release:** V0.21.6 — claude.ai sandbox parity (a6b841f)
+- **release:** V0.21.6 — claude.ai sandbox parity (dad6e7a)
 ### Documentation
 
-- **changelog:** Regenerate for v0.21.5 [skip ci] (9f6c33c)
+- **changelog:** Regenerate for v0.21.5 [skip ci] (4556ff0)
 ### Features
 
-- **egress:** Allowlist proxy binary (ccd809b)
-- **skill:** SkillList + SkillLoad — on-demand mount (44ee058)
-- **sandbox:** Worker phase 2 — daemon-side routing for Bash (b2f42d8)
-- **sandbox:** Worker container — claude.ai parity (cf6f2c2)
-- **doctor:** Surface daemon state (UX smoke pass #193) (68a8311)## [0.21.5] - 2026-04-27
+- **egress:** Allowlist proxy binary (abff481)
+- **skill:** SkillList + SkillLoad — on-demand mount (94afd29)
+- **sandbox:** Worker phase 2 — daemon-side routing for Bash (3f7f12f)
+- **sandbox:** Worker container — claude.ai parity (4404803)
+- **doctor:** Surface daemon state (UX smoke pass #193) (a204fef)## [0.21.5] - 2026-04-27
 
 ### Chores
 
-- **release:** V0.21.5 — Codex c1b00f10 audit fixes (security) (613e1d0)
+- **release:** V0.21.5 — Codex c1b00f10 audit fixes (security) (72cdf8c)
 ### Documentation
 
-- Clean stale "phase X lands later" comments (audit #206) (2d66cfa)
-- **changelog:** Regenerate for v0.21.4 [skip ci] (51b4362)
+- Clean stale "phase X lands later" comments (audit #206) (5c6954c)
+- **changelog:** Regenerate for v0.21.4 [skip ci] (6f99850)
 ### Features
 
-- **biam:** Runner.Cancel + true async + `clawtool task cancel` (audit #204) (98de7d0)
-- **agents:** Per-instance secrets-store env injection (audit #205) (23f4f7a)
+- **biam:** Runner.Cancel + true async + `clawtool task cancel` (audit #204) (9b5b2c9)
+- **agents:** Per-instance secrets-store env injection (audit #205) (b6c752d)
 ### Fixes
 
-- **sandbox:** Bwrap fail-closes when policy can't be enforced (audit #203) (3d60f2c)
-- **sandbox:** Per-call resolution fail-closed (audit #202) (6c8fb55)
-- **unattended:** Inject elevation flags into upstream CLI args (5ba2370)## [0.21.4] - 2026-04-27
+- **sandbox:** Bwrap fail-closes when policy can't be enforced (audit #203) (b7a4cf4)
+- **sandbox:** Per-call resolution fail-closed (audit #202) (29ebc20)
+- **unattended:** Inject elevation flags into upstream CLI args (ef7aed4)## [0.21.4] - 2026-04-27
 
 ### Chores
 
-- **release:** V0.21.4 — shared MCP fan-in + onboard wiring (b56440c)
+- **release:** V0.21.4 — shared MCP fan-in + onboard wiring (996a425)
 ### Features
 
-- **onboard:** Wire MCP host claim + add hermes detection (36ab6a0)
-- **agents:** Shared HTTP MCP fan-in via persistent daemon (codex/gemini) (b71bca5)
-- **rules:** `clawtool rules` CLI surface + RulesAdd MCP tool (7f181bc)
+- **onboard:** Wire MCP host claim + add hermes detection (54e05bf)
+- **agents:** Shared HTTP MCP fan-in via persistent daemon (codex/gemini) (dca04d5)
+- **rules:** `clawtool rules` CLI surface + RulesAdd MCP tool (a08f21a)
 ### Fixes
 
-- **tui:** Dashboard live tick + viewport-aware + plain mode (operator feedback) (0e351eb)
-- **commit:** Populate ChangedPaths from staged index before rules eval (389bbd0)## [0.21.3] - 2026-04-27
+- **tui:** Dashboard live tick + viewport-aware + plain mode (operator feedback) (ddb561d)
+- **commit:** Populate ChangedPaths from staged index before rules eval (91016b0)## [0.21.3] - 2026-04-27
 
 ### CI
 
-- Bump every action to @v6 + fix dependabot Conventional-Commits prefix (e49b589)
+- Bump every action to @v6 + fix dependabot Conventional-Commits prefix (f2bcefa)
 ### Chores
 
-- **release:** V0.21.3 — TUI dashboard + release.yml CHANGELOG fix (c3ac2ea)
+- **release:** V0.21.3 — TUI dashboard + release.yml CHANGELOG fix (0519d71)
 ### Features
 
-- **tui:** Clawtool dashboard — three-pane Bubble Tea runtime view (40ef761)
+- **tui:** Clawtool dashboard — three-pane Bubble Tea runtime view (c0a9f41)
 ### Fixes
 
-- **release:** Re-invoke git-cliff action for CHANGELOG regen step (d9f6c90)## [0.21.2] - 2026-04-27
+- **release:** Re-invoke git-cliff action for CHANGELOG regen step (326c146)## [0.21.2] - 2026-04-27
 
 ### Chores
 
-- **release:** V0.21.2 — re-tag (v0.21.1 trigger missed) (fabf572)## [0.21.1] - 2026-04-27
+- **release:** V0.21.2 — re-tag (v0.21.1 trigger missed) (8f367e4)## [0.21.1] - 2026-04-27
 
 ### Chores
 
-- **release:** V0.21.1 — CHANGELOG auto-regen + sandbox dispatch + task watch + Hermes plugin fix (2fa6416)
+- **release:** V0.21.1 — CHANGELOG auto-regen + sandbox dispatch + task watch + Hermes plugin fix (399106f)
 ### Features
 
-- **task:** `clawtool task watch` — stream BIAM transitions to Monitor (e057ba9)
-- **supervisor:** Sandbox dispatch integration (#163 closes) (0c362c4)
+- **task:** `clawtool task watch` — stream BIAM transitions to Monitor (0a134e8)
+- **supervisor:** Sandbox dispatch integration (#163 closes) (6289edc)
 ### Fixes
 
-- **surface:** Skill allowed-tools covers manifest + plugin includes hermes (abec5aa)## [0.21.0] - 2026-04-27
+- **surface:** Skill allowed-tools covers manifest + plugin includes hermes (30e14b1)## [0.21.0] - 2026-04-27
 
 ### Chores
 
-- **release:** V0.21.0 — Tool Manifest Registry + A2A phase 1 + release plumbing (dcc85ca)
+- **release:** V0.21.0 — Tool Manifest Registry + A2A phase 1 + release plumbing (cffc0e0)
 ### Features
 
-- **registry:** Step 4 — server.go flip + 30/30 tools manifest-driven (#173 closes) (1f0fb64)
-- **registry:** Step 3a — 12 individual-Register tools join the manifest (#173) (a0dccc4)
-- **registry:** Step 2 — typed manifest entries for 6 newest tools (#173) (bcf6a9e)
-- **registry:** Typed ToolSpec manifest — Step 1 of #173 (Codex's #1 ROI refactor) (8206450)
-- **a2a:** Phase 1 — Agent Card serializer + `clawtool a2a card` (c35328a)
+- **registry:** Step 4 — server.go flip + 30/30 tools manifest-driven (#173 closes) (07088e5)
+- **registry:** Step 3a — 12 individual-Register tools join the manifest (#173) (5e468c1)
+- **registry:** Step 2 — typed manifest entries for 6 newest tools (#173) (3a39206)
+- **registry:** Typed ToolSpec manifest — Step 1 of #173 (Codex's #1 ROI refactor) (d7c43db)
+- **a2a:** Phase 1 — Agent Card serializer + `clawtool a2a card` (15886c3)
 ### Tests
 
-- **version:** Release pipeline regression tests (2952842)## [0.20.2] - 2026-04-27
+- **version:** Release pipeline regression tests (5c2dc77)## [0.20.2] - 2026-04-27
 
 ### Fixes
 
-- **release:** V0.20.2 — go-selfupdate compat + retire Release Please (0f36d89)## [0.20.1] - 2026-04-27
+- **release:** V0.20.2 — go-selfupdate compat + retire Release Please (5eb52a2)## [0.20.1] - 2026-04-27
 
 ### Documentation
 
-- **readme:** Drop dead ADR links — wiki/ is gitignored (d071f3d)
+- **readme:** Drop dead ADR links — wiki/ is gitignored (6932187)
 ### Fixes
 
-- **release:** V0.20.1 — gitignore BODY.md so GoReleaser stops tripping (4b2e677)## [0.20.0] - 2026-04-27
+- **release:** V0.20.1 — gitignore BODY.md so GoReleaser stops tripping (f248236)## [0.20.0] - 2026-04-27
 
 ### CI
 
-- Bump Go to 1.26.0 (chromedp dep requires it) (4ab2eaf)
+- Bump Go to 1.26.0 (chromedp dep requires it) (6eeab84)
 ### Chores
 
-- **release:** V0.20.0 — multi-agent supervisor + checkpoint + rules + unattended (bd4a704)
+- **release:** V0.20.0 — multi-agent supervisor + checkpoint + rules + unattended (47e839b)
 ### Documentation
 
-- **readme:** Full rewrite — "Tools. Agents. Wired." tagline + complete tool table (bb3811f)
-- **plugin:** Adopt 'Tools. Agents. Wired.' tagline (1099ae5)
-- **plugin:** Refresh About — canonical tool layer + multi-agent supervisor (ee17735)
-- Three-plane feature shipping contract + SKILL.md routing map (cf43c92)
-- **http:** Add docs/http-api.md + README link — Postman & cURL recipes (c45132c)
-- **readme:** V0.14 / v0.15 surface — BIAM, bridges, send --async, worktree, upgrade (498a241)
+- **readme:** Full rewrite — "Tools. Agents. Wired." tagline + complete tool table (f2c45c8)
+- **plugin:** Adopt 'Tools. Agents. Wired.' tagline (7fedc5e)
+- **plugin:** Refresh About — canonical tool layer + multi-agent supervisor (06a004e)
+- Three-plane feature shipping contract + SKILL.md routing map (7f85235)
+- **http:** Add docs/http-api.md + README link — Postman & cURL recipes (94973e2)
+- **readme:** V0.14 / v0.15 surface — BIAM, bridges, send --async, worktree, upgrade (397bae9)
 ### Features
 
-- **unattended:** --unattended flag + per-repo trust + JSONL audit (474fa97)
-- **checkpoint:** Commit core tool — Conventional Commits + Co-Authored-By block + rules gate (a9452be)
-- **rules:** Predicate-based invariant engine + RulesCheck tool (9421e8c)
-- **bridges:** Hermes-agent — fifth supported family (NousResearch, MIT, 120K stars) (16313bf)
-- **agent:** User-defined personas — `clawtool agent new` + AgentNew tool (12c701c)
-- **biam:** TaskNotify — edge-triggered fan-in completion push (9152d3d)
-- **bash:** Background mode + BashOutput / BashKill (3e9a055)
+- **unattended:** --unattended flag + per-repo trust + JSONL audit (a094380)
+- **checkpoint:** Commit core tool — Conventional Commits + Co-Authored-By block + rules gate (7f90861)
+- **rules:** Predicate-based invariant engine + RulesCheck tool (585330d)
+- **bridges:** Hermes-agent — fifth supported family (NousResearch, MIT, 120K stars) (d7ed6d5)
+- **agent:** User-defined personas — `clawtool agent new` + AgentNew tool (f9a5da2)
+- **biam:** TaskNotify — edge-triggered fan-in completion push (ca27f0b)
+- **bash:** Background mode + BashOutput / BashKill (4b34b9e)
 - Feat(websearch): provider-neutral filter shape — domains / recency / country / topic continuation — WebSearch's last gap. Adds five
 optional MCP args that map onto Brave's native API where possible
 and fall back to local post-filtering otherwise.
@@ -1152,7 +1205,7 @@ Tests: 3 new — splitFilterList covers comma + newline + space +
 case folding; filterHitsByDomain covers include / exclude / suffix
 match; braveFreshness covers the 7 mappings + bogus input. All
 existing WebSearch tests preserved (signature update threaded
-through one mock-Brave call site). (1ea710d)
+through one mock-Brave call site). (2ae7e66)
 - Feat(v0.18.6): core tools polish phase B — Glob .gitignore + WebFetch SSRF guard (partial — Glob + WebFetch). Grep / Bash / WebSearch
 follow-ups land separately so each diff stays auditable.
 
@@ -1194,8 +1247,8 @@ WebFetch SSRF guard:
   allowPrivate=true since httptest binds 127.0.0.1.
 
 Both verified locally (clawtool's full suite race-clean) plus
-the CI Go-1.26 fix from 4ab2eaf is now green across Lint /
-ubuntu / macOS / cross-compile. (ab1647c)
+the CI Go-1.26 fix from 6eeab84 is now green across Lint /
+ubuntu / macOS / cross-compile. (9f46795)
 - Feat(v0.18.1): bwrap engine real Wrap — Profile→argv compiler + live sandbox enforcement. The bwrap adapter ships its actual Wrap() now:
 the Profile compiles into bubblewrap CLI flags, cmd.Path becomes
 the bwrap binary, the original argv lands as exec args after `--`,
@@ -1248,7 +1301,7 @@ Tests:
 
 Phase 3 deferred: --share-net + nftables egress allowlist
 (Codex flagged this as "bwrap doesn't filter; needs an
-external firewall"). Tracked in open questions. (01cd88e)
+external firewall"). Tracked in open questions. (538e5bb)
 - Feat(v0.18.4): core tools polish phase A — Read hashes, Write Read-before-Write, Edit diff. Synthesised from parallel Codex (BIAM task 6435286b)
 and Gemini (task c977810b) audits against Cursor / Cline / Aider /
 Cody best practice. Codex flagged the critical correctness point:
@@ -1308,8 +1361,8 @@ Live-tested end-to-end against built binary:
 
 Phase B (next commit): Glob .gitignore default-on, Grep context
 lines + multi-pattern, Bash background mode, WebFetch SSRF
-guard, WebSearch filters. (ec2dd44)
-- Dockerize clawtool — 15MB distroless static image + Compose stack (0713937)
+guard, WebSearch filters. (8678327)
+- Dockerize clawtool — 15MB distroless static image + Compose stack (357f889)
 - Feat(v0.18): clawtool sandbox surface + (bwrap/sandbox-exec/docker) lands. Synthesised from parallel BIAM async dispatches: Codex
 (task 4468aa25) recommended `mcp`-style noun + native-flag composition
 + BIAM cancel fix; Gemini (task 87343e0f) recommended `vault` (rejected
@@ -1370,8 +1423,8 @@ Live smoke against built binary verified the full surface:
 - wiki/decisions/020-sandbox-feature.md (accepted) — full design
   including the `[sandboxes.X.native]` sub-stanza Codex
   contributed and the BIAM cancel fix Codex flagged at
-  internal/agents/biam/runner.go:61. (8c81e37)
-- Clawtool uninstall — full footprint cleanup (ce9bed7)
+  internal/agents/biam/runner.go:61. (8463c49)
+- Clawtool uninstall — full footprint cleanup (17dc112)
 - Feat(v0.17): clawtool mcp generator — Go / Python / TypeScript scaffolds generator lands. `clawtool mcp new <name>` walks the operator
 through a huh.Form wizard (or `--yes` for defaults) and writes a real,
 compilable MCP server. Per each language adapter wraps the
@@ -1432,7 +1485,7 @@ Live smoke against built binary verified the full chain:
 Total surface: 5 CLI verbs, 5 MCP tools, 12+ unit tests, real
 end-to-end smoke. README + docs/mcp-authoring.md updated to
 "v0.17 shipped". Wiki log entry captures the design + smoke
-results. (b6a3359)
+results. (c4fc59b)
 - Feat(v0.16.4): clawtool mcp authoring noun + surface lands. `mcp` is the new authoring noun for MCP server source
 code, sister to `skill` (Agent Skills). Co-designed with Codex (task
 55a5a480) and Gemini (task 13d4ea86) in parallel BIAM async
@@ -1466,10 +1519,10 @@ post-adoption isn't free.
 - wiki/decisions/019-mcp-authoring-scaffolder.md (accepted), with
   cross-refs to / 007 / 008 / 010 / 014 / 018.
 - wiki/log.md: design synthesis captured (Codex `mcp` + Gemini
-  `forge` reviewers) plus the chromedp lesson from v0.16.3. (8301353)
-- **v0.16.3:** Portal add interactive wizard (chromedp + Chrome) (3532ffa)
-- **v0.16.2:** Portal CDP driver — Ask flow + per-portal MCP aliases (8067955)
-- **v0.16.1:** Portal feature — saved web-UI targets (0171284)
+  `forge` reviewers) plus the chromedp lesson from v0.16.3. (d4e772c)
+- **v0.16.3:** Portal add interactive wizard (chromedp + Chrome) (88c0056)
+- **v0.16.2:** Portal CDP driver — Ask flow + per-portal MCP aliases (1fdbd36)
+- **v0.16.1:** Portal feature — saved web-UI targets (480d260)
 - Feat(v0.16): BrowserFetch + BrowserScrape — Obscura-backed JS render stays untouched: browser is a Tool surface, not a Transport.
 clawtool wraps github.com/h4ckf0r0day/obscura (Apache-2.0, V8 + Chrome
 DevTools Protocol, 30 MB memory vs Chromium's 200+) per so
@@ -1499,21 +1552,21 @@ headless engine.
   from the v0.15 hero block. The cookie-driven interactive surface
   (BrowserAction, CDP-over-WebSocket) lands as a follow-up commit
   because cookie injection requires the obscura serve transport, not
-  the fetch CLI. (6cbec23)
-- **v0.15:** F5 telemetry + F6 hooks CLI + F7 process-group reaping + README (9096d7b)
-- **v0.15:** F3 hooks subsystem + F4 clawtool onboard wizard (71334d8)
-- **v0.15:** Per-instance rate limiter (F1) + clawtool upgrade subcommand (F2) (9b74041)
-- **biam:** Ship Phase 1 (async dispatch + signed envelopes + SQLite store) + 3 polish fixes (42b4889)
-- **v0.14:** T3 mem0 + T5 git-worktree isolation + T6 SemanticSearch (148f001)
-- **v0.14:** T1 OTel + T2 auto-lint + T4 Verify MCP tool (22994f7)
-- **serve:** POST /v1/recipe/apply + GET /v1/recipes + --mcp-http transport, plus claude/gemini transport fixes from live smoke (4b843ba)
-- **supervisor:** Ship Phase 4 of — dispatch policies (round-robin, failover, tag-routed) (d806663)
-- **relay:** Ship Phase 3 of — Docker image + clawtool-relay recipe (94130c2)
-- **serve:** Ship Phase 2 of — clawtool serve --listen HTTP gateway (be91f9f)
-- **agents:** Ship Phase 1 of — Transport, Supervisor, send/bridge CLI, MCP tools (c875a54)
+  the fetch CLI. (d516f89)
+- **v0.15:** F5 telemetry + F6 hooks CLI + F7 process-group reaping + README (0ee1aa4)
+- **v0.15:** F3 hooks subsystem + F4 clawtool onboard wizard (cdb7564)
+- **v0.15:** Per-instance rate limiter (F1) + clawtool upgrade subcommand (F2) (6311b21)
+- **biam:** Ship Phase 1 (async dispatch + signed envelopes + SQLite store) + 3 polish fixes (f008d78)
+- **v0.14:** T3 mem0 + T5 git-worktree isolation + T6 SemanticSearch (cce2c40)
+- **v0.14:** T1 OTel + T2 auto-lint + T4 Verify MCP tool (28b3088)
+- **serve:** POST /v1/recipe/apply + GET /v1/recipes + --mcp-http transport, plus claude/gemini transport fixes from live smoke (5857f8d)
+- **supervisor:** Ship Phase 4 of — dispatch policies (round-robin, failover, tag-routed) (a0bbc1e)
+- **relay:** Ship Phase 3 of — Docker image + clawtool-relay recipe (0a16685)
+- **serve:** Ship Phase 2 of — clawtool serve --listen HTTP gateway (54e39c5)
+- **agents:** Ship Phase 1 of — Transport, Supervisor, send/bridge CLI, MCP tools (680a22b)
 ### Fixes
 
-- **test:** Allowlist clawtool-unattended.md as CLI-verb-only (e7c3c91)
+- **test:** Allowlist clawtool-unattended.md as CLI-verb-only (82fa5f3)
 - Fix(e2e) + feat(grep): repair CI + Grep context/multi-pattern/truncation
 
 Two things in one commit because the e2e fix unblocks CI and the
@@ -1558,52 +1611,52 @@ Tests:
   return both matches.
 - TestGrep_TruncationMessageMentionsHardCap pure-function check
   that the new render footer hints at the cap.
-- All 8 Grep tests + 7 Glob tests + full suite race-clean. (c5f704f)
-- **biam:** Surface NDJSON turn.failed/error events as TaskFailed (39a3b93)
-- **v0.15:** MEDIUM polish — TaskGet/TaskWait surface MessagesFor errors; store decode failures stop silently dropping rows (758aea3)
-- **v0.15:** Polish-worker HIGH+MEDIUM batch — limiter/round-robin singleton, BIAM Close errors, identity race, secret-aware index (deb19a1)
-- **worktree:** EvalSymlinks comparison for macOS /var → /private/var (e0f2987)
-- **agents:** Codex --skip-git-repo-check + transport closes stdin explicitly (aa52402)
-- **ci:** Make e2e EXIT trap tolerate already-dead background process (4b4b269)
+- All 8 Grep tests + 7 Glob tests + full suite race-clean. (dcafc1f)
+- **biam:** Surface NDJSON turn.failed/error events as TaskFailed (9cb76e1)
+- **v0.15:** MEDIUM polish — TaskGet/TaskWait surface MessagesFor errors; store decode failures stop silently dropping rows (eb3eaab)
+- **v0.15:** Polish-worker HIGH+MEDIUM batch — limiter/round-robin singleton, BIAM Close errors, identity race, secret-aware index (6c754c8)
+- **worktree:** EvalSymlinks comparison for macOS /var → /private/var (5eb7f12)
+- **agents:** Codex --skip-git-repo-check + transport closes stdin explicitly (06d23c3)
+- **ci:** Make e2e EXIT trap tolerate already-dead background process (2aa71a9)
 ### Refactor
 
-- **portal:** Swap hand-rolled CDP for chromedp (e6af0f2)
+- **portal:** Swap hand-rolled CDP for chromedp (58aca47)
 ### Style
 
-- Gofmt -w . — fix drift in 7 files (c95a8f8)
+- Gofmt -w . — fix drift in 7 files (35dcda4)
 ### Tests
 
-- **server:** Surface drift detection — three-plane contract enforced (f96de85)
-- **portal:** Add Ask integration test (fake Browser + tagged real-Chrome) (5935e20)## [0.9.2] - 2026-04-26
+- **server:** Surface drift detection — three-plane contract enforced (1bcc678)
+- **portal:** Add Ask integration test (fake Browser + tagged real-Chrome) (bfda218)## [0.9.2] - 2026-04-26
 
 ### Chores
 
-- **main:** Release 0.9.2 (60b1e58)
+- **main:** Release 0.9.2 (9907a8a)
 ### Features
 
-- **bridges:** Scaffold bridge install recipes for codex, opencode, gemini (9fa4481)
+- **bridges:** Scaffold bridge install recipes for codex, opencode, gemini (3f3ae56)
 ### Fixes
 
-- **ci:** Install coreutils on macOS so gtimeout exists for e2e (f0fc3ca)
-- **ci:** E2e script — detect timeout vs gtimeout for macOS runners (d92106f)
-- **ci:** MacOS test failures + missing ripgrep on Ubuntu (1181728)
-- **ci:** Correct gofmt invocation in lint step (53496ea)
+- **ci:** Install coreutils on macOS so gtimeout exists for e2e (f06f1f4)
+- **ci:** E2e script — detect timeout vs gtimeout for macOS runners (1e348af)
+- **ci:** MacOS test failures + missing ripgrep on Ubuntu (0f8edbd)
+- **ci:** Correct gofmt invocation in lint step (11a8ae3)
 ### Other
 
 - Merge pull request #8 from cogitave/release-please--branches--main--components--clawtool
 
-chore(main): release 0.9.2 (644d29a)## [0.9.1] - 2026-04-26
+chore(main): release 0.9.2 (705522d)## [0.9.1] - 2026-04-26
 
 ### Chores
 
-- **main:** Release 0.9.1 (9c09b6c)
-- **main:** Release 0.9.1 (28ad4f6)
+- **main:** Release 0.9.1 (9f59be8)
+- **main:** Release 0.9.1 (b133694)
 - Chore(ci)(deps): bump googleapis/release-please-action from 4 to 5
 
 Dependabot PR. release-please-action@v5 picks up newer manifest
 schema validation + faster Conventional Commits parsing. Our
 existing config (release-please-config.json with bump-minor-pre-major
-+ bump-patch-for-minor-pre-major) is forward-compatible. (5d3f774)
++ bump-patch-for-minor-pre-major) is forward-compatible. (45bf595)
 - Chore(ci)(deps): Bump googleapis/release-please-action from 4 to 5
 
 Bumps [googleapis/release-please-action](https://github.com/googleapis/release-please-action) from 4 to 5.
@@ -1619,12 +1672,12 @@ updated-dependencies:
   update-type: version-update:semver-major
 ...
 
-Signed-off-by: dependabot[bot] <support@github.com> (4db1ea8)
+Signed-off-by: dependabot[bot] <support@github.com> (8239b1a)
 - Chore(ci)(deps): bump actions/setup-go from 5 to 6
 
 Dependabot PR. setup-go@v6 brings Go 1.22+ defaults + fixes for
 the v5 deprecated cache-key shape. No other behavioral change in
-the workflows we ship; all matrix jobs continue to use 'go-version: stable'. (bacbac4)
+the workflows we ship; all matrix jobs continue to use 'go-version: stable'. (6618458)
 - Chore(ci)(deps): Bump actions/setup-go from 5 to 6
 
 Bumps [actions/setup-go](https://github.com/actions/setup-go) from 5 to 6.
@@ -1639,10 +1692,10 @@ updated-dependencies:
   update-type: version-update:semver-major
 ...
 
-Signed-off-by: dependabot[bot] <support@github.com> (81f7952)
+Signed-off-by: dependabot[bot] <support@github.com> (f423db4)
 ### Fixes
 
-- **ci:** Vet unreachable-code + gofmt across the tree (1830ee2)## [0.9.0] - 2026-04-26
+- **ci:** Vet unreachable-code + gofmt across the tree (42467b1)## [0.9.0] - 2026-04-26
 
 ### Build
 
@@ -1650,8 +1703,8 @@ Signed-off-by: dependabot[bot] <support@github.com> (81f7952)
 - **integration:** Make integration target + nightly workflow (68f3ef9)
 ### Chores
 
-- **main:** Release 0.9.0 (33b5790)
-- **main:** Release 0.9.0 (746af63)
+- **main:** Release 0.9.0 (b6290e0)
+- **main:** Release 0.9.0 (7ac85aa)
 - **release:** Finish version sync to 0.8.6 (9f64b24)
 - **release:** Sync version refs to 0.8.6 + tighten release-please policy (2283563)
 - **repo:** Privatize wiki/.obsidian/_templates/.envrc/CLAUDE.md (4b3c1b6)
