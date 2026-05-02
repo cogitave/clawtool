@@ -135,8 +135,18 @@ func TestPoller_TelemetryFiresOnEveryTick(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
-	go p.Run(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		p.Run(ctx)
+	}()
+	// Wait for ctx to expire AND the goroutine to fully exit, so
+	// any in-flight track() call completes before the test returns.
+	// Without the second receive, the runtime panics with
+	// "Fail in goroutine after test has completed" when track()
+	// fires after the test stack has unwound.
 	<-ctx.Done()
+	<-done
 
 	if got := ticks.Load(); got < 3 {
 		t.Errorf("expected ≥3 ticks in 100ms, got %d", got)
