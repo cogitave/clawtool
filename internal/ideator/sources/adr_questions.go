@@ -119,6 +119,16 @@ func parseADRQuestions(adrPath string, r *os.File) []ideator.Idea {
 				sectionDepth = depth
 				continue
 			}
+			// `### Resolved questions` (or any depth) under an
+			// open-questions block closes the block regardless
+			// of depth — it's by convention a sibling-in-spirit
+			// even when authors nest it. Belt-and-braces with
+			// the `hasResolutionMarker` per-item filter below;
+			// either fence catches the post-2026-05-02 wave.
+			if inSection && isResolvedQuestionsHeader(trimmed) {
+				inSection = false
+				continue
+			}
 			// A deeper header inside the section is treated as a
 			// sub-section: keep inSection. Only same-or-shallower
 			// headers close the block.
@@ -132,6 +142,19 @@ func parseADRQuestions(adrPath string, r *os.File) []ideator.Idea {
 		}
 		question, ok := stripListMarker(trimmed)
 		if !ok || question == "" {
+			continue
+		}
+		// Drop items whose head bears an inline-resolution marker.
+		// After the 2026-05-02 ADR resolution wave, several ADRs
+		// keep already-answered questions in place under
+		// "## Open questions" annotated with `*Resolved.*` /
+		// `— Resolved (2026-…)` / `-- Resolved` etc. so the
+		// historical numbering stays stable. Surfacing those as
+		// fresh open questions sends the Ideator chasing
+		// ghosts. Match against the FIRST 200 chars of the item
+		// so we filter only sentence-level prominence — the word
+		// "resolved" deep inside prose is not a marker.
+		if hasResolutionMarker(question) {
 			continue
 		}
 		evidence := fmt.Sprintf("%s:%d", adrPath, lineNumber)
@@ -197,6 +220,28 @@ func isOpenQuestionsHeader(line string) bool {
 	return false
 }
 
+// isResolvedQuestionsHeader matches "## Resolved questions" /
+// "### Resolved questions" / "## Resolved Questions / Notes" /
+// any depth and any trailing qualifier. Used to close an open-
+// questions block early when the author parks resolved entries
+// under a nested sub-header rather than promoting them to a
+// sibling section. Mirrors `isOpenQuestionsHeader` style — keep
+// the two predicates symmetric so future header-shape tweaks land
+// in lockstep.
+func isResolvedQuestionsHeader(line string) bool {
+	low := strings.ToLower(strings.TrimLeft(line, "# "))
+	low = strings.TrimSpace(low)
+	if low == "resolved questions" || low == "resolved question" {
+		return true
+	}
+	for _, prefix := range []string{"resolved questions ", "resolved question "} {
+		if strings.HasPrefix(low, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // stripListMarker pulls the leading "- " / "* " / "+ " / "1. " /
 // "1) " marker off the line. Returns (body, true) when the line is
 // a list item, else (line, false). Also handles "- 1. foo" (a
@@ -238,6 +283,47 @@ func stripNumberedMarker(line string) (string, bool) {
 		return line, false
 	}
 	return line, false
+}
+
+// resolutionMarkerScanLen is the byte window at the head of a list
+// item we inspect for sentence-level resolution markers. 200 is wide
+// enough to span a `**Bold prefix** — *Resolved.*` opener (operator's
+// canonical pattern) without dragging the whole prose body in.
+const resolutionMarkerScanLen = 200
+
+// hasResolutionMarker returns true when the head of `item` carries
+// a sentence-level "this is already resolved" annotation. Matching
+// only the first 200 chars keeps the predicate honest: questions
+// that merely *mention* the word "resolved" deep in their prose
+// stay surfaced. The literal-period form `Resolved.` is required
+// for the bare-word case so a question like "Should the spec be
+// considered resolved when…" doesn't get filtered.
+//
+// Markers (any one trips the filter):
+//
+//   - `Resolved.`     — italic / inline state marker, e.g.
+//     `**Foo** — *Resolved.* explanation`
+//   - `— Resolved`    — em-dash separator, e.g.
+//     `### Foo — Resolved (2026-05-02)` content list-item form,
+//     `- **Foo? — Resolved (2026-05-02)**.`
+//   - `-- Resolved`   — double-hyphen ASCII fallback
+//   - `(Resolved 2026-` — date-anchored marker used by the wave
+//     of resolutions filed on 2026-05-02
+func hasResolutionMarker(item string) bool {
+	head := item
+	if len(head) > resolutionMarkerScanLen {
+		head = head[:resolutionMarkerScanLen]
+	}
+	if strings.Contains(head, "Resolved.") {
+		return true
+	}
+	if strings.Contains(head, "— Resolved") || strings.Contains(head, "-- Resolved") {
+		return true
+	}
+	if strings.Contains(head, "(Resolved 2026-") {
+		return true
+	}
+	return false
 }
 
 // inferADRTitle pulls a short label from the ADR filename
