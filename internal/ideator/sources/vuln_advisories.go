@@ -17,6 +17,8 @@ package sources
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -50,6 +52,19 @@ type VulnAdvisories struct {
 	// the developer's local Go install is older. Defaults to
 	// `.github/workflows/ci.yml`. Set to "" to disable.
 	WorkflowGoVersionFile string
+	// CachePath stores the most-recent raw govulncheck output. When
+	// the cache is fresher than CacheTTL AND the cache key (go.sum
+	// hash + govulncheck version) matches, Scan skips the subprocess
+	// entirely. Default `$TMPDIR/clawtool-govulncheck-cache.json`.
+	// Set to "" to disable caching.
+	CachePath string
+	// CacheTTL is how long the on-disk govulncheck output stays
+	// authoritative. Default 12h: the Go vulndb publishes daily, so
+	// 12h gives at most one stale call between db refreshes; on a
+	// slow filesystem (WSL2 /mnt/c) the win is enormous (~16s → ~0.1s).
+	CacheTTL time.Duration
+	// Now is overridable for tests; defaults to time.Now.
+	Now func() time.Time
 }
 
 // NewVulnAdvisories returns a ready-to-use vuln_advisories miner.
@@ -59,6 +74,8 @@ func NewVulnAdvisories() *VulnAdvisories {
 		Timeout:               90 * time.Second,
 		Pattern:               "./...",
 		WorkflowGoVersionFile: ".github/workflows/ci.yml",
+		CachePath:             filepath.Join(os.TempDir(), "clawtool-govulncheck-cache.json"),
+		CacheTTL:              12 * time.Hour,
 	}
 }
 
@@ -95,6 +112,10 @@ type vulnEnvelope struct {
 // against advisory metadata, and emits deduped Ideas. Empty +
 // nil error on missing binary / non-zero exit / parse failure
 // (cheap-on-fail).
+//
+// When a cache hit on the local go.sum hash is fresh enough
+// (CacheTTL), the subprocess is skipped and the cached output is
+// re-parsed — turning a 16s scan into ~50ms.
 func (v VulnAdvisories) Scan(ctx context.Context, repoRoot string) ([]ideator.Idea, error) {
 	bin := v.Binary
 	if bin == "" {
@@ -102,6 +123,16 @@ func (v VulnAdvisories) Scan(ctx context.Context, repoRoot string) ([]ideator.Id
 	}
 	if _, err := exec.LookPath(bin); err != nil {
 		return nil, nil
+	}
+	now := time.Now
+	if v.Now != nil {
+		now = v.Now
+	}
+	cacheKey := cacheKeyFor(repoRoot, bin)
+	if body, ok := v.readCache(cacheKey, now()); ok {
+		advisories, findings := parseGovulncheckStream(strings.NewReader(body))
+		workflowPin := v.readWorkflowGoVersion(repoRoot)
+		return buildVulnIdeas(advisories, findings, workflowPin), nil
 	}
 	timeout := v.Timeout
 	if timeout <= 0 {
@@ -115,19 +146,106 @@ func (v VulnAdvisories) Scan(ctx context.Context, repoRoot string) ([]ideator.Id
 	defer cancel()
 	cmd := exec.CommandContext(subCtx, bin, "-json", pattern)
 	cmd.Dir = repoRoot
-	stdout, err := cmd.StdoutPipe()
+	out, err := cmd.Output()
 	if err != nil {
-		return nil, nil
+		// Govulncheck exits non-zero on findings — that's normal,
+		// out still has the JSON body. Only treat as error when
+		// out is empty (real fault: missing module, network).
+		if len(out) == 0 {
+			return nil, nil
+		}
 	}
-	if err := cmd.Start(); err != nil {
-		return nil, nil
-	}
-	advisories, findings := parseGovulncheckStream(stdout)
-	// Drain anything left + reap. Govulncheck exits non-zero when
-	// it finds vulns; that's a normal outcome here, not an error.
-	_ = cmd.Wait()
+	advisories, findings := parseGovulncheckStream(strings.NewReader(string(out)))
+	v.writeCache(cacheKey, string(out), now())
 	workflowPin := v.readWorkflowGoVersion(repoRoot)
 	return buildVulnIdeas(advisories, findings, workflowPin), nil
+}
+
+// vulnCacheEntry is the on-disk shape. Key is the cacheKeyFor
+// fingerprint (govulncheck binary identity + go.sum hash); when
+// either changes the cache is invalidated.
+type vulnCacheEntry struct {
+	Key       string `json:"key"`
+	WrittenAt string `json:"written_at"`
+	Body      string `json:"body"`
+}
+
+// readCache returns the cached govulncheck JSON body when:
+//   - CachePath is set + readable,
+//   - the file's age is < CacheTTL,
+//   - the entry's Key matches the current cacheKey.
+//
+// Otherwise returns "", false (caller falls through to subprocess).
+func (v VulnAdvisories) readCache(cacheKey string, now time.Time) (string, bool) {
+	if v.CachePath == "" {
+		return "", false
+	}
+	body, err := os.ReadFile(v.CachePath)
+	if err != nil {
+		return "", false
+	}
+	var entry vulnCacheEntry
+	if err := json.Unmarshal(body, &entry); err != nil {
+		return "", false
+	}
+	if entry.Key != cacheKey {
+		return "", false
+	}
+	written, err := time.Parse(time.RFC3339, entry.WrittenAt)
+	if err != nil {
+		return "", false
+	}
+	ttl := v.CacheTTL
+	if ttl <= 0 {
+		ttl = 12 * time.Hour
+	}
+	if now.Sub(written) > ttl {
+		return "", false
+	}
+	return entry.Body, true
+}
+
+// writeCache persists the latest govulncheck output. Best-effort —
+// disk full, read-only fs, etc. don't fail the scan; we just lose
+// the cache hit on the next call.
+func (v VulnAdvisories) writeCache(cacheKey, body string, now time.Time) {
+	if v.CachePath == "" {
+		return
+	}
+	entry := vulnCacheEntry{
+		Key:       cacheKey,
+		WrittenAt: now.UTC().Format(time.RFC3339),
+		Body:      body,
+	}
+	enc, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(v.CachePath, enc, 0o600)
+}
+
+// cacheKeyFor fingerprints the inputs that should invalidate the
+// cache: the govulncheck binary's resolved path (so a govulncheck
+// upgrade busts) and the go.sum content hash (so a dep bump busts).
+// Empty key means "don't cache" (binary not found / go.sum missing).
+func cacheKeyFor(repoRoot, bin string) string {
+	binPath, err := exec.LookPath(bin)
+	if err != nil {
+		return ""
+	}
+	gosum, err := os.ReadFile(filepath.Join(repoRoot, "go.sum"))
+	if err != nil {
+		// Tolerate missing go.sum — still key on the binary path.
+		return "bin=" + binPath
+	}
+	sum := sha1Hex(gosum)
+	return "bin=" + binPath + " gosum=" + sum
+}
+
+// sha1Hex hashes b and returns the hex digest.
+func sha1Hex(b []byte) string {
+	sum := sha1.Sum(b)
+	return hex.EncodeToString(sum[:])
 }
 
 // readWorkflowGoVersion returns the parsed Go version from the
