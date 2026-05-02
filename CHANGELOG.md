@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.154] - 2026-05-02
+## [0.22.155] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.154 [skip ci] (5da3a8e)
+### Features
+
+- **watchers:** Clawtool watchers list/tail + autodev hook prompt visibility (d73d3fc)## [0.22.154] - 2026-05-02
 
 ### Documentation
 
