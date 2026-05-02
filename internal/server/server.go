@@ -313,6 +313,20 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 		// tool call correctly via the parent server.MCPServer; they
 		// just don't spam the daemon-only side channels.
 		if transport == "http" {
+			// Bridge WatchHub broadcasts into the per-task
+			// TaskEventBuffer that backs /v1/biam/subscribe SSE
+			// (ADR-024 Phase 4). One goroutine per daemon
+			// rewrites Task / StreamFrame into ring entries
+			// with monotonic IDs so SSE clients can resume
+			// after disconnect via Last-Event-ID. The stop func
+			// fires on ctx cancel via the goroutine spawned
+			// below.
+			go func() {
+				stopHooks := biam.WirePushHooks(ctx, biam.Watch, biam.Events)
+				<-ctx.Done()
+				stopHooks()
+			}()
+
 			// Push-based task watch — Unix socket peer of the in-process
 			// WatchHub. `clawtool task watch` dials this and ditches
 			// SQLite polling. Failures are non-fatal: watchers fall back

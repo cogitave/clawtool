@@ -33,6 +33,13 @@ var biamStore *biam.Store
 // SetBiamStore registers the process-wide BIAM store. Idempotent.
 func SetBiamStore(s *biam.Store) { biamStore = s }
 
+// BiamStore returns the process-wide BIAM store, or nil if the
+// daemon never wired one (CLI / test paths). Callers that need the
+// store for a read-only path (e.g. /v1/biam/subscribe's task-existence
+// check) consult this getter instead of importing the unexported
+// package var.
+func BiamStore() *biam.Store { return biamStore }
+
 const sendMessageBufferCapBytes = 5 * 1024 * 1024 // 5 MB cap on returned content
 
 // ── shapes ─────────────────────────────────────────────────────────

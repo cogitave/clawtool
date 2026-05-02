@@ -126,6 +126,10 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 	// Single mux entry routes all subpaths via the trailing slash.
 	mux.Handle("/v1/peers", authed(http.HandlerFunc(handlePeers)))
 	mux.Handle("/v1/peers/", authed(http.HandlerFunc(handlePeers)))
+	// /v1/biam/subscribe — SSE A2A async-push (ADR-024 Phase 4).
+	// task-scoped, with Last-Event-ID replay against the per-task
+	// ring buffer in internal/agents/biam.Events.
+	mux.Handle("/v1/biam/subscribe", authed(http.HandlerFunc(handleBIAMSubscribe)))
 
 	// Optional MCP-over-HTTP transport. Mounts the full clawtool MCP
 	// toolset (Bash, Read, Edit, SendMessage, BridgeAdd, …) at /mcp via
@@ -166,6 +170,7 @@ func ServeHTTP(ctx context.Context, opts HTTPOptions) error {
 				"POST   /v1/peers/register",
 				"POST   /v1/peers/{peer_id}/heartbeat",
 				"DELETE /v1/peers/{peer_id}",
+				"GET    /v1/biam/subscribe?task_id=<id>",
 			},
 		})
 	})
