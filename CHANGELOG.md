@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.146] - 2026-05-02
+## [0.22.147] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.146 [skip ci] (1f80624)
+### Features
+
+- **ideator:** Pr_review_pending source surfaces open PRs awaiting review (412deca)## [0.22.146] - 2026-05-02
 
 ### Documentation
 
