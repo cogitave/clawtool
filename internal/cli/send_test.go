@@ -1,6 +1,9 @@
 package cli
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestParseSendArgs_PromptCollection(t *testing.T) {
 	args, err := parseSendArgs([]string{"hello", "world"})
@@ -205,5 +208,71 @@ func TestSend_DefaultDoesNotEmitAutoClose(t *testing.T) {
 	opts := buildSendOpts(args)
 	if _, ok := opts["auto_close"]; ok {
 		t.Error(`opts["auto_close"] must be absent when --no-auto-close is not set`)
+	}
+}
+
+// TestSend_UnattendedEnvPropagation locks in the ADR-023 Q2
+// resolution: when `clawtool send --unattended` is invoked, the
+// dispatch MUST set CLAWTOOL_UNATTENDED=1 on the current process
+// env so the spawned upstream peer (codex / gemini / opencode /
+// claude) inherits unattended mode without re-acquiring consent.
+//
+// Two directions:
+//
+//  1. Flag → env: --unattended is parsed, buildSendOpts stamps
+//     CLAWTOOL_UNATTENDED=1 on os.Environ() so spawned upstreams
+//     inherit it.
+//
+//  2. Env → flag: a parent dispatch already set
+//     CLAWTOOL_UNATTENDED=1; a nested `clawtool send` (without
+//     re-passing --unattended) reads it back and stays in
+//     unattended mode. Mirrors the CLAWTOOL_AGENT precedence
+//     chain.
+func TestSend_UnattendedEnvPropagation(t *testing.T) {
+	t.Run("flag stamps env for children", func(t *testing.T) {
+		t.Setenv(EnvUnattended, "")
+		args := sendArgs{agent: "codex", prompt: "go", unattended: true}
+		_ = buildSendOpts(args)
+		if got := os.Getenv(EnvUnattended); got != "1" {
+			t.Errorf("CLAWTOOL_UNATTENDED after dispatch = %q, want %q", got, "1")
+		}
+	})
+
+	t.Run("env promotes to flag in nested call", func(t *testing.T) {
+		t.Setenv(EnvUnattended, "1")
+		args := sendArgs{agent: "codex", prompt: "go"} // no --unattended
+		promoted := resolveUnattendedFromEnv(args)
+		if !promoted.unattended {
+			t.Error("CLAWTOOL_UNATTENDED=1 in env should promote args.unattended")
+		}
+	})
+}
+
+// TestSend_UnattendedNoEnvPropagationByDefault is the negative
+// control: a vanilla `clawtool send` (no flag, no env) MUST NOT
+// stamp CLAWTOOL_UNATTENDED on the process env. Spawned upstreams
+// stay in attended (interactive-approval) mode by default.
+func TestSend_UnattendedNoEnvPropagationByDefault(t *testing.T) {
+	t.Setenv(EnvUnattended, "")
+	args := sendArgs{agent: "codex", prompt: "go"}
+	_ = buildSendOpts(args)
+	if got := os.Getenv(EnvUnattended); got == "1" {
+		t.Errorf("CLAWTOOL_UNATTENDED should stay unset for a vanilla send; got %q", got)
+	}
+}
+
+// TestSend_UnattendedRejectsNonCanonicalEnv guards against a stray
+// CLAWTOOL_UNATTENDED=0 (or "true", "yes", etc.) silently re-arming
+// unattended mode. Only the canonical "1" form promotes.
+func TestSend_UnattendedRejectsNonCanonicalEnv(t *testing.T) {
+	for _, v := range []string{"0", "true", "yes", "TRUE", "  1  ", ""} {
+		t.Run("env="+v, func(t *testing.T) {
+			t.Setenv(EnvUnattended, v)
+			args := sendArgs{agent: "codex", prompt: "go"}
+			promoted := resolveUnattendedFromEnv(args)
+			if promoted.unattended {
+				t.Errorf("non-canonical env %q should NOT promote args.unattended", v)
+			}
+		})
 	}
 }

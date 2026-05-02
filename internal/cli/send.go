@@ -200,12 +200,77 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 	return out, nil
 }
 
+// EnvUnattended is the canonical env var that mirrors `--unattended`.
+// Set to "1" by `clawtool send` whenever the dispatch is running in
+// unattended mode (flag OR env), so any nested `clawtool send` that
+// the upstream peer agent runs (codex spawning gemini, claude
+// orchestrating opencode, etc.) inherits the trust + audit context
+// without re-acquiring per-repo consent.
+//
+// Compounding-trust clamp (ADR-023): the upstream's own bridge
+// MUST NOT use this env to re-elevate to root or skip
+// user-attached confirmations. The clamp lives at the
+// cross-operator A2A boundary and is enforced by other code paths
+// — this propagation is intra-operator only (same UID, same trust
+// grant). See ADR-023 §"Q2 resolution" for the boundary rule.
+const EnvUnattended = "CLAWTOOL_UNATTENDED"
+
+// envUnattendedActive reports whether CLAWTOOL_UNATTENDED is set to
+// a truthy value ("1" / "true") in the current process env. We
+// only honour the canonical "1" form; anything else is rejected
+// so a stray `CLAWTOOL_UNATTENDED=0` from a prior session can't
+// silently re-arm the flag.
+func envUnattendedActive() bool {
+	return os.Getenv(EnvUnattended) == "1"
+}
+
+// resolveUnattendedFromEnv promotes the env-set CLAWTOOL_UNATTENDED=1
+// to the parsed sendArgs.unattended flag. This is the inbound side
+// of the propagation: a parent `clawtool send --unattended` set the
+// env on its way out (see propagateUnattendedToChildren); a nested
+// `clawtool send` invocation (without re-passing the flag) reads it
+// back here and stays in unattended mode end-to-end.
+//
+// Mirrors the CLAWTOOL_AGENT precedence pattern in
+// supervisor.resolveAgent: explicit flag wins, env is the implicit
+// fallback.
+func resolveUnattendedFromEnv(args sendArgs) sendArgs {
+	if !args.unattended && envUnattendedActive() {
+		args.unattended = true
+	}
+	return args
+}
+
+// propagateUnattendedToChildren is the outbound side: when this
+// dispatch is unattended, set CLAWTOOL_UNATTENDED=1 on the current
+// process env so every spawned upstream CLI (codex / claude /
+// gemini / opencode) inherits it via os.Environ(). The transport
+// layer's mergeEnv reads os.Environ() directly, so the env
+// reaches the child without any per-transport wiring.
+//
+// Idempotent: re-setting an already-"1" value is a no-op.
+func propagateUnattendedToChildren() {
+	_ = os.Setenv(EnvUnattended, "1")
+}
+
 // buildSendOpts translates parsed CLI args into the supervisor opts
 // map. Extracted from Send() so the unit test can assert the
 // auto_close / mode / etc. wiring without booting the supervisor /
 // daemon side-effects. Keep this in sync with the MCP
 // runSendMessage handler — both paths feed the same supervisor.
+//
+// Side effect: when args.unattended is true (set by --unattended,
+// --yolo, or CLAWTOOL_UNATTENDED=1 in the parent env via
+// resolveUnattendedFromEnv), this also stamps CLAWTOOL_UNATTENDED=1
+// on the current process env so spawned upstream CLIs inherit
+// unattended mode. The Send() trust + audit gate runs separately
+// and is the authoritative consent check; this hook only carries
+// the marker through to nested dispatches.
 func buildSendOpts(args sendArgs) map[string]any {
+	args = resolveUnattendedFromEnv(args)
+	if args.unattended {
+		propagateUnattendedToChildren()
+	}
 	opts := map[string]any{}
 	if args.session != "" {
 		opts["session_id"] = args.session
@@ -237,6 +302,15 @@ func buildSendOpts(args sendArgs) map[string]any {
 // Send routes through Supervisor.Send and streams stdout.
 func (a *App) Send(args sendArgs) error {
 	sup := agents.NewSupervisor()
+	// Promote CLAWTOOL_UNATTENDED=1 from the parent env to
+	// args.unattended BEFORE the trust gate runs. A nested
+	// `clawtool send` invoked from inside an upstream peer (codex
+	// → clawtool → claude, etc.) inherits the parent's
+	// unattended marker via this env var so the audit context
+	// stays continuous; without this hop the child would re-prompt
+	// for consent and the operator's --unattended grant would only
+	// cover the outermost call.
+	args = resolveUnattendedFromEnv(args)
 	opts := buildSendOpts(args)
 
 	// ADR-023 unattended mode: enforce trust + open audit session
