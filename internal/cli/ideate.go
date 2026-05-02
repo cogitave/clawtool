@@ -239,5 +239,6 @@ func defaultIdeatorSources() []ideator.IdeaSource {
 		sources.NewCIFailures(),
 		sources.NewManifestDrift(),
 		sources.NewBenchRegression(),
+		sources.NewDeadcodeHits(),
 	}
 }

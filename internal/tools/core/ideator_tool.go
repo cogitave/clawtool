@@ -78,7 +78,7 @@ func (r ideateResult) Render() string {
 	if len(r.PerSource) > 0 {
 		b.WriteString("  per-source: ")
 		first := true
-		for _, name := range []string{"adr_questions", "todos", "ci_failures", "manifest_drift", "bench_regression"} {
+		for _, name := range []string{"adr_questions", "todos", "ci_failures", "manifest_drift", "bench_regression", "deadcode_hits"} {
 			n, ok := r.PerSource[name]
 			if !ok {
 				continue
@@ -219,5 +219,6 @@ func defaultIdeatorSources() []ideator.IdeaSource {
 		sources.NewCIFailures(),
 		sources.NewManifestDrift(),
 		sources.NewBenchRegression(),
+		sources.NewDeadcodeHits(),
 	}
 }
