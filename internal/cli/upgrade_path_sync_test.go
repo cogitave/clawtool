@@ -34,12 +34,33 @@ func TestDiscoverPathShadows_FindsDistinctCopies(t *testing.T) {
 	}
 
 	t.Setenv("PATH", dirA+string(os.PathListSeparator)+dirB)
-	got := discoverPathShadows(primary)
+	// Resolve the primary the same way syncPathShadowsTo does — the
+	// production caller passes an EvalSymlinks-resolved path to
+	// discoverPathShadows, so the test must too. macOS tempdirs sit
+	// behind a `/var → /private/var` symlink: when the discover walk
+	// re-resolves `/var/folders/...` it gets `/private/var/folders/...`,
+	// which doesn't match an unresolved primary in the seen-set, so
+	// the primary leaks back into the result list as its own shadow.
+	primaryReal, err := filepath.EvalSymlinks(primary)
+	if err != nil {
+		t.Fatalf("EvalSymlinks primary: %v", err)
+	}
+	got := discoverPathShadows(primaryReal)
 	if len(got) != 1 {
 		t.Fatalf("got %d shadows, want 1: %v", len(got), got)
 	}
-	if got[0] != shadow {
-		t.Errorf("got %q, want %q", got[0], shadow)
+	// Compare via EvalSymlinks so the macOS `/var → /private/var`
+	// resolution doesn't cause a string-compare miss.
+	shadowReal, err := filepath.EvalSymlinks(shadow)
+	if err != nil {
+		t.Fatalf("EvalSymlinks shadow: %v", err)
+	}
+	gotReal, err := filepath.EvalSymlinks(got[0])
+	if err != nil {
+		t.Fatalf("EvalSymlinks got[0]: %v", err)
+	}
+	if gotReal != shadowReal {
+		t.Errorf("got %q, want %q", gotReal, shadowReal)
 	}
 }
 
@@ -69,7 +90,11 @@ func TestDiscoverPathShadows_DedupesSymlinks(t *testing.T) {
 	}
 
 	t.Setenv("PATH", dirReal+string(os.PathListSeparator)+dirLink)
-	got := discoverPathShadows(primary)
+	primaryReal, err := filepath.EvalSymlinks(primary)
+	if err != nil {
+		t.Fatalf("EvalSymlinks primary: %v", err)
+	}
+	got := discoverPathShadows(primaryReal)
 	if len(got) != 1 {
 		t.Fatalf("got %d shadows, want 1 (symlink-deduped): %v", len(got), got)
 	}

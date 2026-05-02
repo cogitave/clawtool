@@ -160,9 +160,17 @@ func TestPollerSlowDownExtendsInterval(t *testing.T) {
 		default:
 			// On the second poll, ensure the slow_down
 			// interval was actually honoured (~1s gap, with
-			// 200ms slack).
-			if prev > 0 && now-prev < 800 {
-				t.Errorf("slow_down ignored: gap=%dms (want >=800ms)", now-prev)
+			// 400ms slack). Tighter slack (200ms) was flaky
+			// on race-detector CI runs where goroutine
+			// scheduling delays the second poll by enough to
+			// drop the measured gap to ~795ms — well above
+			// the original PollEvery=10ms (so slow_down was
+			// honoured), but below the assertion. 600ms still
+			// proves the issuer's interval was respected
+			// (10ms PollEvery would have shown up as ~10ms,
+			// not ~600ms+).
+			if prev > 0 && now-prev < 600 {
+				t.Errorf("slow_down ignored: gap=%dms (want >=600ms)", now-prev)
 			}
 			w.Write([]byte(`{"access_token":"AT_x","token_type":"bearer"}`))
 		}
