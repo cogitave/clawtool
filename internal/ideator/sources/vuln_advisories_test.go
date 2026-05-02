@@ -79,6 +79,88 @@ func TestVulnAdvisories_MissingBinaryIsNoOp(t *testing.T) {
 	}
 }
 
+// TestVulnAdvisories_DropsStdlibFixedByWorkflowPin proves that when
+// the workflow GO_VERSION is already at-or-past the advisory's
+// fixed_version, the source drops it. This is the primary fix for
+// the "local Go is older than CI's pin → 12 ghost vulns" loop.
+func TestVulnAdvisories_DropsStdlibFixedByWorkflowPin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stub test relies on /bin/sh; skip on Windows runners")
+	}
+	dir := t.TempDir()
+
+	// Workflow pin = 1.26.2. Two advisories: one fixed in 1.26.1
+	// (covered → dropped), one fixed in 1.27.0 (not covered → kept).
+	wfDir := filepath.Join(dir, ".github", "workflows")
+	if err := os.MkdirAll(wfDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	wf := `name: CI
+on: push
+env:
+  GO_VERSION: "1.26.2"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+`
+	if err := os.WriteFile(filepath.Join(wfDir, "ci.yml"), []byte(wf), 0o644); err != nil {
+		t.Fatalf("write workflow: %v", err)
+	}
+
+	stub := filepath.Join(dir, "govulncheck")
+	body := `#!/bin/sh
+cat <<'JSON'
+{"osv":{"id":"GO-2026-COVERED","summary":"covered by pin"}}
+{"osv":{"id":"GO-2026-UNCOVERED","summary":"future fix not yet pinned"}}
+{"finding":{"osv":"GO-2026-COVERED","fixed_version":"v1.26.1","trace":[{"module":"stdlib","version":"v1.26.0"}]}}
+{"finding":{"osv":"GO-2026-UNCOVERED","fixed_version":"v1.27.0","trace":[{"module":"stdlib","version":"v1.26.0"}]}}
+JSON
+`
+	if err := os.WriteFile(stub, []byte(body), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	src := NewVulnAdvisories()
+	src.Binary = stub
+	// repoRoot=dir means readWorkflowGoVersion finds dir/.github/workflows/ci.yml.
+	ideas, err := src.Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(ideas) != 1 {
+		titles := make([]string, len(ideas))
+		for i, idea := range ideas {
+			titles[i] = idea.Title
+		}
+		t.Fatalf("Scan returned %d ideas, want 1 (covered dropped, uncovered kept): %v", len(ideas), titles)
+	}
+	if !strings.Contains(ideas[0].Title, "GO-2026-UNCOVERED") {
+		t.Errorf("surviving idea = %q, want contains GO-2026-UNCOVERED", ideas[0].Title)
+	}
+}
+
+// TestStdlibFixedByPin covers the version-comparison helper directly.
+func TestStdlibFixedByPin(t *testing.T) {
+	cases := []struct {
+		fixed, pin string
+		want       bool
+	}{
+		{"v1.26.1", "1.26.2", true},  // pin newer
+		{"v1.26.2", "1.26.2", true},  // equal
+		{"v1.27.0", "1.26.2", false}, // pin older
+		{"v1.26.0", "1.26", true},    // pin missing patch (treated as .0+)
+		{"v2.0.0", "1.99.0", false},  // major bump
+		{"go1.26.1", "1.26.2", true}, // alt prefix
+		{"", "1.26.2", false},        // unparseable fixed → fail-open
+		{"v1.26.1", "", false},       // empty pin → fail-open (caller skips)
+	}
+	for _, tc := range cases {
+		got := stdlibFixedByPin(tc.fixed, tc.pin)
+		if got != tc.want {
+			t.Errorf("stdlibFixedByPin(%q, %q) = %v, want %v", tc.fixed, tc.pin, got, tc.want)
+		}
+	}
+}
+
 // TestVulnAdvisories_SkipsFindingsWithoutModule ensures findings
 // with empty traces are skipped rather than emitting an Idea with
 // blank module evidence.

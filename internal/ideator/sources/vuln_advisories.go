@@ -20,8 +20,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,14 +42,23 @@ type VulnAdvisories struct {
 	Timeout time.Duration
 	// Pattern is the package pattern to scan; defaults to ./...
 	Pattern string
+	// WorkflowGoVersionFile points to a YAML file whose
+	// `GO_VERSION:` line is treated as the authoritative toolchain
+	// pin for stdlib advisories. When set + readable, stdlib
+	// findings whose `fixed_version` is <= the workflow pin are
+	// dropped — the published binary already runs the fix even if
+	// the developer's local Go install is older. Defaults to
+	// `.github/workflows/ci.yml`. Set to "" to disable.
+	WorkflowGoVersionFile string
 }
 
 // NewVulnAdvisories returns a ready-to-use vuln_advisories miner.
 func NewVulnAdvisories() *VulnAdvisories {
 	return &VulnAdvisories{
-		Binary:  "govulncheck",
-		Timeout: 90 * time.Second,
-		Pattern: "./...",
+		Binary:                "govulncheck",
+		Timeout:               90 * time.Second,
+		Pattern:               "./...",
+		WorkflowGoVersionFile: ".github/workflows/ci.yml",
 	}
 }
 
@@ -114,7 +126,40 @@ func (v VulnAdvisories) Scan(ctx context.Context, repoRoot string) ([]ideator.Id
 	// Drain anything left + reap. Govulncheck exits non-zero when
 	// it finds vulns; that's a normal outcome here, not an error.
 	_ = cmd.Wait()
-	return buildVulnIdeas(advisories, findings), nil
+	workflowPin := v.readWorkflowGoVersion(repoRoot)
+	return buildVulnIdeas(advisories, findings, workflowPin), nil
+}
+
+// readWorkflowGoVersion returns the parsed Go version from the
+// configured workflow file (e.g. "1.26.2"), or empty when the file
+// is missing / unset / unparsable. Empty string disables the filter.
+func (v VulnAdvisories) readWorkflowGoVersion(repoRoot string) string {
+	path := v.WorkflowGoVersionFile
+	if path == "" {
+		return ""
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(repoRoot, path)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		// Match `  GO_VERSION: "1.26.2"` (any whitespace, optional
+		// quotes). Workflow files canonicalise to this shape.
+		trim := strings.TrimSpace(line)
+		if !strings.HasPrefix(trim, "GO_VERSION:") {
+			continue
+		}
+		val := strings.TrimSpace(strings.TrimPrefix(trim, "GO_VERSION:"))
+		val = strings.Trim(val, `"' `)
+		if val == "" {
+			continue
+		}
+		return val
+	}
+	return ""
 }
 
 // parseGovulncheckStream reads the JSON stream and returns the
@@ -143,7 +188,13 @@ func parseGovulncheckStream(r io.Reader) (map[string]vulnOSV, []vulnFinding) {
 // buildVulnIdeas joins findings to advisories and dedupes
 // by (osv, module). Returns ideas in stable order: highest
 // priority first, then by osv id ascending.
-func buildVulnIdeas(advisories map[string]vulnOSV, findings []vulnFinding) []ideator.Idea {
+//
+// workflowGoPin (e.g. "1.26.2") is the authoritative toolchain
+// version baked into CI; when set, stdlib findings whose
+// `fixed_version` is <= workflowGoPin are dropped — the published
+// binary already runs the fix even if the developer's local Go is
+// older. Empty string disables the filter.
+func buildVulnIdeas(advisories map[string]vulnOSV, findings []vulnFinding, workflowGoPin string) []ideator.Idea {
 	type key struct {
 		osv    string
 		module string
@@ -153,6 +204,9 @@ func buildVulnIdeas(advisories map[string]vulnOSV, findings []vulnFinding) []ide
 	for _, f := range findings {
 		module := primaryModule(f)
 		if module == "" {
+			continue
+		}
+		if module == "stdlib" && workflowGoPin != "" && stdlibFixedByPin(f.FixedVersion, workflowGoPin) {
 			continue
 		}
 		k := key{osv: f.OSV, module: module}
@@ -211,6 +265,60 @@ func primaryModule(f vulnFinding) string {
 		return ""
 	}
 	return f.Trace[0].Module
+}
+
+// stdlibFixedByPin returns true when the workflow Go pin already
+// covers the advisory's fixed version. Both arguments use Go's
+// standard "X.Y" / "X.Y.Z" / "vX.Y.Z" shape; we strip the leading
+// "v" and "go" prefixes and compare element-by-element. False
+// (don't drop) on any parse error so we fail open.
+func stdlibFixedByPin(fixed, pin string) bool {
+	a := parseGoVersion(fixed)
+	b := parseGoVersion(pin)
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		var av, bv int
+		if i < len(a) {
+			av = a[i]
+		}
+		if i < len(b) {
+			bv = b[i]
+		}
+		if bv > av {
+			return true
+		}
+		if bv < av {
+			return false
+		}
+	}
+	return true // equal counts as fixed
+}
+
+// parseGoVersion turns "1.26.2" / "v1.26.2" / "go1.26" into
+// []int{1,26,2}. Returns nil on parse failure.
+func parseGoVersion(v string) []int {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "go")
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ".")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		// Drop pre-release suffix: "1.26.0-rc1" → "1.26.0".
+		if idx := strings.IndexAny(p, "-+"); idx >= 0 {
+			p = p[:idx]
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return nil
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // priorityForVuln returns the SuggestedPriority. Stdlib vulns get
