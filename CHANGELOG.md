@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.152] - 2026-05-02
+## [0.22.153] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.152 [skip ci] (d029018)
+### Features
+
+- **autodev:** Stop-hook self-trigger loop — never wait for re-prompts again (7b1ae4b)## [0.22.152] - 2026-05-02
 
 ### Refactor
 
