@@ -53,6 +53,14 @@ var defaultSkipPathFragments = []string{
 	"/.git/",
 	"/wiki/",
 	"/testdata/",
+	// Editor / language-server transient backup dirs. These hold
+	// the IDE's own undo history snapshots — every saved file
+	// shows up here as `daGM.go` / `moFq.go` / etc., re-surfacing
+	// the same TODO comments forever as the operator types.
+	"/.antigravity-server/",
+	"/.vscode-server/",
+	"/.cursor-server/",
+	"/.idea/",
 }
 
 // NewTODOs returns a ready-to-use TODO/FIXME/XXX miner with sane
@@ -62,7 +70,7 @@ func NewTODOs() *TODOs {
 	copy(frags, defaultSkipPathFragments)
 	return &TODOs{
 		MaxIdeas:          50,
-		SkipDirs:          []string{".git", "vendor", "node_modules", ".clawtool", "dist", "bin", "wiki", "testdata"},
+		SkipDirs:          []string{".git", "vendor", "node_modules", ".clawtool", "dist", "bin", "wiki", "testdata", ".antigravity-server", ".vscode-server", ".cursor-server", ".idea"},
 		SkipPathFragments: frags,
 	}
 }
