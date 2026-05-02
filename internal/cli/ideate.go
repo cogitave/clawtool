@@ -86,6 +86,8 @@ Sources:
   manifest_drift    MCP tool description vs registered description.
   bench_regression  ToolSearch BM25 rank-1 hit-rate baseline diff.
   deps_outdated     Outdated Go module dependencies (go list -m -u).
+  vuln_advisories   Go security advisories (govulncheck -json ./...).
+  stale_files       .go files untouched > N days (heuristic review).
 
 Stack:
   ideate → autopilot accept → autopilot next → autonomous
@@ -245,5 +247,7 @@ func defaultIdeatorSources() []ideator.IdeaSource {
 		sources.NewBenchRegression(),
 		sources.NewDeadcodeHits(),
 		sources.NewDepsOutdated(),
+		sources.NewVulnAdvisories(),
+		sources.NewStaleFiles(),
 	}
 }
