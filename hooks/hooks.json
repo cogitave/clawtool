@@ -21,6 +21,11 @@
             "type": "command",
             "command": "clawtool peer heartbeat --status online",
             "timeout": 2
+          },
+          {
+            "type": "command",
+            "command": "clawtool autodev hook",
+            "timeout": 5
           }
         ]
       }

@@ -206,10 +206,12 @@ func TestSurfaceDrift_SlashCommandsHaveBackingTool(t *testing.T) {
 		// each already in surfaceAllowlist as agent-facing primitives;
 		// the slash command names use the user-facing CLI verb so the
 		// stems don't camelToKebab-match the MCP tool names.
-		"clawtool-init.md":       true, // CLI verb — `clawtool init [--all] [--summary-json]` (MCP peer: InitApply)
-		"clawtool-onboard.md":    true, // CLI verb — `clawtool onboard [--yes] [--force]` (MCP peer: OnboardWizard / OnboardStatus)
-		"clawtool-bootstrap.md":  true, // CLI verb — `clawtool bootstrap` spawns a peer that drives Onboard+Init via MCP. No MCP-tool counterpart by design.
-		"clawtool-autonomous.md": true, // CLI verb — `clawtool autonomous "<goal>"` (MCP peer: AutonomousRun; verb stem is `autonomous`, tool stem is `autonomous-run`)
+		"clawtool-init.md":          true, // CLI verb — `clawtool init [--all] [--summary-json]` (MCP peer: InitApply)
+		"clawtool-onboard.md":       true, // CLI verb — `clawtool onboard [--yes] [--force]` (MCP peer: OnboardWizard / OnboardStatus)
+		"clawtool-bootstrap.md":     true, // CLI verb — `clawtool bootstrap` spawns a peer that drives Onboard+Init via MCP. No MCP-tool counterpart by design.
+		"clawtool-autonomous.md":    true, // CLI verb — `clawtool autonomous "<goal>"` (MCP peer: AutonomousRun; verb stem is `autonomous`, tool stem is `autonomous-run`)
+		"clawtool-autodev-start.md": true, // CLI verb — `clawtool autodev start`. Stop-hook self-trigger arming; runtime-mode toggle, no MCP-tool counterpart by design (the hook itself runs `clawtool autodev hook`).
+		"clawtool-autodev-stop.md":  true, // CLI verb — `clawtool autodev stop`. Stop-hook self-trigger disarming; counterpart of -start.
 
 		// APM / Archon imports. These are CLI-only surfaces today;
 		// phase-2 work will add MCP-tool peers.

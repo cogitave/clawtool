@@ -278,6 +278,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runAutopilot(argv[1:])
 	case "ideate":
 		return a.runIdeate(argv[1:])
+	case "autodev":
+		return a.runAutodev(argv[1:])
 	case "fanout":
 		return a.runFanout(argv[1:])
 	case "worktree":
