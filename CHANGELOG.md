@@ -4,7 +4,18 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.142] - 2026-05-02
+## [0.22.144] - 2026-05-02
+
+### Fixes
+
+- **ideator:** Vuln_advisories drops stdlib findings covered by workflow GO_VERSION pin (bf07bc0)## [0.22.143] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.142 [skip ci] (b95194e)
+### Performance
+
+- **ideator:** Bound source concurrency to MaxConcurrency (default 4) (bee01b8)## [0.22.142] - 2026-05-02
 
 ### Documentation
 
