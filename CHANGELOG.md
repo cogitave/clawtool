@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.153] - 2026-05-02
+## [0.22.154] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.153 [skip ci] (5738f08)
+### Features
+
+- **autodev:** MCP tools (AutodevStart/Stop/Status) — chat-callable parity (ec76e65)## [0.22.153] - 2026-05-02
 
 ### Documentation
 
