@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.120] - 2026-05-02
+## [0.22.121] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.120 [skip ci] (651d851)
+### Fixes
+
+- **ideator:** Filter superseded CI runs, vendored paths, broken ADR parser (dc8add8)## [0.22.120] - 2026-05-02
 
 ### Documentation
 
