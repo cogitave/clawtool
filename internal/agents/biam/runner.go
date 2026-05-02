@@ -116,7 +116,29 @@ func (r *Runner) Submit(ctx context.Context, instance, prompt string, opts map[s
 		}
 	}
 
-	env := NewEnvelope(from, to, "", KindPrompt, Body{Text: prompt})
+	body := Body{Text: prompt}
+	// ADR-014 Phase 4 (2026-05-02): record the operator-curated
+	// tool subset on the envelope so the dispatch's audit trail
+	// reflects which clawtool MCP tools the upstream peer was
+	// authorised to surface. Validated upstream by SendMessage's
+	// parseToolsSubsetArg before reaching here. Per-bridge
+	// upstream-side `tools/list` filtering is wired progressively;
+	// the envelope persists the intent regardless.
+	if v, ok := opts["tools_subset"].([]string); ok && len(v) > 0 {
+		body.Extras = map[string]any{"tools_subset": append([]string(nil), v...)}
+	} else if v, ok := opts["tools_subset"].([]any); ok && len(v) > 0 {
+		ss := make([]string, 0, len(v))
+		for _, x := range v {
+			if s, ok := x.(string); ok && strings.TrimSpace(s) != "" {
+				ss = append(ss, s)
+			}
+		}
+		if len(ss) > 0 {
+			body.Extras = map[string]any{"tools_subset": ss}
+		}
+	}
+
+	env := NewEnvelope(from, to, "", KindPrompt, body)
 	if err := env.Sign(r.identity); err != nil {
 		return "", err
 	}

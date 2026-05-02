@@ -153,6 +153,10 @@ func RegisterAgentTools(s *server.MCPServer) {
 				mcp.Description("Caller's a2a peer_id. Used by peer-prefer to skip self-dispatch (we won't route a prompt back to the peer that sent it). Empty = no anti-self check; usually fine.")),
 			mcp.WithBoolean("auto_close",
 				mcp.Description("Per-task auto-close override for the resolved peer's tmux pane. Default true: when this dispatch lands in an auto-spawned pane and the task hits a terminal status, clawtool closes the pane. Pass false to pin the pane for this specific task — the lifecycle hook never sees a link for this task_id, so the pane stays alive for inspection or re-use by a follow-up dispatch. Has no effect on user-attached panes (they're never auto-closed regardless).")),
+			mcp.WithArray("tools",
+				mcp.Description("Optional curated subset of clawtool MCP tool names (e.g. [\"Bash\",\"Read\",\"Grep\"]) to surface to the upstream peer's MCP namespace for this dispatch only. Empty / absent (default) = upstream sees its usual full tools/list with no filtering. Names are validated against the local registry; an unknown name fails the call BEFORE dispatch. Phase 4 in-band wiring: the subset is attached to the BIAM envelope's body.extras.tools_subset and threaded through opts; upstream-side tools/list filtering is wired progressively (per-bridge), so today this primarily records the operator's intent in the envelope audit trail."),
+				mcp.Items(map[string]any{"type": "string"}),
+			),
 		),
 		runSendMessage,
 	)
@@ -202,6 +206,18 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	_, autoCloseSet := req.GetArguments()["auto_close"]
 	autoClose := req.GetBool("auto_close", true)
 
+	// ADR-014 §Resolved (2026-05-02) Phase 4: explicit opt-in
+	// curated tool subset. Validated against the local registry
+	// BEFORE dispatch so a typo'd name surfaces here, not as a
+	// silent missing-tool on the upstream side. Empty / absent
+	// (default) = no filtering, full back-compat.
+	toolsSubset, terr := parseToolsSubsetArg(req.GetArguments()["tools"])
+	if terr != nil {
+		out := sendMessageResult{BaseResult: BaseResult{Operation: "SendMessage", Engine: "supervisor"}}
+		out.ErrorReason = terr.Error()
+		return resultOf(out), nil
+	}
+
 	start := time.Now()
 	out := sendMessageResult{BaseResult: BaseResult{Operation: "SendMessage", Engine: "supervisor"}}
 
@@ -249,6 +265,9 @@ func runSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 	if autoCloseSet {
 		opts["auto_close"] = autoClose
+	}
+	if len(toolsSubset) > 0 {
+		opts["tools_subset"] = toolsSubset
 	}
 
 	if bidi {
@@ -328,6 +347,53 @@ func runAgentList(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResu
 	out.Agents = all
 	out.DurationMs = time.Since(start).Milliseconds()
 	return resultOf(out), nil
+}
+
+// parseToolsSubsetArg coerces the SendMessage `tools` MCP argument
+// into a validated []string. Empty / absent (nil) returns (nil, nil)
+// — back-compat default. Each name is validated against the local
+// BuildManifest() registry; an unknown name returns an error
+// listing the closest known names so the operator's typo is
+// obvious. ADR-014 Phase 4 (2026-05-02): explicit opt-in subset
+// forwarding to the upstream's MCP namespace.
+func parseToolsSubsetArg(raw any) ([]string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	arr, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("tools: expected array, got %T", raw)
+	}
+	if len(arr) == 0 {
+		return nil, nil
+	}
+	known := map[string]struct{}{}
+	for _, n := range BuildManifest().Names() {
+		known[n] = struct{}{}
+	}
+	out := make([]string, 0, len(arr))
+	seen := map[string]bool{}
+	for i, v := range arr {
+		s, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("tools[%d]: expected string, got %T", i, v)
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil, fmt.Errorf("tools[%d]: empty string", i)
+		}
+		if _, ok := known[s]; !ok {
+			return nil, fmt.Errorf(
+				"tools[%d]: unknown tool name %q — must be one of the local registry's MCP tools (run AgentList? no — see ToolSearch / `clawtool tools list`)",
+				i, s)
+		}
+		if seen[s] {
+			continue // de-dup quietly
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 // readCapped reads up to cap bytes from r. Returns the slice + a

@@ -204,6 +204,16 @@ type sendArgs struct {
 	// opts["unsafe_yes"]=true so MCP / async / in-process
 	// callers see the same shape.
 	unsafeYes bool
+
+	// toolsSubset is the ADR-014 Phase 4 (2026-05-02) curated
+	// MCP tool whitelist forwarded to the upstream peer. Mirrors
+	// the SendMessage MCP `tools` argument: empty / nil = upstream
+	// sees its full tools/list (back-compat default); non-empty
+	// names are validated against the local registry by the
+	// supervisor / MCP handler before dispatch. Threaded through
+	// supervisor opts as `tools_subset` so the BIAM envelope's
+	// body.extras records the operator's intent.
+	toolsSubset []string
 }
 
 func parseSendArgs(argv []string) (sendArgs, error) {
@@ -283,6 +293,23 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 			// to that profile is refused. Default off; the
 			// gate is fail-closed.
 			out.unsafeYes = true
+		case "--tools":
+			// ADR-014 Phase 4 (2026-05-02): comma-separated
+			// curated MCP tool subset forwarded to the
+			// upstream peer's namespace for THIS dispatch.
+			// Mirrors the SendMessage MCP `tools` arg.
+			// Validation happens in the supervisor / MCP
+			// handler against the local registry; here we
+			// only split + trim.
+			if i+1 >= len(argv) {
+				return out, fmt.Errorf("--tools requires a comma-separated value")
+			}
+			for _, raw := range strings.Split(argv[i+1], ",") {
+				if t := strings.TrimSpace(raw); t != "" {
+					out.toolsSubset = append(out.toolsSubset, t)
+				}
+			}
+			i++
 		case "--async":
 			out.async = true
 		case "--wait":
@@ -415,6 +442,15 @@ func buildSendOpts(args sendArgs) map[string]any {
 		// through JSON, but the CLI emits the typed shape
 		// directly.
 		opts["unsafe_yes"] = true
+	}
+	if len(args.toolsSubset) > 0 {
+		// ADR-014 Phase 4 (2026-05-02): forward the curated
+		// tool subset to the upstream peer's MCP namespace.
+		// Validation against the local registry happens in
+		// the MCP runSendMessage / supervisor entry; the
+		// runner attaches the resolved []string to the BIAM
+		// envelope's body.extras.tools_subset.
+		opts["tools_subset"] = append([]string(nil), args.toolsSubset...)
 	}
 	return opts
 }
