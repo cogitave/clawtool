@@ -23,6 +23,11 @@ import (
 	"github.com/cogitave/clawtool/internal/ideator"
 )
 
+// utf8BOM is the byte-order-mark editors prepend to UTF-8 files.
+// Built from raw bytes so the source file itself doesn't trip Go's
+// "illegal byte order mark" lexer guard.
+var utf8BOM = string([]byte{0xEF, 0xBB, 0xBF})
+
 // ADRQuestions implements IdeaSource. Construct via NewADRQuestions.
 type ADRQuestions struct{}
 
@@ -79,21 +84,47 @@ func (a ADRQuestions) Scan(ctx context.Context, repoRoot string) ([]ideator.Idea
 // parseADRQuestions does the line-by-line section detection. Split
 // out so unit tests can drive it with strings.NewReader without a
 // real file.
+//
+// Section tracking is "depth-aware": entering an `## Open questions`
+// section keeps `inSection` true through any deeper subheader
+// (`###`, `####`, …). It resets only when a header at the same or
+// shallower depth fires — that's the next sibling section. Without
+// this, real-world ADRs that nest a sub-header inside the open
+// questions block (e.g. ADR-035 puts each layer under its own
+// `### Layer 1 — ...`) silently emit zero questions.
 func parseADRQuestions(adrPath string, r *os.File) []ideator.Idea {
 	var (
-		ideas      []ideator.Idea
-		inSection  bool
-		lineNumber int
-		title      = inferADRTitle(adrPath)
+		ideas        []ideator.Idea
+		inSection    bool
+		sectionDepth int // # count of the header that opened the section
+		lineNumber   int
+		title        = inferADRTitle(adrPath)
 	)
 	scan := bufio.NewScanner(r)
 	scan.Buffer(make([]byte, 0, 4096), 1<<20)
 	for scan.Scan() {
 		lineNumber++
 		line := scan.Text()
+		// Strip a leading UTF-8 BOM on the very first line — editors
+		// / Windows tools sometimes save .md files with one and the
+		// unstripped BOM made the header detection silently miss the
+		// first header.
+		if lineNumber == 1 {
+			line = strings.TrimPrefix(line, utf8BOM)
+		}
 		trimmed := strings.TrimSpace(line)
-		if isHeader(trimmed) {
-			inSection = isOpenQuestionsHeader(trimmed)
+		if depth := headerDepth(trimmed); depth > 0 {
+			if isOpenQuestionsHeader(trimmed) {
+				inSection = true
+				sectionDepth = depth
+				continue
+			}
+			// A deeper header inside the section is treated as a
+			// sub-section: keep inSection. Only same-or-shallower
+			// headers close the block.
+			if inSection && depth <= sectionDepth {
+				inSection = false
+			}
 			continue
 		}
 		if !inSection {
@@ -122,30 +153,77 @@ func parseADRQuestions(adrPath string, r *os.File) []ideator.Idea {
 	return ideas
 }
 
-// isHeader detects any markdown header (one or more `#`).
-func isHeader(line string) bool {
-	return strings.HasPrefix(line, "#")
+// headerDepth returns the number of leading `#` characters on the
+// line (1 for `# Foo`, 2 for `## Bar`, …). Returns 0 when the line
+// is not an ATX header — guards against e.g. fenced code blocks
+// containing `# comment` lines.
+func headerDepth(line string) int {
+	depth := 0
+	for depth < len(line) && line[depth] == '#' {
+		depth++
+	}
+	if depth == 0 {
+		return 0
+	}
+	// ATX headers require a space (or newline / EOF) after the
+	// hashes. `#tag` is not a header.
+	if depth < len(line) && line[depth] != ' ' && line[depth] != '\t' {
+		return 0
+	}
+	return depth
 }
 
 // isOpenQuestionsHeader matches "## Open questions" /
-// "### Open Questions" / etc, case-insensitive.
+// "### Open Questions" / "## Open Questions / Risks" / etc.
+// Case-insensitive; permissive about trailing qualifiers because
+// real ADRs use them ("Open questions (deferred)", "Open
+// observations", "Open questions / risks").
 func isOpenQuestionsHeader(line string) bool {
 	low := strings.ToLower(strings.TrimLeft(line, "# "))
 	low = strings.TrimSpace(low)
-	return low == "open questions" || low == "open question"
+	if low == "open questions" || low == "open question" {
+		return true
+	}
+	// Match "open questions <suffix>" — e.g. "open questions /
+	// risks", "open questions (deferred)", "open questions —
+	// 2026-04". The suffix must start with a word-boundary
+	// character so we don't accidentally swallow "open
+	// questionsworth" — vanishingly unlikely but cheap to guard.
+	for _, prefix := range []string{"open questions ", "open question "} {
+		if strings.HasPrefix(low, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
-// stripListMarker pulls the leading "- " / "* " / "1. " marker off
-// the line. Returns (body, true) when the line is a list item, else
-// (line, false).
+// stripListMarker pulls the leading "- " / "* " / "+ " / "1. " /
+// "1) " marker off the line. Returns (body, true) when the line is
+// a list item, else (line, false). Also handles "- 1. foo" (a
+// numbered item nested inside a bulleted list — the leading bullet
+// is stripped first, then the numbered marker).
 func stripListMarker(line string) (string, bool) {
-	switch {
-	case strings.HasPrefix(line, "- "):
-		return strings.TrimSpace(strings.TrimPrefix(line, "- ")), true
-	case strings.HasPrefix(line, "* "):
-		return strings.TrimSpace(strings.TrimPrefix(line, "* ")), true
+	// Bulleted list — "- foo", "* foo", "+ foo".
+	for _, marker := range []string{"- ", "* ", "+ "} {
+		if strings.HasPrefix(line, marker) {
+			body := strings.TrimSpace(strings.TrimPrefix(line, marker))
+			// Permit "- 1. foo" / "- 1) foo" by recursively
+			// stripping a numbered marker from the inner body.
+			if inner, ok := stripNumberedMarker(body); ok {
+				return inner, true
+			}
+			return body, true
+		}
 	}
-	// Numbered list: "1. ..." / "12. ..."
+	if inner, ok := stripNumberedMarker(line); ok {
+		return inner, true
+	}
+	return line, false
+}
+
+// stripNumberedMarker peels "1. foo" / "12) foo" off the front of
+// the line. Returns (body, true) when matched, else (line, false).
+func stripNumberedMarker(line string) (string, bool) {
 	for i, r := range line {
 		if r >= '0' && r <= '9' {
 			continue
@@ -153,8 +231,8 @@ func stripListMarker(line string) (string, bool) {
 		if i == 0 {
 			return line, false
 		}
-		// First non-digit must be ". " for it to qualify.
-		if r == '.' && i+1 < len(line) && line[i+1] == ' ' {
+		// First non-digit must be "." or ")" followed by a space.
+		if (r == '.' || r == ')') && i+1 < len(line) && (line[i+1] == ' ' || line[i+1] == '\t') {
 			return strings.TrimSpace(line[i+2:]), true
 		}
 		return line, false

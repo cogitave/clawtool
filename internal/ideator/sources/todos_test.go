@@ -94,6 +94,59 @@ func TestTODOs_RespectsMaxIdeas(t *testing.T) {
 	}
 }
 
+// TestTodos_SkipsVendoredAndCachePaths exercises the path-fragment
+// exclusion list added in v0.22.120. Operator reported leakage from
+// Go module cache (`go/pkg/mod/...`), Claude Code plugin cache
+// (`.claude/plugins/...`), Obsidian wiki, and node_modules when
+// `clawtool ideate` was run from $HOME. Walker must drop those
+// branches and only return TODOs from real source paths.
+func TestTodos_SkipsVendoredAndCachePaths(t *testing.T) {
+	root := t.TempDir()
+
+	type fixture struct {
+		rel  string
+		body string
+	}
+	fixtures := []fixture{
+		{"go/pkg/mod/github.com/!masterminds/semver/foo.go", "package foo\n// TODO leaked module-cache TODO\n"},
+		{".claude/plugins/marketplaces/clawtool-marketplace/x.go", "package x\n// TODO leaked plugin-install TODO\n"},
+		{".claude/plugins/cache/clawtool-marketplace/clawtool/0.21.3/y.go", "package y\n// TODO leaked plugin-cache TODO\n"},
+		{"vendor/example.com/foo/bar.go", "package bar\n// TODO leaked vendor TODO\n"},
+		{"node_modules/some-pkg/index.go", "package idx\n// TODO leaked node_modules TODO\n"},
+		{"wiki/decisions/035-foo.go", "package wiki\n// TODO leaked wiki TODO\n"},
+		// Real source — must surface.
+		{"internal/cli/x.go", "package cli\n// TODO real source TODO\n"},
+	}
+	for _, f := range fixtures {
+		full := filepath.Join(root, f.rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(full), err)
+		}
+		if err := os.WriteFile(full, []byte(f.body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", full, err)
+		}
+	}
+
+	src := NewTODOs()
+	ideas, err := src.Scan(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(ideas) != 1 {
+		titles := make([]string, len(ideas))
+		for i, idea := range ideas {
+			titles[i] = idea.Title + " @ " + idea.Evidence
+		}
+		t.Fatalf("Scan returned %d ideas, want 1: %v", len(ideas), titles)
+	}
+	if !strings.Contains(ideas[0].Evidence, "internal/cli/x.go") {
+		t.Fatalf("surviving idea evidence = %q, want contains internal/cli/x.go", ideas[0].Evidence)
+	}
+	if strings.Contains(ideas[0].Title, "leaked") {
+		t.Fatalf("leaked TODO surfaced: %q", ideas[0].Title)
+	}
+}
+
 // itoa is a tiny helper so the test stays free of strconv.
 func itoa(n int) string {
 	if n == 0 {

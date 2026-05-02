@@ -5,6 +5,12 @@
 // emits one Idea per failed run. Falls back to a quiet no-op when
 // the gh CLI isn't installed or unauthenticated — the spec calls
 // this a cheap-on-fail signal, not a hard requirement.
+//
+// Superseded-run filter: a failed run is dropped from the result set
+// when EITHER (a) its head sha is more than MaxCommitsBehind commits
+// behind the current branch tip, OR (b) the same workflow has had a
+// later successful run on the same branch. Both probes use `gh` so
+// they share the same auth + cheap-on-fail story as the main query.
 package sources
 
 import (
@@ -14,6 +20,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cogitave/clawtool/internal/ideator"
@@ -29,15 +37,29 @@ type CIFailures struct {
 	GHBinary string
 	// Timeout caps the gh subprocess (default 10s).
 	Timeout time.Duration
+	// MaxCommitsBehind drops failures whose head sha is more than
+	// this many commits behind the current branch tip (default 20).
+	// Set to 0 to disable the distance probe.
+	MaxCommitsBehind int
+	// GitBinary lets tests inject a stub `git`; defaults to "git".
+	// Used by the distance probe (`git rev-list --count A..HEAD`).
+	GitBinary string
+	// SkipSupersededByGreen toggles the per-workflow "later green
+	// run" probe. Default true. Tests that don't want to stub gh's
+	// success query can disable it.
+	SkipSupersededByGreen bool
 }
 
 // NewCIFailures returns a ready-to-use ci_failures miner.
 func NewCIFailures() *CIFailures {
 	return &CIFailures{
-		Branch:   "main",
-		Limit:    10,
-		GHBinary: "gh",
-		Timeout:  10 * time.Second,
+		Branch:                "main",
+		Limit:                 10,
+		GHBinary:              "gh",
+		GitBinary:             "git",
+		Timeout:               10 * time.Second,
+		MaxCommitsBehind:      20,
+		SkipSupersededByGreen: true,
 	}
 }
 
@@ -57,6 +79,9 @@ type ghRun struct {
 
 // Scan calls gh, parses JSON, returns one Idea per failed run.
 // Missing gh / network failure / auth failure → empty + nil error.
+//
+// Superseded runs (head sha far behind tip, OR a newer green run on
+// the same workflow) are dropped before any Idea is emitted.
 func (c CIFailures) Scan(ctx context.Context, repoRoot string) ([]ideator.Idea, error) {
 	bin := c.GHBinary
 	if bin == "" {
@@ -99,8 +124,16 @@ func (c CIFailures) Scan(ctx context.Context, repoRoot string) ([]ideator.Idea, 
 		return nil, nil
 	}
 
+	// Per-workflow cache so we only ask gh for the latest green
+	// once per distinct workflow name even if the failure list has
+	// several runs of the same workflow.
+	latestGreen := make(map[string]time.Time)
+
 	ideas := make([]ideator.Idea, 0, len(runs))
 	for _, r := range runs {
+		if c.isSuperseded(subCtx, repoRoot, bin, branch, r, latestGreen) {
+			continue
+		}
 		evidence := fmt.Sprintf("gh-run %d (%s @ %s)", r.DatabaseID, r.Name, shortSHA(r.HeadSha))
 		hash := sha1.Sum([]byte(fmt.Sprintf("%d:%s", r.DatabaseID, r.HeadSha)))
 		ideas = append(ideas, ideator.Idea{
@@ -121,6 +154,95 @@ func (c CIFailures) Scan(ctx context.Context, repoRoot string) ([]ideator.Idea, 
 		})
 	}
 	return ideas, nil
+}
+
+// isSuperseded returns true when the failed run should be dropped:
+// either the head sha is far behind the current tip, or a later
+// green run of the same workflow exists. Probes are cheap-on-fail —
+// any error from git/gh leaves the run in the result set so we
+// fail open rather than swallowing real failures.
+func (c CIFailures) isSuperseded(ctx context.Context, repoRoot, ghBin, branch string, r ghRun, cache map[string]time.Time) bool {
+	if c.MaxCommitsBehind > 0 && r.HeadSha != "" {
+		if behind, ok := commitsBehind(ctx, c.gitBinary(), repoRoot, r.HeadSha); ok && behind > c.MaxCommitsBehind {
+			return true
+		}
+	}
+	if !c.SkipSupersededByGreen || r.Name == "" {
+		return false
+	}
+	greenAt, ok := cache[r.Name]
+	if !ok {
+		greenAt, ok = latestGreenForWorkflow(ctx, ghBin, repoRoot, branch, r.Name)
+		// Cache zero-time too so we don't re-query a workflow with
+		// no green history.
+		cache[r.Name] = greenAt
+		if !ok {
+			return false
+		}
+	}
+	if greenAt.IsZero() {
+		return false
+	}
+	return greenAt.After(r.CreatedAt)
+}
+
+// gitBinary resolves the git binary to use, defaulting to "git".
+func (c CIFailures) gitBinary() string {
+	if c.GitBinary == "" {
+		return "git"
+	}
+	return c.GitBinary
+}
+
+// commitsBehind returns how many commits the given sha is behind
+// HEAD via `git rev-list --count <sha>..HEAD`. The boolean is false
+// when git is missing / the sha is unknown / any error — callers
+// fail open in that case.
+func commitsBehind(ctx context.Context, gitBin, repoRoot, sha string) (int, bool) {
+	if _, err := exec.LookPath(gitBin); err != nil {
+		return 0, false
+	}
+	cmd := exec.CommandContext(ctx, gitBin, "rev-list", "--count", sha+"..HEAD")
+	cmd.Dir = repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// latestGreenForWorkflow asks gh for the most recent successful run
+// of the named workflow on the named branch. Returns the createdAt
+// timestamp + true on success, zero-time + false on any error.
+func latestGreenForWorkflow(ctx context.Context, ghBin, repoRoot, branch, workflow string) (time.Time, bool) {
+	cmd := exec.CommandContext(ctx, ghBin,
+		"run", "list",
+		"--branch", branch,
+		"--workflow", workflow,
+		"--status", "success",
+		"--limit", "1",
+		"--json", "createdAt,headSha",
+	)
+	cmd.Dir = repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return time.Time{}, false
+	}
+	var runs []struct {
+		CreatedAt time.Time `json:"createdAt"`
+		HeadSha   string    `json:"headSha"`
+	}
+	if err := json.Unmarshal(out, &runs); err != nil {
+		return time.Time{}, false
+	}
+	if len(runs) == 0 {
+		return time.Time{}, true // probed successfully, just no green
+	}
+	return runs[0].CreatedAt, true
 }
 
 func shortSHA(sha string) string {

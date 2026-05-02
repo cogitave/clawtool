@@ -32,14 +32,37 @@ type TODOs struct {
 	// SkipDirs are directory names skipped during the walk
 	// (default: vendor, node_modules, .git, .clawtool, dist, bin).
 	SkipDirs []string
+	// SkipPathFragments are forward-slash substrings; any path that
+	// contains one (case-insensitive) is dropped before parsing.
+	// Default value covers Go module cache, Claude Code plugin
+	// install/cache dirs, Obsidian wiki, vendor / node_modules,
+	// and .git in case the walker misses them via a symlink.
+	SkipPathFragments []string
+}
+
+// defaultSkipPathFragments lists path substrings that should never
+// produce TODOs no matter where they appear in the tree. Operator
+// reported leakage from Go module cache, Claude Code plugin cache,
+// and Obsidian wiki when `clawtool ideate` was run from $HOME.
+var defaultSkipPathFragments = []string{
+	"/go/pkg/mod/",
+	"/.claude/plugins/",
+	"/vendor/",
+	"/node_modules/",
+	"/.git/",
+	"/wiki/",
+	"/testdata/",
 }
 
 // NewTODOs returns a ready-to-use TODO/FIXME/XXX miner with sane
 // skip defaults.
 func NewTODOs() *TODOs {
+	frags := make([]string, len(defaultSkipPathFragments))
+	copy(frags, defaultSkipPathFragments)
 	return &TODOs{
-		MaxIdeas: 50,
-		SkipDirs: []string{".git", "vendor", "node_modules", ".clawtool", "dist", "bin", "wiki", "testdata"},
+		MaxIdeas:          50,
+		SkipDirs:          []string{".git", "vendor", "node_modules", ".clawtool", "dist", "bin", "wiki", "testdata"},
+		SkipPathFragments: frags,
 	}
 }
 
@@ -72,10 +95,19 @@ func (t TODOs) Scan(ctx context.Context, repoRoot string) ([]ideator.Idea, error
 		if err != nil {
 			return nil
 		}
+		// Normalise to forward-slash for fragment matching so the
+		// same exclusion list works on Windows / Linux / macOS.
+		fwd := filepath.ToSlash(path)
 		if d.IsDir() {
 			if _, drop := skip[d.Name()]; drop {
 				return filepath.SkipDir
 			}
+			if matchesAnyFragment(fwd, t.SkipPathFragments) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if matchesAnyFragment(fwd, t.SkipPathFragments) {
 			return nil
 		}
 		if !strings.HasSuffix(d.Name(), ".go") {
@@ -145,6 +177,26 @@ func scanTODOLines(relPath string, f *os.File) []ideator.Idea {
 		})
 	}
 	return out
+}
+
+// matchesAnyFragment returns true when fwd contains any of the
+// supplied substrings. Comparison is case-insensitive — Windows
+// path casing should not let `/Go/Pkg/Mod/` slip through. Empty
+// fragments and an empty fragment list are no-ops.
+func matchesAnyFragment(fwd string, fragments []string) bool {
+	if len(fragments) == 0 {
+		return false
+	}
+	low := strings.ToLower(fwd)
+	for _, frag := range fragments {
+		if frag == "" {
+			continue
+		}
+		if strings.Contains(low, strings.ToLower(frag)) {
+			return true
+		}
+	}
+	return false
 }
 
 // isGoGenerated reads the first 4 KiB of path looking for the
