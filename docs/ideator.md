@@ -44,6 +44,7 @@ clawtool ideate --baseline-set             # seed bench_regression baseline
 | `deadcode_hits` | Unreachable functions reported by `deadcode -test ./...`. | [deadcode_hits.go](../internal/ideator/sources/deadcode_hits.go) |
 | `vuln_advisories` | Go security advisories (`govulncheck -json ./...`). Drops stdlib findings already covered by the workflow `GO_VERSION` pin. Cached on go.sum hash for 12h. | [vuln_advisories.go](../internal/ideator/sources/vuln_advisories.go) |
 | `stale_files` | Tracked `.go` files whose newest commit is >90 days old. Heuristic fallback so the loop never goes dry. | [stale_files.go](../internal/ideator/sources/stale_files.go) |
+| `pr_review_pending` | Open GitHub PRs awaiting review for >24h (`gh pr list --search "review:none"`). Age-banded priority: 4 (<3d), 5 (3–7d), 6 (>7d). | [pr_review_pending.go](../internal/ideator/sources/pr_review_pending.go) |
 
 Every source is **cheap-on-fail**: a missing CLI (`gh`, `govulncheck`,
 `deadcode`), unreadable file, or non-repo cwd quietly returns zero

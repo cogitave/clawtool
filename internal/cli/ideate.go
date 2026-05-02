@@ -88,6 +88,7 @@ Sources:
   deps_outdated     Outdated Go module dependencies (go list -m -u).
   vuln_advisories   Go security advisories (govulncheck -json ./...).
   stale_files       .go files untouched > N days (heuristic review).
+  pr_review_pending Open PRs awaiting review > N hours (gh pr list).
 
 Stack:
   ideate → autopilot accept → autopilot next → autonomous
@@ -249,5 +250,6 @@ func defaultIdeatorSources() []ideator.IdeaSource {
 		sources.NewDepsOutdated(),
 		sources.NewVulnAdvisories(),
 		sources.NewStaleFiles(),
+		sources.NewPRReviewPending(),
 	}
 }
