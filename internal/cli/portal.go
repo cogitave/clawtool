@@ -40,6 +40,11 @@ const portalUsage = `Usage:
   clawtool portal remove <name> [--dry-run]
                                         Remove the [portals.<name>] block.
                                         --dry-run previews the change without writing.
+  clawtool portal record <name> [--url <url>] [--force]
+                                        Drive obscura via CDP, capture cookies +
+                                        heuristic selectors, persist to
+                                        ~/.config/clawtool/portals/<name>.toml.
+                                        --force overwrites an existing recording.
   clawtool portal ask [<name>] "<prompt>"
                                         Drive the saved web-UI flow with the
                                         prompt and stream the response.
@@ -121,6 +126,8 @@ func (a *App) runPortal(argv []string) int {
 			return 2
 		}
 		return a.dispatchPortalErr("remove", a.PortalRemove(name, dryRun))
+	case "record":
+		return a.runPortalRecord(argv[1:])
 	case "ask":
 		if err := a.PortalAsk(argv[1:]); err != nil {
 			fmt.Fprintf(a.Stderr, "clawtool portal ask: %v\n", err)
