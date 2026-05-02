@@ -222,20 +222,56 @@ func autodevHookPrompt(triggerN int) string {
 			queue = strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
 		}
 	}
+	// Tag-watcher snapshot — operator's #1 visibility complaint:
+	// "I can't see what the loop is waiting for." Inline the
+	// freshest watcher status into every self-trigger prompt so the
+	// model can surface it back without the operator running
+	// `tail /tmp/clawtool-tag-watcher*.log` by hand.
+	watchers := summarizeWatchersForHook()
+
 	return fmt.Sprintf(`AUTODEV LOOP (self-trigger #%d / %d) — durmadan çalış.
 
 Latest tag: %s
 Queue:      %s
 
+Tag watchers (latest 3):
+%s
+
 Loop steps:
-1. Check tag-watcher logs (`+"`tail /tmp/clawtool-tag-watcher*.log | tail -30`"+`).
+1. `+"`clawtool watchers list`"+` — every active CI tag-watcher's status, target tag, and conclusion.
 2. `+"`clawtool autopilot status`"+` — if pending=0, `+"`clawtool ideate --top 15`"+` and act on signal.
 3. If signal: ideate --apply, dispatch up to 4 parallel agents.
 4. If genuinely idle: pick the next architectural improvement (look at docs/ideator.md, recent ADRs, deps_outdated, deadcode, vuln advisories) — don't just say "no change".
 5. /clawtool-autodev-stop (or `+"`clawtool autodev stop`"+`) is the ONLY path back to operator control.
 
 If you've genuinely run out of ideas after a real ideate sweep, write a short architecture-review or doc improvement and ship that — never just "idle, no change". The framework dry-loop diagnostic shipped in v0.22.150 surfaces a synthetic Idea via the autopilot/MCP path; act on it.`,
-		triggerN, AutodevSelfTriggerCap, latestTag, queue)
+		triggerN, AutodevSelfTriggerCap, latestTag, queue, watchers)
+}
+
+// summarizeWatchersForHook returns the most recent 3 watchers as
+// one-liners for the autodev hook prompt. Read-only — never spawns
+// or mutates anything; just parses /tmp logs.
+func summarizeWatchersForHook() string {
+	snaps := listWatchers()
+	if len(snaps) == 0 {
+		return "  (no watchers — no /tmp/clawtool-tag-watcher*.log files yet)"
+	}
+	if len(snaps) > 3 {
+		snaps = snaps[len(snaps)-3:]
+	}
+	var b strings.Builder
+	for _, s := range snaps {
+		tag := s.Tag
+		if tag == "" {
+			tag = "(no tag)"
+		}
+		state := s.Status
+		if s.Conclusion != "" && s.Conclusion != s.Status {
+			state += "/" + s.Conclusion
+		}
+		fmt.Fprintf(&b, "  watcher%-3d %s — %s\n", s.ID, tag, state)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func fileExists(path string) bool {
