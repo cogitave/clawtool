@@ -7,9 +7,11 @@
 // this a cheap-on-fail signal, not a hard requirement.
 //
 // Superseded-run filter: a failed run is dropped from the result set
-// when EITHER (a) its head sha is more than MaxCommitsBehind commits
-// behind the current branch tip, OR (b) the same workflow has had a
-// later successful run on the same branch. Both probes use `gh` so
+// when ANY of (a) its head sha is no longer reachable from HEAD (the
+// commit was force-pushed or rewritten away — re-running won't help),
+// (b) its head sha is more than MaxCommitsBehind commits behind the
+// current branch tip, or (c) the same workflow has had a later
+// successful run on the same branch. All probes use `gh`/`git` so
 // they share the same auth + cheap-on-fail story as the main query.
 package sources
 
@@ -162,9 +164,19 @@ func (c CIFailures) Scan(ctx context.Context, repoRoot string) ([]ideator.Idea, 
 // any error from git/gh leaves the run in the result set so we
 // fail open rather than swallowing real failures.
 func (c CIFailures) isSuperseded(ctx context.Context, repoRoot, ghBin, branch string, r ghRun, cache map[string]time.Time) bool {
-	if c.MaxCommitsBehind > 0 && r.HeadSha != "" {
-		if behind, ok := commitsBehind(ctx, c.gitBinary(), repoRoot, r.HeadSha); ok && behind > c.MaxCommitsBehind {
+	if r.HeadSha != "" {
+		gitBin := c.gitBinary()
+		if shaExistsLocal(ctx, gitBin, repoRoot, r.HeadSha) {
+			if !shaReachableFromHead(ctx, gitBin, repoRoot, r.HeadSha) {
+				return true
+			}
+		} else if shaProbeSucceeded(ctx, gitBin, repoRoot) {
 			return true
+		}
+		if c.MaxCommitsBehind > 0 {
+			if behind, ok := commitsBehind(ctx, gitBin, repoRoot, r.HeadSha); ok && behind > c.MaxCommitsBehind {
+				return true
+			}
 		}
 	}
 	if !c.SkipSupersededByGreen || r.Name == "" {
@@ -213,6 +225,45 @@ func commitsBehind(ctx context.Context, gitBin, repoRoot, sha string) (int, bool
 		return 0, false
 	}
 	return n, true
+}
+
+// shaExistsLocal checks whether the named sha is known to git at all
+// (`git cat-file -e <sha>` exits 0 when the object exists). Returns
+// false when git is missing or the object isn't present locally.
+func shaExistsLocal(ctx context.Context, gitBin, repoRoot, sha string) bool {
+	if _, err := exec.LookPath(gitBin); err != nil {
+		return false
+	}
+	cmd := exec.CommandContext(ctx, gitBin, "cat-file", "-e", sha)
+	cmd.Dir = repoRoot
+	return cmd.Run() == nil
+}
+
+// shaReachableFromHead returns true when the named sha is reachable
+// from HEAD via `git merge-base --is-ancestor <sha> HEAD`. The command
+// exits 0 (true), 1 (false), or 128 (error). Returns false on error so
+// callers can pair this with shaExistsLocal to distinguish "not in our
+// graph" from "git failed to answer".
+func shaReachableFromHead(ctx context.Context, gitBin, repoRoot, sha string) bool {
+	if _, err := exec.LookPath(gitBin); err != nil {
+		return true // fail open — keep the failure visible
+	}
+	cmd := exec.CommandContext(ctx, gitBin, "merge-base", "--is-ancestor", sha, "HEAD")
+	cmd.Dir = repoRoot
+	return cmd.Run() == nil
+}
+
+// shaProbeSucceeded checks that the local repo is healthy enough for
+// the unreachable-sha probe to be trusted. Without this, a host where
+// `git` is missing or `repoRoot` isn't a git tree would mark every
+// failure as superseded and silently swallow them all.
+func shaProbeSucceeded(ctx context.Context, gitBin, repoRoot string) bool {
+	if _, err := exec.LookPath(gitBin); err != nil {
+		return false
+	}
+	cmd := exec.CommandContext(ctx, gitBin, "rev-parse", "--verify", "HEAD")
+	cmd.Dir = repoRoot
+	return cmd.Run() == nil
 }
 
 // latestGreenForWorkflow asks gh for the most recent successful run

@@ -168,3 +168,86 @@ echo 0
 		t.Fatalf("surviving idea = %q, want contains fresh-workflow", ideas[0].Title)
 	}
 }
+
+// TestCIFailures_DropsUnreachableSha covers the third superseded-run
+// drop path: a failure whose head sha is no longer present locally
+// (force-pushed / history-rewritten away) is dropped because re-running
+// the workflow on a vanished commit can't help.
+func TestCIFailures_DropsUnreachableSha(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stub gh/git test relies on /bin/sh; skip on Windows runners")
+	}
+	dir := t.TempDir()
+
+	// Stub gh: one failure on a now-vanished sha, one on a live one.
+	// Both workflows have no green history.
+	ghPath := filepath.Join(dir, "gh")
+	ghStub := `#!/bin/sh
+status=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --status) status="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ "$status" = "success" ]; then
+  echo "[]"
+  exit 0
+fi
+cat <<'JSON'
+[
+  {"databaseId": 8001, "name": "vanished-workflow", "headSha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "conclusion": "failure", "event": "push", "createdAt": "2026-05-01T09:00:00Z"},
+  {"databaseId": 8002, "name": "live-workflow", "headSha": "1eaf1eaf1eaf1eaf1eaf1eaf1eaf1eaf1eaf1eaf", "conclusion": "failure", "event": "push", "createdAt": "2026-05-01T10:00:00Z"}
+]
+JSON
+`
+	if err := os.WriteFile(ghPath, []byte(ghStub), 0o755); err != nil {
+		t.Fatalf("write gh stub: %v", err)
+	}
+
+	// Stub git:
+	//  - rev-parse --verify HEAD → 0 (repo is healthy).
+	//  - cat-file -e deadbeef* → 1 (object missing).
+	//  - cat-file -e everything else → 0 (object present).
+	//  - merge-base --is-ancestor → 0 (reachable).
+	//  - rev-list --count → echo 0.
+	gitPath := filepath.Join(dir, "git")
+	gitStub := `#!/bin/sh
+case "$1" in
+  rev-parse) exit 0 ;;
+  cat-file)
+    sha="$3"
+    case "$sha" in
+      deadbeef*) exit 1 ;;
+      *) exit 0 ;;
+    esac
+    ;;
+  merge-base) exit 0 ;;
+  rev-list) echo 0; exit 0 ;;
+esac
+exit 0
+`
+	if err := os.WriteFile(gitPath, []byte(gitStub), 0o755); err != nil {
+		t.Fatalf("write git stub: %v", err)
+	}
+
+	src := NewCIFailures()
+	src.GHBinary = ghPath
+	src.GitBinary = gitPath
+	src.MaxCommitsBehind = 20
+
+	ideas, err := src.Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(ideas) != 1 {
+		titles := make([]string, len(ideas))
+		for i, idea := range ideas {
+			titles[i] = idea.Title
+		}
+		t.Fatalf("Scan returned %d ideas, want 1 (vanished should be dropped): %v", len(ideas), titles)
+	}
+	if !strings.Contains(ideas[0].Title, "live-workflow") {
+		t.Fatalf("surviving idea = %q, want contains live-workflow", ideas[0].Title)
+	}
+}
