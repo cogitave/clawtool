@@ -16,6 +16,10 @@
 // Filter: golang.org/toolchain is auto-managed by `go` itself —
 // surfacing it as an Idea is noise. The Main module is also
 // skipped (Update never fires on it, but the guard is cheap).
+// Indirect modules (transitive deps not declared in go.mod's
+// require block as direct) are skipped too — the operator can't
+// bump them with a `go get` against go.mod, so they'd surface as
+// un-actionable noise after a bulk-update batch.
 package sources
 
 import (
@@ -61,12 +65,17 @@ func (DepsOutdated) Name() string { return "deps_outdated" }
 
 // goModule is the subset of fields `go list -m -u -json` produces
 // that this source cares about. The full struct is documented in
-// `go help list`; we only need Path / Version / Update / Main.
+// `go help list`; we only need Path / Version / Update / Main /
+// Indirect. Indirect is true for modules pulled in transitively
+// rather than declared as direct deps in go.mod — the operator
+// can't bump those without first bumping a direct dep, so we skip
+// them to keep the ideate queue free of un-actionable noise.
 type goModule struct {
-	Path    string          `json:"Path"`
-	Version string          `json:"Version"`
-	Main    bool            `json:"Main"`
-	Update  *goModuleUpdate `json:"Update,omitempty"`
+	Path     string          `json:"Path"`
+	Version  string          `json:"Version"`
+	Main     bool            `json:"Main"`
+	Indirect bool            `json:"Indirect"`
+	Update   *goModuleUpdate `json:"Update,omitempty"`
 }
 
 // goModuleUpdate is the embedded Update sub-object — present only
@@ -115,6 +124,9 @@ func (d DepsOutdated) Scan(ctx context.Context, repoRoot string) ([]ideator.Idea
 	var ideas []ideator.Idea
 	for _, m := range mods {
 		if m.Main {
+			continue
+		}
+		if m.Indirect {
 			continue
 		}
 		if m.Update == nil || m.Update.Version == "" {

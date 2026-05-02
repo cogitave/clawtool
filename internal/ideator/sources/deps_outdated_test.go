@@ -214,6 +214,64 @@ func TestDepsOutdated_MajorBumpLowerPriority(t *testing.T) {
 	}
 }
 
+// TestDepsOutdated_SkipsIndirectDeps verifies that modules flagged
+// `Indirect: true` by `go list -m -u -json all` are filtered out.
+// `go list` marks a module Indirect when it's pulled in by a
+// transitive dep rather than declared as a direct require in the
+// main go.mod. Bumping such a module via `go get <path>@<ver>`
+// would only land in go.sum (or rewrite go.mod's `// indirect`
+// line, which `go mod tidy` immediately reverts), so surfacing it
+// as an Idea is un-actionable noise — especially right after a
+// bulk-update batch where direct deps are already current.
+func TestDepsOutdated_SkipsIndirectDeps(t *testing.T) {
+	const fixture = `{
+		"Path": "example.com/test",
+		"Main": true,
+		"Version": "v0.0.0"
+	}
+	{
+		"Path": "github.com/direct/dep",
+		"Version": "v1.0.0",
+		"Indirect": false,
+		"Update": {
+			"Path": "github.com/direct/dep",
+			"Version": "v1.1.0"
+		}
+	}
+	{
+		"Path": "github.com/indirect/dep",
+		"Version": "v2.0.0",
+		"Indirect": true,
+		"Update": {
+			"Path": "github.com/indirect/dep",
+			"Version": "v2.1.0"
+		}
+	}
+	`
+	dir := writeRepoWithGoMod(t)
+	src := NewDepsOutdated()
+	src.runGoList = stubRunGoList(fixture)
+
+	ideas, err := src.Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(ideas) != 1 {
+		t.Fatalf("Scan returned %d ideas, want 1 (only the direct dep)", len(ideas))
+	}
+	if !strings.Contains(ideas[0].Title, "github.com/direct/dep") {
+		t.Fatalf("expected idea for direct dep, got: %q", ideas[0].Title)
+	}
+	for _, idea := range ideas {
+		if strings.Contains(idea.Title, "github.com/indirect/dep") {
+			t.Fatalf("indirect module leaked into ideas: %q", idea.Title)
+		}
+		if strings.Contains(idea.SuggestedPrompt, "github.com/indirect/dep") {
+			t.Fatalf("indirect module leaked into prompt: %q", idea.SuggestedPrompt)
+		}
+	}
+}
+
 // TestDepsOutdated_NoUpdatesEmpty asserts the source returns zero
 // ideas when every module is already current (no Update field on
 // any record).
