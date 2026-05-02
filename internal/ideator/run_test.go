@@ -213,3 +213,75 @@ func TestRun_TitleDefaultedFromPrompt(t *testing.T) {
 		t.Fatalf("SourceName: got %q", res.Ideas[0].SourceName)
 	}
 }
+
+// TestRun_DryLoopDiagnostic confirms the framework emits one
+// synthetic meta-Idea when every source returns 0 — the
+// architectural fix for "the autonomous loop went silent for 3h
+// because Ideator had no signal."
+func TestRun_DryLoopDiagnostic(t *testing.T) {
+	dry := &stubSource{name: "dry-a", ideas: nil}
+	dry2 := &stubSource{name: "dry-b", ideas: nil}
+	res, err := Run(context.Background(), Options{
+		RepoRoot: t.TempDir(),
+		Sources:  []IdeaSource{dry, dry2},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(res.Ideas) != 1 {
+		t.Fatalf("Ideas len: %d, want 1 (synthetic dry-loop)", len(res.Ideas))
+	}
+	if res.Ideas[0].DedupeKey != "ideator:dry-loop" {
+		t.Errorf("DedupeKey: got %q, want ideator:dry-loop", res.Ideas[0].DedupeKey)
+	}
+	if res.Ideas[0].SuggestedPriority != 1 {
+		t.Errorf("Priority: got %d, want 1", res.Ideas[0].SuggestedPriority)
+	}
+	if res.Ideas[0].Title != "Ideator dry — all configured sources returned 0" {
+		t.Errorf("Title: got %q", res.Ideas[0].Title)
+	}
+}
+
+// TestRun_DryLoopSuppressed confirms SuppressDryDiagnostic=true
+// keeps the legacy "no ideas" honest path for operator-driven
+// `clawtool ideate` invocations.
+func TestRun_DryLoopSuppressed(t *testing.T) {
+	dry := &stubSource{name: "dry", ideas: nil}
+	res, err := Run(context.Background(), Options{
+		RepoRoot:              t.TempDir(),
+		Sources:               []IdeaSource{dry},
+		SuppressDryDiagnostic: true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(res.Ideas) != 0 {
+		t.Fatalf("Ideas len: %d, want 0 (suppressed)", len(res.Ideas))
+	}
+}
+
+// TestRun_DryLoopSkippedWhenSourceProduces confirms the diagnostic
+// stays out of the way once any source has real signal — the goal
+// is "never silent", not "always synthetic."
+func TestRun_DryLoopSkippedWhenSourceProduces(t *testing.T) {
+	loud := &stubSource{
+		name: "loud",
+		ideas: []Idea{
+			{SuggestedPrompt: "real work", DedupeKey: "k1"},
+		},
+	}
+	dry := &stubSource{name: "dry", ideas: nil}
+	res, err := Run(context.Background(), Options{
+		RepoRoot: t.TempDir(),
+		Sources:  []IdeaSource{loud, dry},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(res.Ideas) != 1 {
+		t.Fatalf("Ideas len: %d, want 1 (loud's idea, no diagnostic)", len(res.Ideas))
+	}
+	if res.Ideas[0].DedupeKey == "ideator:dry-loop" {
+		t.Errorf("dry-loop diagnostic leaked when real signal exists")
+	}
+}

@@ -134,6 +134,12 @@ func (a *App) runIdeate(argv []string) int {
 		TopK:         *top,
 		Sources:      defaultIdeatorSources(),
 		Warn:         a.Stderr,
+		// CLI invocations are operator-driven: an empty result
+		// should print "no ideas" honestly. The dry-loop diagnostic
+		// is for the autopilot/MCP path where the loop must keep
+		// producing work; suppressing here keeps `clawtool ideate`
+		// truthful when the operator is asking by hand.
+		SuppressDryDiagnostic: true,
 	}
 
 	ctx := context.Background()

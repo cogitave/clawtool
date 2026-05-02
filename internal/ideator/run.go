@@ -51,6 +51,13 @@ type Options struct {
 	// is conservative — operators on fast hosts can raise it via
 	// CLAWTOOL_IDEATOR_MAX_CONCURRENCY.
 	MaxConcurrency int
+	// SuppressDryDiagnostic disables the synthetic meta-Idea that
+	// fires when every configured source returns zero. Default
+	// false — the diagnostic is exactly what the autonomous loop
+	// needs so it doesn't go structurally silent. Set to true for
+	// operator-driven `clawtool ideate` invocations where an empty
+	// result should print "no ideas" honestly without pollution.
+	SuppressDryDiagnostic bool
 }
 
 // DefaultTopK is the cap when Options.TopK is unset.
@@ -157,8 +164,53 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	if len(pooled) > cap {
 		pooled = pooled[:cap]
 	}
-	out.Ideas = pooled
+	// Dry-loop diagnostic: when every configured source returned 0
+	// AND the autonomous loop is actively running (the operator
+	// signals this via SuppressDryDiagnostic=false, which is the
+	// default), emit one synthetic meta-Idea so the loop is never
+	// structurally idle. This is the architectural answer to "the
+	// Ideator went silent for 3h" — adding more signal sources only
+	// pushes the dry tail out; the framework itself needs to know
+	// when to wake up the operator. The diagnostic is NOT real work
+	// — it's an honest acknowledgement that the loop has no signal,
+	// paired with concrete next-step suggestions.
+	if len(pooled) == 0 && !opts.SuppressDryDiagnostic {
+		out.Ideas = []Idea{dryLoopDiagnostic(out.PerSource)}
+	} else {
+		out.Ideas = pooled
+	}
 	return out, nil
+}
+
+// dryLoopDiagnostic builds the synthetic meta-Idea emitted when
+// every source returned zero. It carries a stable DedupeKey so the
+// autopilot queue rejects duplicates between back-to-back ideate
+// runs — the operator should see ONE dry-loop entry, not one per
+// hour. Priority 1 (lowest, below stale_files's 2) so any real
+// signal that re-appears immediately bumps it out of the top-K.
+func dryLoopDiagnostic(perSource map[string]int) Idea {
+	names := make([]string, 0, len(perSource))
+	for name := range perSource {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	checklist := strings.Join(names, ", ")
+	return Idea{
+		Title:             "Ideator dry — all configured sources returned 0",
+		Summary:           "Every configured Ideator source returned zero ideas this cycle. The loop is structurally idle.",
+		Evidence:          "ideator: " + fmt.Sprintf("%d sources, all empty: %s", len(perSource), checklist),
+		SuggestedPriority: 1,
+		SuggestedPrompt: "The Ideator loop has no signal this cycle — every source returned 0. " +
+			"Triage in this order:\n\n" +
+			"  1. Health-check each source individually: `for s in " + checklist + "; do clawtool ideate --source $s --top 3; done`. " +
+			"     A silently-broken source (missing CLI, bad auth) is the most common cause of false dryness.\n" +
+			"  2. If every source is genuinely 0, the project is in real steady state — the right next moves are\n" +
+			"     architectural rather than incremental: review the next ADR draft, audit a stale package, " +
+			"     run a coverage report (`go test -cover ./...` and look for <50% packages), or take a `git stash list` pass.\n" +
+			"  3. If the operator wants the loop to keep producing concrete work, queue one of these directly via " +
+			"     `clawtool autopilot add \"<prompt>\" --priority 4`. The dry-loop diagnostic is a meta-signal, not a task.",
+		DedupeKey: "ideator:dry-loop",
+	}
 }
 
 // RunAndQueue runs the orchestrator then writes each surviving
