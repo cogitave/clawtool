@@ -241,6 +241,16 @@ clawtool autonomous --watch ./repo
 
 The CLI builds a session prompt from the goal + iteration metadata, dispatches it to the chosen BIAM peer (default: claude), and ends when the agent emits `done: true` in `<workdir>/.clawtool/autonomous/tick-N.json`, `--max-iterations` is hit, or the operator sends SIGINT. `--resume` continues a prior run from its `final.json`; `--watch` tails an existing run's tick stream into the terminal. Pair with `OnboardStatus` + `InitApply` (above) for the "tek mesaj, tüm pipeline" loop.
 
+### Self-direction stack — Ideator → Autopilot → Autonomous
+
+Three layers, one per question. Ideator surveys cheap repo-local signals and proposes work; Autopilot is the operator-gated TOML queue that decides when each proposal becomes pending; Autonomous is the dev loop above that actually runs it. Full reference: [docs/ideator.md](docs/ideator.md).
+
+| Verb | Capability | Reference |
+|---|---|---|
+| `clawtool ideate [--apply] [--top N] [--source <name>]` | Ten cheap-on-fail signal sources: `adr_questions`, `adr_drafting`, `todos`, `ci_failures`, `manifest_drift`, `bench_regression`, `deps_outdated`, `deadcode_hits`, `vuln_advisories` (govulncheck, cached on go.sum hash; drops findings already covered by the workflow `GO_VERSION` pin), `stale_files` (heuristic fallback so the loop never goes dry). Bounded source concurrency (default 4; `CLAWTOOL_IDEATOR_MAX_CONCURRENCY=N` to override on slow filesystems). | [internal/ideator](internal/ideator) · [docs/ideator.md](docs/ideator.md) |
+| `clawtool autopilot {add\|accept\|next\|done\|skip\|list\|status}` | TOML queue at `~/.config/clawtool/autopilot/queue.toml` with `proposed → pending → in_progress → done/skipped` flow. Ideator-emitted items land at `proposed`; the operator-gate `accept` is non-negotiable so the agent can't silently drive its own pipeline past human review. | [internal/autopilot](internal/autopilot) |
+| MCP: `IdeateRun`, `IdeateApply`, `AutopilotStatus/List/Add/Accept/Next/Done/Skip`, `AutonomousRun` | Same three layers exposed to chat agents so the loop runs without context-switching. | [internal/tools/core](internal/tools/core) |
+
 ### Project setup verbs
 
 | Verb | Capability |
@@ -308,6 +318,7 @@ After this, every Bash tool call (from any host — claude / codex / gemini) exe
 
 ## Recently shipped
 
+- **Self-direction stack — Ideator → Autopilot → Autonomous** (v0.22.140 → v0.22.145) — Ten cheap-on-fail signal sources (CI failures, deadcode, deps_outdated with indirect-dep filter, manifest drift, BM25 regression, ADR open questions, ADR drafting age, TODOs, govulncheck advisories with workflow-pin filter + 12h cache, stale-files heuristic) feed an operator-gated TOML autopilot queue at `proposed → pending → in_progress → done`. The autonomous loop above consumes the queue. Bounded source concurrency (default 4) keeps wall time predictable on slow filesystems; vuln_advisories cache + workflow `GO_VERSION` filter keep the loop signal-rich without ghost alarms. Full reference: [docs/ideator.md](docs/ideator.md).
 - **Autonomous mode** (v0.22.71 + v0.22.74) — `clawtool autonomous "<goal>"` runs a self-paced single-message dev loop against the chosen BIAM peer; the agent emits `tick-N.json` after each iteration, the loop ends on `done: true`, `--max-iterations`, or SIGINT. v0.22.74 added `--resume <final.json>` to continue a prior run and `--watch <workdir>` to tail an existing run's tick stream into the terminal. Sister MCP tool `AutonomousRun` (v0.22.72) streams the same loop back to a chat-driving model.
 - **Chat-driven setup MCP tools** (v0.22.62) — `OnboardStatus`, `OnboardWizard`, `InitApply` so an operator can drive detect → onboard → recipe-apply from a single chat message instead of context-switching to the CLI. `init --all` (v0.22.56) and `init --summary-json` (v0.22.60) make the wizard scriptable.
 - **Catalog growth — DB / search / shell** (v0.22.63 → v0.22.70) — `mcp-toolbox` (Google's reference DB MCP), `semble` (~98% fewer tokens than grep+read), `shell-mcp` (sandbox-aware shell execution) joined the built-in source catalog. `clawtool source registry --backend mcp|smithery|both` (v0.22.50) lets the operator probe upstream catalogs read-only; `clawtool source inspect <instance>` (v0.22.52) audits a configured source's tool surface via the npm-published MCP Inspector.
