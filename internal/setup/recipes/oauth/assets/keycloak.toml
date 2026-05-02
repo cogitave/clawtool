@@ -1,0 +1,51 @@
+# managed-by: clawtool
+# Starter Keycloak OAuth integration for the clawtool-managed
+# `.clawtool.toml` `[oauth.keycloak]` section.
+# Upstream: https://www.keycloak.org/  (Apache-2.0)
+#
+# This file is a STARTER ONLY — it ships the shape clawtool's
+# auth layer expects to read. Operators copy or include the
+# `[oauth.keycloak]` block into their `.clawtool.toml` and fill
+# in the issuer URL for their realm. Secrets are NEVER stored
+# here: the recipe wires environment variable names instead and
+# clawtool resolves them through its standard secrets pipeline.
+#
+# Next steps:
+#   1. Provision a Keycloak realm + a confidential OIDC client
+#      (Settings → Clients → Create). Note the issuer URL —
+#      for realm `myrealm` on host `auth.example.com` it is:
+#        https://auth.example.com/realms/myrealm
+#   2. Export the client credentials in your shell profile or
+#      secrets manager:
+#        export KEYCLOAK_CLIENT_ID=clawtool
+#        export KEYCLOAK_CLIENT_SECRET=...
+#   3. Copy the [oauth.keycloak] block below into your
+#      `.clawtool.toml` and edit `issuer_url` to point at your
+#      realm.
+#   4. (Phase 4 follow-up.) Middleware wiring — protected-resource
+#      metadata advertisement, JWT validation, JWKS caching — is
+#      not part of this starter. The recipe ships the connection
+#      contract only.
+
+[oauth.keycloak]
+# Realm-scoped issuer. Keycloak's well-known discovery doc lives
+# at <issuer_url>/.well-known/openid-configuration.
+issuer_url = "https://auth.example.com/realms/myrealm"
+
+# Environment variable NAMES — never literal credentials. clawtool
+# resolves these through its secrets pipeline at request time.
+client_id_env     = "KEYCLOAK_CLIENT_ID"
+client_secret_env = "KEYCLOAK_CLIENT_SECRET"
+
+# OIDC scope set. `openid` is mandatory; `email` + `profile` are
+# the canonical user-info scopes. Add `offline_access` if your
+# flow needs refresh tokens.
+scopes = ["openid", "email", "profile"]
+
+# Authorization Code + PKCE is the only flow the agent layer
+# accepts. Implicit / password grants are deliberately omitted.
+flow = "authorization_code_pkce"
+
+# Optional audience claim Keycloak should embed in the access
+# token. Leave empty to use the default (the client_id).
+audience = ""

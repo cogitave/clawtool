@@ -1,0 +1,53 @@
+# managed-by: clawtool
+# Starter Authentik OAuth integration for the clawtool-managed
+# `.clawtool.toml` `[oauth.authentik]` section.
+# Upstream: https://goauthentik.io/  (MIT)
+#
+# Authentik is an open-source identity provider. This file ships
+# the shape clawtool's auth layer expects; operators copy the
+# `[oauth.authentik]` block into their `.clawtool.toml` and fill
+# in the issuer URL for their provider. Secrets are NEVER stored
+# here: the recipe wires environment variable names and clawtool
+# resolves them through its standard secrets pipeline.
+#
+# Next steps:
+#   1. In Authentik admin, create an OAuth2/OpenID Provider:
+#      Applications → Providers → Create → OAuth2/OpenID Provider.
+#      Note the issuer URL — typically:
+#        https://authentik.example.com/application/o/<slug>/
+#   2. Bind the provider to an application and grab the client
+#      credentials (Authentik shows them once at create time).
+#      Export in your shell profile or secrets manager:
+#        export AUTHENTIK_CLIENT_ID=...
+#        export AUTHENTIK_CLIENT_SECRET=...
+#   3. Copy the [oauth.authentik] block below into your
+#      `.clawtool.toml` and edit `issuer_url`.
+#   4. (Phase 4 follow-up.) Middleware wiring — protected-resource
+#      metadata advertisement, JWT validation, JWKS caching — is
+#      not part of this starter. The recipe ships the connection
+#      contract only.
+
+[oauth.authentik]
+# Provider-scoped issuer. Authentik's well-known discovery doc
+# lives at <issuer_url>.well-known/openid-configuration (the
+# trailing slash on issuer_url matters).
+issuer_url = "https://authentik.example.com/application/o/clawtool/"
+
+# Environment variable NAMES — never literal credentials.
+client_id_env     = "AUTHENTIK_CLIENT_ID"
+client_secret_env = "AUTHENTIK_CLIENT_SECRET"
+
+# OIDC scope set. `openid` is mandatory; `email` + `profile` are
+# the canonical user-info scopes. Authentik supports an extra
+# `goauthentik.io/api` scope for admin-API delegation — only add
+# it when the agent legitimately needs admin reads.
+scopes = ["openid", "email", "profile"]
+
+# Authorization Code + PKCE is the only flow the agent layer
+# accepts. Implicit / password grants are deliberately omitted.
+flow = "authorization_code_pkce"
+
+# Optional audience claim. Authentik defaults to the client_id;
+# override only when a downstream resource server expects a
+# specific aud value.
+audience = ""

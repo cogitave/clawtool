@@ -1,0 +1,62 @@
+# managed-by: clawtool
+# Starter Auth0 OAuth integration for the clawtool-managed
+# `.clawtool.toml` `[oauth.auth0]` section.
+# Upstream: https://auth0.com/  (commercial; OIDC-compliant)
+#
+# This file is a STARTER ONLY — it ships the shape clawtool's
+# auth layer expects to read. Operators copy or include the
+# `[oauth.auth0]` block into their `.clawtool.toml` and fill in
+# their tenant domain. Secrets are NEVER stored here: the recipe
+# wires environment variable names instead and clawtool resolves
+# them through its standard secrets pipeline.
+#
+# Auth0 supports RFC 7591 dynamic client registration via the
+# `/oidc/register` endpoint. When `dynamic_client_registration`
+# is true the runtime can register a client at first run instead
+# of requiring an operator-provisioned one — handy for
+# distribution scenarios where every install needs its own
+# client_id.
+#
+# Next steps:
+#   1. Identify your Auth0 tenant. The domain is the host portion
+#      of your tenant URL, e.g. `dev-abc123.us.auth0.com`. Set:
+#        export AUTH0_DOMAIN=dev-abc123.us.auth0.com
+#   2. Either provision a Regular Web Application in the Auth0
+#      dashboard OR enable dynamic client registration on the
+#      tenant (Settings → Advanced → OIDC Dynamic Application
+#      Registration). For static clients export:
+#        export AUTH0_CLIENT_ID=...
+#        export AUTH0_CLIENT_SECRET=...
+#   3. Copy the [oauth.auth0] block below into your
+#      `.clawtool.toml` and adjust as needed.
+#   4. (Phase 4 follow-up.) Middleware wiring — protected-resource
+#      metadata advertisement, JWT validation, JWKS caching — is
+#      not part of this starter.
+
+[oauth.auth0]
+# Tenant domain (host only, no scheme, no path). The issuer URL
+# is derived as `https://${auth0_domain}/`.
+auth0_domain_env = "AUTH0_DOMAIN"
+
+# Static client credentials. Leave both empty when relying on
+# dynamic_client_registration below.
+client_id_env     = "AUTH0_CLIENT_ID"
+client_secret_env = "AUTH0_CLIENT_SECRET"
+
+# OIDC scope set. `openid` is mandatory; `email` + `profile` are
+# the canonical user-info scopes.
+scopes = ["openid", "email", "profile"]
+
+# Authorization Code + PKCE is the only flow the agent layer
+# accepts. Implicit / ROPC grants are deliberately omitted.
+flow = "authorization_code_pkce"
+
+# RFC 7591 dynamic client registration. When true the runtime
+# POSTs to `https://${auth0_domain}/oidc/register` at first run
+# and caches the resulting client_id/secret in clawtool's
+# secrets store. Set to false to require static credentials.
+dynamic_client_registration = true
+
+# Audience identifier for the API the access token grants
+# entry to. Leave empty to use Auth0's userinfo audience.
+audience = ""
