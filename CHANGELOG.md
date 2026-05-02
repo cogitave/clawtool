@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.147] - 2026-05-02
+## [0.22.148] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.147 [skip ci] (3164f1e)
+### Fixes
+
+- **ideator:** Todos source skips editor / language-server backup dirs (e64d1ee)## [0.22.147] - 2026-05-02
 
 ### Documentation
 
