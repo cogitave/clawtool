@@ -212,8 +212,41 @@ func (c callExpr) eval(ctx Context) (bool, string, error) {
 				return true, "", nil
 			}
 			return false, fmt.Sprintf("arg(%s) = %q, want != %q", c.arg, v, c.rhs), nil
+		case "~~":
+			// Glob match (doublestar) — RHS is a pattern, LHS the
+			// arg value. Used by the pre_push branch-protection
+			// rule to express `branch ~~ "release/*"` without
+			// needing to OR every release branch literal.
+			match, err := doublestar.PathMatch(c.rhs, v)
+			if err != nil {
+				return false, "", fmt.Errorf("arg(%s) ~~ %q: bad glob: %w", c.arg, c.rhs, err)
+			}
+			if match {
+				return true, "", nil
+			}
+			return false, fmt.Sprintf("arg(%s) = %q, want ~~ %q", c.arg, v, c.rhs), nil
+		case "!~":
+			// Negated glob match — convenience inverse of ~~.
+			match, err := doublestar.PathMatch(c.rhs, v)
+			if err != nil {
+				return false, "", fmt.Errorf("arg(%s) !~ %q: bad glob: %w", c.arg, c.rhs, err)
+			}
+			if !match {
+				return true, "", nil
+			}
+			return false, fmt.Sprintf("arg(%s) = %q, want !~ %q", c.arg, v, c.rhs), nil
+		case "^=":
+			// Prefix match — used by the pre_push wip-on-protected
+			// rule to test `arg("head_subject") ^= "wip!:"` without
+			// the false-positive surface of commit_message_contains
+			// (which would match "wip!:" appearing anywhere in the
+			// body, not just the subject prefix).
+			if strings.HasPrefix(v, c.rhs) {
+				return true, "", nil
+			}
+			return false, fmt.Sprintf("arg(%s) = %q, want ^= %q", c.arg, v, c.rhs), nil
 		default:
-			return false, "", fmt.Errorf("arg() needs == or != comparison")
+			return false, "", fmt.Errorf("arg() needs ==, !=, ~~, !~, or ^= comparison")
 		}
 
 	case "docsync_violation":
@@ -307,9 +340,12 @@ func tokenize(src string) ([]token, error) {
 			out = append(out, token{kind: "string", value: src[i+1 : j]})
 			i = j + 1
 		case c == '>' || c == '<' || c == '=' || c == '!':
-			// Two-char ops first.
+			// Two-char ops first: >=, <=, ==, !=, !~ (negated glob).
 			if i+1 < len(src) && (src[i+1] == '=') {
 				out = append(out, token{kind: "op", value: src[i : i+2]})
+				i += 2
+			} else if c == '!' && i+1 < len(src) && src[i+1] == '~' {
+				out = append(out, token{kind: "op", value: "!~"})
 				i += 2
 			} else if c == '>' || c == '<' {
 				out = append(out, token{kind: "op", value: string(c)})
@@ -317,6 +353,14 @@ func tokenize(src string) ([]token, error) {
 			} else {
 				return nil, fmt.Errorf("stray %q at offset %d", c, i)
 			}
+		case c == '~' && i+1 < len(src) && src[i+1] == '~':
+			// `~~` glob-match operator (used by arg(key) ~~ "release/*").
+			out = append(out, token{kind: "op", value: "~~"})
+			i += 2
+		case c == '^' && i+1 < len(src) && src[i+1] == '=':
+			// `^=` prefix-match operator (arg(key) ^= "wip!:").
+			out = append(out, token{kind: "op", value: "^="})
+			i += 2
 		case c == '&' && i+1 < len(src) && src[i+1] == '&':
 			out = append(out, token{kind: "and", value: "&&"})
 			i += 2

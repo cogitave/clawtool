@@ -90,13 +90,23 @@ const (
 	// "pre_tool_use" so Evaluate sees a single canonical event
 	// name and predicates / dispatch keep one code path.
 	EventInterceptorPreToolUse Event = "interceptor:pre_tool_use"
+	// EventPrePush fires before `git push` (or the Commit tool's
+	// Push=true path) sends commits upstream. Rules here gate
+	// what's allowed to leave the local branch — the canonical
+	// example is the `wip-on-protected-branch` rule that blocks
+	// `wip!:` checkpoint commits from reaching main/master/
+	// develop/release/* (operator's autosquash flow keeps `wip!:`
+	// commits local until they're squashed into a real subject
+	// via `git rebase -i --autosquash`).
+	EventPrePush Event = "pre_push"
 )
 
 // IsValidEvent guards against typos in TOML.
 func IsValidEvent(e Event) bool {
 	switch e {
 	case EventPreCommit, EventPostEdit, EventSessionEnd,
-		EventPreSend, EventPreUnattended, EventPreToolUse:
+		EventPreSend, EventPreUnattended, EventPreToolUse,
+		EventPrePush:
 		return true
 	}
 	return false

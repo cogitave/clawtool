@@ -67,6 +67,13 @@ severity  = "off"
 hint      = "A staged *.go file has a sibling *.md on disk that wasn't restaged. Either edit the doc to reflect the code change, or `git add` the existing doc to confirm the pairing. Convention: <dir>/foo.go ↔ <dir>/foo.md. _test.go and well-known codegen suffixes (*.pb.go, *_gen.go, zz_generated_*) are exempt."
 
 [[rule]]
+name      = "wip-on-protected-branch"
+description = "Block `wip!:` checkpoint commits from being pushed to main / master / develop / release/* — autosquash via `git rebase -i --autosquash <base>` (checkpoint.Resolve) before push."
+when      = "pre_push"
+condition = "not (arg(\"head_subject\") ^= \"wip!:\" and (arg(\"branch\") == \"main\" or arg(\"branch\") == \"master\" or arg(\"branch\") == \"develop\" or arg(\"branch\") ~~ \"release/*\"))"
+severity  = "block"
+hint      = "HEAD is a wip!: checkpoint commit and the target is a protected branch. Run `clawtool checkpoint resolve <base>` (or `git rebase -i --autosquash <base>`) to fold every wip!: into the most recent real Conventional Commits subject, then re-push. ADR-022 §Resolved (2026-05-02): autosquash-on-resolve is the canonical workflow; pre_push is the safety net."
+[[rule]]
 name      = "no-version-version-outside-version-pkg"
 description = "Hardcoded clawtool version strings (literal semvers like 0.22.x) outside internal/version/ are an anti-pattern."
 when      = "post_edit"

@@ -342,3 +342,15 @@ func runGitCtx(ctx context.Context, cwd string, args ...string) ([]byte, error) 
 	}
 	return out, nil
 }
+
+// gitCommandWithEnv builds an *exec.Cmd for `git <args>` with the
+// supplied env. The caller (resolve.go's ResolveAt) needs to layer
+// GIT_SEQUENCE_EDITOR + GIT_EDITOR on top of os.Environ() and run
+// the command itself; factoring the constructor here keeps the
+// "git in the right cwd, with these args" knowledge in one file.
+func gitCommandWithEnv(ctx context.Context, cwd string, env []string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = cwd
+	cmd.Env = env
+	return cmd
+}
