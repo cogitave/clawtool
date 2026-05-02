@@ -4,7 +4,19 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.116] - 2026-05-01
+## [0.22.119] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.116 [skip ci] (bbacbca)
+### Features
+
+- **ideator:** Self-feature-generation top of autonomy stack (proposed→pending operator gate) (a69659b)
+- **autopilot:** Self-direction backlog primitive for non-stalling agent loop (d073d2e)## [0.22.117] - 2026-05-02
+
+### Features
+
+- **otel:** MCP _meta traceparent/tracestate propagation per SEP-414 (d2705f8)## [0.22.116] - 2026-05-01
 
 ### Documentation
 
