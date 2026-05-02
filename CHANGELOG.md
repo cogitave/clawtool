@@ -4,7 +4,20 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.137] - 2026-05-02
+## [0.22.139] - 2026-05-02
+
+### Chores
+
+- **deps:** Bulk safe minor/patch dep updates (f43f199)## [0.22.138] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.137 [skip ci] (c08d70b)
+### Features
+
+- **ideator:** Deps_outdated source for Go module update tracking (3ed3445)
+- **ideator:** Adr_drafting source surfaces stale drafting ADRs (78022bc)
+- **ideator:** Deadcode_hits source for unreachable code tracking (24be087)## [0.22.137] - 2026-05-02
 
 ### Documentation
 
