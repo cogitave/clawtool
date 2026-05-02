@@ -17,6 +17,9 @@
 package unattended
 
 import (
+	"bufio"
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/agents/biam"
 	"github.com/cogitave/clawtool/internal/atomicfile"
 	"github.com/cogitave/clawtool/internal/xdg"
 	"github.com/google/uuid"
@@ -45,6 +49,12 @@ type SessionState struct {
 
 	mu       sync.Mutex
 	auditWtr *os.File
+
+	// signer is the BIAM Ed25519 identity loaded at Begin(). Every
+	// AuditEntry is wrapped {event, sig} so a tail-mutating attacker
+	// can't silently scrub a dispatched prompt — verify will flag
+	// the line as invalid. ADR-023 §"JSONL audit log signing".
+	signer *biam.Identity
 }
 
 // Banner returns the persistent status line the supervisor renders
@@ -107,15 +117,53 @@ func (s *SessionState) Emit(e AuditEntry) {
 		e.TS = time.Now().UTC()
 	}
 	e.Session = s.ID
-	body, err := json.Marshal(e)
+	line, err := signedLine(s.signer, e)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "unattended: marshal audit entry: %v\n", err)
+		fmt.Fprintf(os.Stderr, "unattended: sign audit entry: %v\n", err)
 		return
 	}
-	body = append(body, '\n')
-	if _, err := s.auditWtr.Write(body); err != nil {
+	if _, err := s.auditWtr.Write(line); err != nil {
 		fmt.Fprintf(os.Stderr, "unattended: append to audit log: %v\n", err)
 	}
+}
+
+// signedAuditLine is the on-disk shape of one JSONL row. The
+// underlying AuditEntry sits inside `event` so the schema's
+// "additive only" contract holds: a reader that pre-dates signing
+// can still pull the entry by ignoring the wrapper. `sig` is the
+// `ed25519:<hex>` form — same encoding BIAM envelopes use, so an
+// operator inspecting both surfaces sees one consistent shape.
+type signedAuditLine struct {
+	Event json.RawMessage `json:"event"`
+	Sig   string          `json:"sig"`
+}
+
+// signedLine produces the wrapped, signed JSONL line for an entry.
+// Returned bytes already include the trailing newline. Returns an
+// error when the signer is nil — Emit catches it and surfaces on
+// stderr without aborting the dispatch (we'd rather lose the line
+// than the dispatch result, but operators should see it broke).
+func signedLine(signer *biam.Identity, e AuditEntry) ([]byte, error) {
+	if signer == nil {
+		return nil, errors.New("unattended: audit signer not initialised")
+	}
+	canonical, err := json.Marshal(e)
+	if err != nil {
+		return nil, fmt.Errorf("marshal entry: %w", err)
+	}
+	sig := signer.Sign(canonical)
+	if sig == nil {
+		return nil, errors.New("unattended: signer returned nil signature (private key missing)")
+	}
+	wrapper := signedAuditLine{
+		Event: json.RawMessage(canonical),
+		Sig:   "ed25519:" + hex.EncodeToString(sig),
+	}
+	body, err := json.Marshal(wrapper)
+	if err != nil {
+		return nil, fmt.Errorf("marshal wrapper: %w", err)
+	}
+	return append(body, '\n'), nil
 }
 
 // Close flushes and closes the audit file. Safe to call multiple
@@ -287,6 +335,14 @@ func AuditDir(sessionID string) string {
 // Begin creates a new SessionState with a fresh UUID and audit log
 // path. Caller MUST defer Close on the returned state so the audit
 // file flushes to disk on session end.
+//
+// Loads the BIAM Ed25519 identity (creating it on first launch) so
+// every Emit() can wrap the entry as `{event, sig}`. ADR-023
+// resolved this as unconditional: an unattended audit log that
+// isn't tamper-evident isn't actually an audit log. A failure to
+// load / create the identity therefore aborts session start —
+// dispatching without signing would silently downgrade the
+// security promise the operator just opted into.
 func Begin(repoPath string, yolo bool) (*SessionState, error) {
 	repoPath = filepath.Clean(repoPath)
 	sessionID := uuid.NewString()
@@ -294,21 +350,116 @@ func Begin(repoPath string, yolo bool) (*SessionState, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("unattended: mkdir audit dir %s: %w", dir, err)
 	}
+	signer, err := biam.LoadOrCreateIdentity("")
+	if err != nil {
+		return nil, fmt.Errorf("unattended: load audit signer: %w", err)
+	}
 	state := &SessionState{
 		ID:        sessionID,
 		StartedAt: time.Now().UTC(),
 		RepoPath:  repoPath,
 		AuditPath: filepath.Join(dir, "audit.jsonl"),
 		YOLOAlias: yolo,
+		signer:    signer,
 	}
 	state.Emit(AuditEntry{
 		Kind: "session_start",
 		Metadata: map[string]any{
 			"repo_path": repoPath,
 			"yolo":      yolo,
+			// Stamp the signer's public key so a verifier can
+			// distinguish "wrong key" from "tampered line" without
+			// needing a separate index file.
+			"signer_pub": signer.PublicKeyB64(),
 		},
 	})
 	return state, nil
+}
+
+// ───── verify walker ─────────────────────────────────────────────
+
+// VerifyReport summarises a `clawtool unattended verify <session>`
+// pass over a JSONL audit log. Counts add up to Total — every line
+// lands in exactly one bucket.
+type VerifyReport struct {
+	SessionID string `json:"session_id"`
+	AuditPath string `json:"audit_path"`
+	Total     int    `json:"total"`     // lines read
+	Valid     int    `json:"valid"`     // signature checked + matched
+	Invalid   int    `json:"invalid"`   // signature present but didn't verify (tampered)
+	Malformed int    `json:"malformed"` // not JSON, missing event/sig, bad sig hex, etc.
+}
+
+// VerifySession walks the audit log for sessionID, re-canonicalises
+// each event, and verifies the sig against `pub`. When pub is nil
+// the local BIAM identity's public key is used — the common case
+// (operator running verify on the same host that signed). One
+// malformed / invalid line does NOT abort the walk: the report
+// surfaces the count, and the operator decides whether to escalate.
+//
+// Append-only contract: every line is independent. A torn write at
+// the file tail bumps Malformed by one but every preceding Valid
+// stays Valid — that's the whole point of per-line signing.
+func VerifySession(sessionID string, pub ed25519.PublicKey) (VerifyReport, error) {
+	report := VerifyReport{SessionID: sessionID}
+	if sessionID == "" {
+		return report, errors.New("unattended: verify session_id empty")
+	}
+	report.AuditPath = filepath.Join(AuditDir(sessionID), "audit.jsonl")
+
+	if pub == nil {
+		id, err := biam.LoadOrCreateIdentity("")
+		if err != nil {
+			return report, fmt.Errorf("unattended: load verifier identity: %w", err)
+		}
+		pub = id.Public
+	}
+
+	f, err := os.Open(report.AuditPath)
+	if err != nil {
+		return report, fmt.Errorf("unattended: open audit log %s: %w", report.AuditPath, err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	// Audit lines can carry truncated prompts / result tails up
+	// to ~256 chars each; the wrapped JSON sits comfortably under
+	// 64 KiB, but bump the buffer so a generous future schema
+	// (longer truncation cap, richer metadata) doesn't strand
+	// older logs at parse time.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		raw := scanner.Bytes()
+		if len(strings.TrimSpace(string(raw))) == 0 {
+			continue // tolerate stray blank lines
+		}
+		report.Total++
+		var line signedAuditLine
+		if err := json.Unmarshal(raw, &line); err != nil || len(line.Event) == 0 || line.Sig == "" {
+			report.Malformed++
+			continue
+		}
+		const prefix = "ed25519:"
+		if !strings.HasPrefix(line.Sig, prefix) {
+			report.Malformed++
+			continue
+		}
+		sig, err := hex.DecodeString(line.Sig[len(prefix):])
+		if err != nil {
+			report.Malformed++
+			continue
+		}
+		if biam.Verify(pub, line.Event, sig) {
+			report.Valid++
+		} else {
+			report.Invalid++
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return report, fmt.Errorf("unattended: scan audit log: %w", err)
+	}
+	return report, nil
 }
 
 // ───── disclosure copy ───────────────────────────────────────────

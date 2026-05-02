@@ -1,6 +1,8 @@
 package unattended
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,14 +13,19 @@ import (
 
 // withTempXDG points XDG_DATA_HOME at t.TempDir() so the trust file
 // + audit logs land in an isolated location for the test, restored
-// on cleanup.
+// on cleanup. Also points XDG_CONFIG_HOME at the same dir so the
+// BIAM identity (loaded by Begin to sign audit lines) lands inside
+// the test sandbox instead of the operator's real ~/.config.
 func withTempXDG(t *testing.T) string {
 	t.Helper()
-	prev := os.Getenv("XDG_DATA_HOME")
+	prevData := os.Getenv("XDG_DATA_HOME")
+	prevCfg := os.Getenv("XDG_CONFIG_HOME")
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Cleanup(func() {
-		os.Setenv("XDG_DATA_HOME", prev)
+		os.Setenv("XDG_DATA_HOME", prevData)
+		os.Setenv("XDG_CONFIG_HOME", prevCfg)
 	})
 	return dir
 }
@@ -175,9 +182,22 @@ func TestEmit_AppendsJSONL(t *testing.T) {
 		t.Fatalf("got %d lines, want 3:\n%s", len(lines), body)
 	}
 	for i, line := range lines {
-		var entry AuditEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		// Each line is now {event, sig}; the entry sits inside event.
+		var wrapper struct {
+			Event json.RawMessage `json:"event"`
+			Sig   string          `json:"sig"`
+		}
+		if err := json.Unmarshal([]byte(line), &wrapper); err != nil {
 			t.Errorf("line[%d] not valid JSON: %v\n  body=%s", i, err, line)
+			continue
+		}
+		if wrapper.Sig == "" {
+			t.Errorf("line[%d] missing sig", i)
+		}
+		var entry AuditEntry
+		if err := json.Unmarshal(wrapper.Event, &entry); err != nil {
+			t.Errorf("line[%d] event not valid JSON: %v\n  body=%s", i, err, wrapper.Event)
+			continue
 		}
 		if entry.Session != state.ID {
 			t.Errorf("line[%d] session = %q, want %q", i, entry.Session, state.ID)
@@ -185,6 +205,171 @@ func TestEmit_AppendsJSONL(t *testing.T) {
 		if entry.TS.IsZero() {
 			t.Errorf("line[%d] ts is zero", i)
 		}
+	}
+}
+
+// TestEmit_SignsLine — every JSONL line carries a verifiable
+// signature over the canonical-JSON encoding of `event`. The
+// session's signer.Public is the verification key; tampering with
+// any byte of `event` invalidates the line. Pin the
+// `ed25519:<hex>` shape too, so a sig string drift surfaces fast.
+func TestEmit_SignsLine(t *testing.T) {
+	withTempXDG(t)
+	state, err := Begin("/repo", false)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer state.Close()
+
+	state.Emit(AuditEntry{
+		Kind:   "dispatch",
+		Agent:  "codex",
+		Prompt: "sign me",
+	})
+	state.Close()
+
+	body, err := os.ReadFile(state.AuditPath)
+	if err != nil {
+		t.Fatalf("read audit: %v", err)
+	}
+	lines := strings.Split(strings.TrimRight(string(body), "\n"), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected ≥2 lines (session_start + dispatch), got %d", len(lines))
+	}
+
+	for i, line := range lines {
+		var w signedAuditLine
+		if err := json.Unmarshal([]byte(line), &w); err != nil {
+			t.Fatalf("line[%d] parse: %v\n  body=%s", i, err, line)
+		}
+		if !strings.HasPrefix(w.Sig, "ed25519:") {
+			t.Errorf("line[%d] sig %q missing ed25519: prefix", i, w.Sig)
+		}
+		hexPart := strings.TrimPrefix(w.Sig, "ed25519:")
+		sigBytes, err := hex.DecodeString(hexPart)
+		if err != nil {
+			t.Errorf("line[%d] sig hex decode: %v", i, err)
+			continue
+		}
+		if !ed25519.Verify(state.signer.Public, w.Event, sigBytes) {
+			t.Errorf("line[%d] signature did NOT verify against session signer pubkey", i)
+		}
+	}
+}
+
+// TestVerify_ValidSession — round-trip the public path: emit N
+// events, then VerifySession reports valid=N and zero invalid /
+// malformed.
+func TestVerify_ValidSession(t *testing.T) {
+	withTempXDG(t)
+	state, err := Begin("/repo", false)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer state.Close()
+
+	const dispatches = 5
+	for i := 0; i < dispatches; i++ {
+		state.Emit(AuditEntry{Kind: "dispatch", Agent: "codex", Prompt: "p"})
+	}
+	state.Close()
+
+	report, err := VerifySession(state.ID, nil)
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	wantTotal := dispatches + 1 // +1 for session_start
+	if report.Total != wantTotal {
+		t.Errorf("Total = %d, want %d", report.Total, wantTotal)
+	}
+	if report.Valid != wantTotal {
+		t.Errorf("Valid = %d, want %d", report.Valid, wantTotal)
+	}
+	if report.Invalid != 0 {
+		t.Errorf("Invalid = %d, want 0", report.Invalid)
+	}
+	if report.Malformed != 0 {
+		t.Errorf("Malformed = %d, want 0", report.Malformed)
+	}
+}
+
+// TestVerify_TamperedLine — mutate one byte inside `event` and
+// confirm verify reports invalid=1, valid=N-1. This is the
+// load-bearing security property: silent edits break verification.
+func TestVerify_TamperedLine(t *testing.T) {
+	withTempXDG(t)
+	state, err := Begin("/repo", false)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer state.Close()
+
+	state.Emit(AuditEntry{Kind: "dispatch", Agent: "codex", Prompt: "original"})
+	state.Emit(AuditEntry{Kind: "dispatch", Agent: "codex", Prompt: "second"})
+	state.Close()
+
+	body, err := os.ReadFile(state.AuditPath)
+	if err != nil {
+		t.Fatalf("read audit: %v", err)
+	}
+	// Replace "original" with "TAMPERED" inside the event payload.
+	// The wrapper still parses fine, and the sig stays the same —
+	// that's exactly the silent-edit attack signing defends against.
+	mutated := strings.Replace(string(body), `"prompt":"original"`, `"prompt":"TAMPERED"`, 1)
+	if mutated == string(body) {
+		t.Fatalf("did not find prompt to tamper inside body:\n%s", body)
+	}
+	if err := os.WriteFile(state.AuditPath, []byte(mutated), 0o600); err != nil {
+		t.Fatalf("rewrite audit: %v", err)
+	}
+
+	report, err := VerifySession(state.ID, nil)
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if report.Invalid != 1 {
+		t.Errorf("Invalid = %d, want 1", report.Invalid)
+	}
+	if report.Valid != report.Total-1 {
+		t.Errorf("Valid = %d, want Total-1 = %d", report.Valid, report.Total-1)
+	}
+	if report.Malformed != 0 {
+		t.Errorf("Malformed = %d, want 0 (the wrapper still parses)", report.Malformed)
+	}
+}
+
+// TestVerify_MalformedLine — a non-JSON tail line counts as
+// malformed, not invalid. Keeps the count semantics honest: a torn
+// write (Malformed) is operationally different from an attacker
+// rewrite (Invalid).
+func TestVerify_MalformedLine(t *testing.T) {
+	withTempXDG(t)
+	state, err := Begin("/repo", false)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer state.Close()
+	state.Emit(AuditEntry{Kind: "dispatch", Agent: "codex"})
+	state.Close()
+
+	f, err := os.OpenFile(state.AuditPath, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatalf("open append: %v", err)
+	}
+	if _, err := f.WriteString("not-json garbage\n"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	f.Close()
+
+	report, err := VerifySession(state.ID, nil)
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if report.Malformed != 1 {
+		t.Errorf("Malformed = %d, want 1", report.Malformed)
+	}
+	if report.Invalid != 0 {
+		t.Errorf("Invalid = %d, want 0", report.Invalid)
 	}
 }
 

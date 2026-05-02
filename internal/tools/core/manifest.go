@@ -79,6 +79,17 @@ func BuildManifest() *registry.Manifest {
 			RegisterRulesAdd(s)
 		},
 	})
+	m.Append(registry.ToolSpec{
+		Name:        "UnattendedVerify",
+		Description: "Verify the Ed25519 signatures on an unattended-mode session's JSONL audit log. Use when auditing a past unattended run for tamper-evidence. Args: session_id. Returns: {valid, invalid, malformed, total}.",
+		Keywords:    []string{"unattended", "audit", "verify", "ed25519", "signature", "tamper", "yolo", "session"},
+		Category:    registry.CategoryCheckpoint,
+		Gate:        "",
+		UsageHint:   "Reach for UnattendedVerify after a watch-event wakeup ('PR merged', 'CI failed') to confirm the audit log of the prior unattended dispatch chain is still intact before chaining new work on top. Pass the session_id printed at session start. A non-zero invalid count means the on-disk log was edited after-the-fact — escalate, don't auto-resume.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterUnattendedVerify(s)
+		},
+	})
 
 	// ─── Authoring ─────────────────────────────────────────────
 	m.Append(registry.ToolSpec{

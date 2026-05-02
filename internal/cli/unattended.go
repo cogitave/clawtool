@@ -28,6 +28,10 @@ const unattendedUsage = `Usage:
   clawtool unattended revoke [<repo>]    Remove the trust grant.
   clawtool unattended list               List every trusted repo.
   clawtool unattended path               Print the trust file location.
+  clawtool unattended verify <id>        Verify the Ed25519 signatures on a session's
+                                          audit log. Reports valid / invalid / malformed
+                                          line counts so a tamper attempt surfaces
+                                          deterministically.
 
 Aliases: ` + "`clawtool yolo`" + ` is a synonym for ` + "`clawtool unattended`" + `.
 
@@ -40,8 +44,11 @@ disclosure flow.
 
 Audit: every unattended dispatch appends to
   ~/.local/share/clawtool/sessions/<id>/audit.jsonl
-The audit log is non-optional; it's the only way to investigate
-an unattended session after the fact.
+Each line is wrapped {event, sig} — the sig is an Ed25519 signature
+over the canonical JSON of event, computed with the local BIAM
+identity. ` + "`clawtool unattended verify <id>`" + ` reads the log back
+and reports tamper-evidence. The audit log is non-optional; it's
+the only way to investigate an unattended session after the fact.
 `
 
 func (a *App) runUnattended(argv []string) int {
@@ -58,6 +65,8 @@ func (a *App) runUnattended(argv []string) int {
 		return a.runUnattendedRevoke(argv[1:])
 	case "list":
 		return a.runUnattendedList(argv[1:])
+	case "verify":
+		return a.runUnattendedVerify(argv[1:])
 	case "path":
 		fmt.Fprintln(a.Stdout, unattended.TrustFilePath())
 		return 0
@@ -147,5 +156,34 @@ func (a *App) runUnattendedList(_ []string) int {
 	if _, err := a.Stdout.Write(body); err != nil {
 		return 1
 	}
+	return 0
+}
+
+// runUnattendedVerify walks the JSONL audit log for the given
+// session_id and reports the count of valid / invalid / malformed
+// signed entries. Exit code 0 only when every line verifies — so
+// `clawtool unattended verify <id>` doubles as a CI-friendly
+// tamper-evidence check (`if !; then bail`).
+func (a *App) runUnattendedVerify(argv []string) int {
+	if len(argv) == 0 {
+		fmt.Fprintln(a.Stderr, "clawtool unattended verify: session_id required")
+		fmt.Fprintln(a.Stderr, "  usage: clawtool unattended verify <session_id>")
+		return 2
+	}
+	sessionID := argv[0]
+	report, err := unattended.VerifySession(sessionID, nil)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "clawtool unattended verify: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(a.Stdout, "session: %s\n", report.SessionID)
+	fmt.Fprintf(a.Stdout, "audit:   %s\n", report.AuditPath)
+	fmt.Fprintf(a.Stdout, "total: %d · valid: %d · invalid: %d · malformed: %d\n",
+		report.Total, report.Valid, report.Invalid, report.Malformed)
+	if report.Invalid > 0 || report.Malformed > 0 {
+		fmt.Fprintln(a.Stdout, "✗ audit log NOT clean — at least one line failed signature verification or didn't parse")
+		return 1
+	}
+	fmt.Fprintln(a.Stdout, "✓ every line verifies")
 	return 0
 }
