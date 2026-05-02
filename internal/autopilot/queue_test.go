@@ -234,3 +234,118 @@ func TestQueue_AddRequiresPrompt(t *testing.T) {
 		t.Fatalf("Add accepted whitespace prompt")
 	}
 }
+
+// TestQueue_ProposedNotClaimed pins the operator-gate invariant:
+// items the Ideator emits with Propose() land as StatusProposed and
+// MUST NOT be returned by Claim. Without this gate the Ideator could
+// silently drive autonomous execution past the human's review.
+func TestQueue_ProposedNotClaimed(t *testing.T) {
+	q := newQueue(t)
+	prop, err := q.Propose(ProposeInput{
+		Prompt:    "wire BM25 baseline diff",
+		Source:    "bench_regression",
+		Evidence:  "/tmp/clawtool-toolsearch-bench.tsv",
+		DedupeKey: "bench_regression:bm25-baseline",
+	})
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	if prop.Status != StatusProposed {
+		t.Fatalf("Propose status: got %q, want %q", prop.Status, StatusProposed)
+	}
+	if _, ok, err := q.Claim(); err != nil || ok {
+		t.Fatalf("Claim of proposed-only queue: ok=%v err=%v (want ok=false)", ok, err)
+	}
+
+	// Counts must surface the proposed slot independently of pending.
+	c, err := q.Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if c.Proposed != 1 || c.Pending != 0 || c.Total != 1 {
+		t.Fatalf("Counts: %+v (want proposed=1 pending=0 total=1)", c)
+	}
+}
+
+// TestQueue_AcceptFlipsToPending exercises the gate: an operator
+// running `autopilot accept <id>` flips the item to pending, after
+// which Claim picks it up normally. Accept on a non-proposed item
+// returns the appropriate typed error.
+func TestQueue_AcceptFlipsToPending(t *testing.T) {
+	q := newQueue(t)
+	prop, err := q.Propose(ProposeInput{Prompt: "raise wiki:* coverage"})
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+
+	got, err := q.Accept(prop.ID, "operator approved")
+	if err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	if got.Status != StatusPending {
+		t.Fatalf("Accept status: got %q, want %q", got.Status, StatusPending)
+	}
+	if got.AcceptedAt.IsZero() {
+		t.Fatalf("Accept did not stamp AcceptedAt")
+	}
+	if got.Note != "operator approved" {
+		t.Fatalf("Accept note: got %q, want %q", got.Note, "operator approved")
+	}
+
+	// Claim now finds it.
+	claimed, ok, err := q.Claim()
+	if err != nil || !ok {
+		t.Fatalf("Claim post-accept: ok=%v err=%v", ok, err)
+	}
+	if claimed.ID != prop.ID {
+		t.Fatalf("Claim id: got %q, want %q", claimed.ID, prop.ID)
+	}
+
+	// Accepting an in_progress item is rejected with ErrAlreadyAccepted.
+	if _, err := q.Accept(prop.ID, ""); !errors.Is(err, ErrAlreadyAccepted) {
+		t.Fatalf("Accept on in_progress: err=%v want ErrAlreadyAccepted", err)
+	}
+
+	if _, err := q.Complete(prop.ID, ""); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	// Accepting a terminal item is rejected with ErrAlreadyTerminal.
+	if _, err := q.Accept(prop.ID, ""); !errors.Is(err, ErrAlreadyTerminal) {
+		t.Fatalf("Accept on terminal: err=%v want ErrAlreadyTerminal", err)
+	}
+
+	if _, err := q.Accept("does-not-exist", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Accept unknown: err=%v want ErrNotFound", err)
+	}
+}
+
+// TestQueue_ProposeDedupes confirms that re-proposing on the same
+// DedupeKey while the original is still active is a no-op and surfaces
+// ErrDuplicateProposal so the Ideator can tally the dedup.
+func TestQueue_ProposeDedupes(t *testing.T) {
+	q := newQueue(t)
+	first, err := q.Propose(ProposeInput{Prompt: "fix flaky test", DedupeKey: "todos:foo.go:42"})
+	if err != nil {
+		t.Fatalf("Propose: %v", err)
+	}
+	if _, err := q.Propose(ProposeInput{Prompt: "fix flaky test", DedupeKey: "todos:foo.go:42"}); !errors.Is(err, ErrDuplicateProposal) {
+		t.Fatalf("Propose dup: err=%v want ErrDuplicateProposal", err)
+	}
+	// Counts: the second Propose must not have appended another row.
+	c, err := q.Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if c.Total != 1 || c.Proposed != 1 {
+		t.Fatalf("Counts: %+v (want total=1 proposed=1)", c)
+	}
+	// Once the original is skipped, re-proposing succeeds (operator
+	// said no, the source still sees the signal — give them another
+	// chance after they fix the underlying issue).
+	if _, err := q.Skip(first.ID, ""); err != nil {
+		t.Fatalf("Skip: %v", err)
+	}
+	if _, err := q.Propose(ProposeInput{Prompt: "fix flaky test", DedupeKey: "todos:foo.go:42"}); err != nil {
+		t.Fatalf("Propose after skip: %v", err)
+	}
+}

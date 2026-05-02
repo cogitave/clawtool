@@ -785,6 +785,14 @@ func BuildManifest() *registry.Manifest {
 		UsageHint:   "Use AutopilotNext when you've finished a task and want to know what to do next without re-prompting the operator. Call this in a loop after each task: AutopilotNext → do the work → AutopilotDone → AutopilotNext again. When the response carries empty=true, the queue is drained and the agent should stop the loop. Concurrency-safe: two parallel calls don't return the same item.",
 	})
 	m.Append(registry.ToolSpec{
+		Name:        "AutopilotAccept",
+		Description: "Flip an Ideator-emitted proposed backlog item to pending so AutopilotNext can claim it. Operator gate on the Ideator → Autopilot → Autonomous self-direction stack: proposed items are NEVER claimed without an explicit Accept.",
+		Keywords:    []string{"autopilot", "accept", "approve", "gate", "operator", "ideator", "proposed", "pending", "promote", "self-direction"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use AutopilotAccept when the operator (or a consenting agent) has reviewed an Ideator suggestion (`autopilot list --status proposed` / IdeateRun) and approved it for execution. Distinct from AutopilotAdd: AutopilotAdd inserts a fresh item directly at pending; AutopilotAccept promotes an existing proposed item. The Ideator never side-steps this gate — without Accept, no proposal reaches the working queue.",
+	})
+	m.Append(registry.ToolSpec{
 		Name:        "AutopilotDone",
 		Description: "Mark a backlog item done after the agent completed the work. Pair with AutopilotNext on the same id; AutopilotSkip is the sibling for abandoned (not finished) work.",
 		Keywords:    []string{"autopilot", "done", "complete", "finish", "backlog", "queue", "self-direction"},
@@ -815,6 +823,31 @@ func BuildManifest() *registry.Manifest {
 		Category:    registry.CategoryDispatch,
 		Gate:        "",
 		UsageHint:   "Use AutopilotStatus when you only need the counts — it's cheaper than AutopilotList and the histogram is enough to decide whether to keep dispatching AutopilotNext, or to surface backlog health to the operator.",
+	})
+
+	// ─── Ideator — top of the self-direction stack ─────────────
+	// Two tools: IdeateRun is read-only; IdeateApply pushes
+	// findings to the autopilot backlog at status=proposed.
+	// Operator (or operator-driving agent) flips proposed →
+	// pending via AutopilotAccept.
+	m.Append(registry.ToolSpec{
+		Name:        "IdeateRun",
+		Description: "Survey repo-local signals (open ADR questions, TODO/FIXME comments, recent CI failures, MCP manifest description drift, ToolSearch BM25 baseline regressions) and return ranked Idea candidates. Read-only — does NOT touch the autopilot queue.",
+		Keywords:    []string{"ideate", "ideator", "self-direction", "discover", "feature-generation", "todo", "fixme", "adr", "ci", "regression", "manifest", "drift", "signals", "self-feature"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use IdeateRun when you've finished an autopilot session, the queue is empty, and you want to discover what to work on next without operator re-prompting. Distinct from SemanticSearch: Ideate scans signals (TODOs, ADR open questions, CI failures); SemanticSearch finds existing code by intent. Pair with IdeateApply once the operator approves pushing findings to the backlog.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterIdeatorTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "IdeateApply",
+		Description: "Survey repo signals (same as IdeateRun) and push every surviving Idea onto the autopilot backlog at status=proposed. Operator approval via AutopilotAccept is the only path from proposed → pending.",
+		Keywords:    []string{"ideate", "ideator", "apply", "queue", "propose", "autopilot", "self-direction", "feature-generation", "self-feature"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use IdeateApply when the operator has explicitly told you to push the Ideator's findings to the autopilot backlog. Items land at status=proposed; AutopilotAccept (CLI: `clawtool autopilot accept <id>`) flips them to pending so AutopilotNext can claim them. Without that gate the Ideator never drives execution unattended.",
 	})
 
 	m.Append(registry.ToolSpec{

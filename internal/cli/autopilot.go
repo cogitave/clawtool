@@ -58,14 +58,20 @@ const autopilotUsage = `Usage:
                                   Empty queue → exit 0 with no output (text) or
                                   '{}' (json). Call this in a loop after each
                                   task to keep working without operator re-prompting.
+  clawtool autopilot accept <id> [--note "..."]
+                                  Flip an Ideator-emitted proposed item to pending
+                                  so AutopilotNext can claim it. The operator gate
+                                  on the Ideator → Autopilot → Autonomous stack:
+                                  no proposal reaches the working queue without
+                                  an explicit Accept.
   clawtool autopilot done <id> [--note "..."]
                                   Mark the named item done.
   clawtool autopilot skip <id> [--note "..."]
                                   Drop the named item without finishing it.
-  clawtool autopilot list [--status pending|in_progress|done|skipped] [--format text|json]
+  clawtool autopilot list [--status proposed|pending|in_progress|done|skipped] [--format text|json]
                                   Show every item, optionally filtered by status.
   clawtool autopilot status [--format text|json]
-                                  Histogram: pending / in_progress / done / skipped / total.
+                                  Histogram: proposed / pending / in_progress / done / skipped / total.
 
 Storage:
   $XDG_CONFIG_HOME/clawtool/autopilot/queue.toml (default
@@ -91,6 +97,8 @@ func (a *App) runAutopilot(argv []string) int {
 		return a.runAutopilotAdd(argv[1:])
 	case "next":
 		return a.runAutopilotNext(argv[1:])
+	case "accept":
+		return a.runAutopilotAccept(argv[1:])
 	case "done", "complete":
 		return a.runAutopilotDone(argv[1:])
 	case "skip":
@@ -252,6 +260,40 @@ func (a *App) runAutopilotSkip(argv []string) int {
 	return 0
 }
 
+func (a *App) runAutopilotAccept(argv []string) int {
+	fs := flag.NewFlagSet("autopilot accept", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	note := fs.String("note", "", "Optional acceptance note.")
+	id, rest, err := splitFirstPositional(argv)
+	if err != nil {
+		fmt.Fprintln(a.Stderr, "usage: clawtool autopilot accept <id> [--note \"...\"]")
+		return 2
+	}
+	if err := fs.Parse(rest); err != nil {
+		return 2
+	}
+	q := autopilot.Open()
+	it, err := q.Accept(id, *note)
+	if err != nil {
+		switch {
+		case errors.Is(err, autopilot.ErrNotFound):
+			fmt.Fprintf(a.Stderr, "clawtool autopilot accept: %s: not found\n", id)
+			return 1
+		case errors.Is(err, autopilot.ErrAlreadyTerminal):
+			fmt.Fprintf(a.Stderr, "clawtool autopilot accept: %s: already %s\n", id, it.Status)
+			return 1
+		case errors.Is(err, autopilot.ErrAlreadyAccepted):
+			fmt.Fprintf(a.Stderr, "clawtool autopilot accept: %s: already %s\n", id, it.Status)
+			return 1
+		default:
+			fmt.Fprintf(a.Stderr, "clawtool autopilot accept: %v\n", err)
+			return 1
+		}
+	}
+	fmt.Fprintf(a.Stdout, "%s accepted\n", it.ID)
+	return 0
+}
+
 // splitFirstPositional pops the first non-flag argument from argv
 // and returns it plus the remainder for the flagset. Stdlib `flag`
 // stops at the first non-flag, so `done <id> --note "..."` would
@@ -327,7 +369,7 @@ func (a *App) runAutopilotStatus(argv []string) int {
 		return 0
 	}
 	fmt.Fprintf(a.Stdout,
-		"pending=%d in_progress=%d done=%d skipped=%d total=%d\n",
-		c.Pending, c.InProgress, c.Done, c.Skipped, c.Total)
+		"proposed=%d pending=%d in_progress=%d done=%d skipped=%d total=%d\n",
+		c.Proposed, c.Pending, c.InProgress, c.Done, c.Skipped, c.Total)
 	return 0
 }

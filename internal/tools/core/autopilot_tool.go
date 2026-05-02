@@ -108,6 +108,7 @@ func (r autopilotStatusResult) Render() string {
 		return r.ErrorLine("")
 	}
 	return r.SuccessLine("queue",
+		fmt.Sprintf("proposed=%d", r.Counts.Proposed),
 		fmt.Sprintf("pending=%d", r.Counts.Pending),
 		fmt.Sprintf("in_progress=%d", r.Counts.InProgress),
 		fmt.Sprintf("done=%d", r.Counts.Done),
@@ -115,11 +116,12 @@ func (r autopilotStatusResult) Render() string {
 		fmt.Sprintf("total=%d", r.Counts.Total))
 }
 
-// RegisterAutopilotTools wires the six tools onto the MCP server.
+// RegisterAutopilotTools wires the seven tools onto the MCP server.
 // Idempotent — calling twice replaces by name.
 func RegisterAutopilotTools(s *server.MCPServer) {
 	registerAutopilotAdd(s)
 	registerAutopilotNext(s)
+	registerAutopilotAccept(s)
 	registerAutopilotDone(s)
 	registerAutopilotSkip(s)
 	registerAutopilotList(s)
@@ -204,6 +206,53 @@ func registerAutopilotNext(s *server.MCPServer) {
 			return resultOf(out), nil
 		}
 		out.Item = &it
+		out.DurationMs = time.Since(start).Milliseconds()
+		return resultOf(out), nil
+	})
+}
+
+func registerAutopilotAccept(s *server.MCPServer) {
+	tool := mcp.NewTool(
+		"AutopilotAccept",
+		mcp.WithDescription(
+			"Flip an Ideator-emitted proposed backlog item to pending so "+
+				"AutopilotNext can claim it. This is the operator's safety "+
+				"gate on the Ideator → Autopilot → Autonomous self-direction "+
+				"stack: items the Ideator surfaces sit at status=proposed "+
+				"and are NEVER returned by AutopilotNext until an operator "+
+				"(or the operator-driving agent that has explicit consent) "+
+				"runs Accept. Use when the operator has reviewed an Ideator "+
+				"suggestion (`autopilot list --status proposed` / IdeateRun) "+
+				"and approved it for execution. NOT for adding fresh prompts "+
+				"— use AutopilotAdd, which lands directly at pending. "+
+				"AutopilotAccept changes only proposed → pending; running "+
+				"it on a pending / in_progress / terminal item returns a "+
+				"typed error and leaves the item untouched.",
+		),
+		mcp.WithString("id", mcp.Required(),
+			mcp.Description("Item id of a proposed item (from IdeateApply / AutopilotList --status proposed).")),
+		mcp.WithString("note",
+			mcp.Description("Optional acceptance note (e.g. operator handle, justification).")),
+	)
+	s.AddTool(tool, func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, err := req.RequireString("id")
+		if err != nil {
+			return mcp.NewToolResultError("missing required argument: id"), nil
+		}
+		note := req.GetString("note", "")
+
+		start := time.Now()
+		out := autopilotDoneResult{
+			BaseResult: BaseResult{Operation: "AutopilotAccept", Engine: "autopilot"},
+		}
+		it, err := autopilot.Open().Accept(id, note)
+		if err != nil {
+			out.ErrorReason = err.Error()
+			out.Item = it
+			out.DurationMs = time.Since(start).Milliseconds()
+			return resultOf(out), nil
+		}
+		out.Item = it
 		out.DurationMs = time.Since(start).Milliseconds()
 		return resultOf(out), nil
 	})

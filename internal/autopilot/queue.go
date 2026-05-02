@@ -49,7 +49,8 @@ import (
 type Status string
 
 const (
-	StatusPending    Status = "pending"     // freshly added, not yet claimed
+	StatusProposed   Status = "proposed"    // Ideator-emitted suggestion; needs operator Accept before Claim picks it up
+	StatusPending    Status = "pending"     // freshly added (or accepted), not yet claimed
 	StatusInProgress Status = "in_progress" // returned by Claim, not yet completed
 	StatusDone       Status = "done"        // Complete() called
 	StatusSkipped    Status = "skipped"     // Skip() called — operator told the agent to drop it
@@ -58,15 +59,24 @@ const (
 // Item is one unit of self-work. Field names map directly to TOML
 // keys; preserve them when adding fields so existing queues survive
 // rolling upgrades.
+//
+// Source / Evidence / DedupeKey are populated by the Ideator when
+// the item is Proposed; operator-added items leave them empty. They
+// stay attached through Accept so the eventual completion note can
+// reference the originating signal (e.g. "TODO at foo.go:42").
 type Item struct {
-	ID        string    `toml:"id" json:"id"`
-	Prompt    string    `toml:"prompt" json:"prompt"`
-	Priority  int       `toml:"priority" json:"priority"`
-	Status    Status    `toml:"status" json:"status"`
-	CreatedAt time.Time `toml:"created_at" json:"created_at"`
-	ClaimedAt time.Time `toml:"claimed_at,omitempty" json:"claimed_at,omitempty"`
-	DoneAt    time.Time `toml:"done_at,omitempty" json:"done_at,omitempty"`
-	Note      string    `toml:"note,omitempty" json:"note,omitempty"`
+	ID         string    `toml:"id" json:"id"`
+	Prompt     string    `toml:"prompt" json:"prompt"`
+	Priority   int       `toml:"priority" json:"priority"`
+	Status     Status    `toml:"status" json:"status"`
+	CreatedAt  time.Time `toml:"created_at" json:"created_at"`
+	ClaimedAt  time.Time `toml:"claimed_at,omitempty" json:"claimed_at,omitempty"`
+	DoneAt     time.Time `toml:"done_at,omitempty" json:"done_at,omitempty"`
+	AcceptedAt time.Time `toml:"accepted_at,omitempty" json:"accepted_at,omitempty"`
+	Note       string    `toml:"note,omitempty" json:"note,omitempty"`
+	Source     string    `toml:"source,omitempty" json:"source,omitempty"`
+	Evidence   string    `toml:"evidence,omitempty" json:"evidence,omitempty"`
+	DedupeKey  string    `toml:"dedupe_key,omitempty" json:"dedupe_key,omitempty"`
 }
 
 // queueFile is the on-disk shape — `[[item]]` array hosts the
@@ -165,6 +175,113 @@ func (q *Queue) Add(prompt string, priority int, note string) (Item, error) {
 	return it, nil
 }
 
+// ProposeInput is the wire shape Ideator hands the queue. Fields
+// mirror Item but only the ones a freshly-minted suggestion needs;
+// status is forced to StatusProposed regardless of caller intent so
+// the operator's Accept gate is the only path into pending.
+type ProposeInput struct {
+	Prompt    string
+	Priority  int
+	Note      string
+	Source    string
+	Evidence  string
+	DedupeKey string
+}
+
+// Propose appends a new proposed item — the Ideator's output. The
+// item is NOT claimable by AutopilotNext until an operator runs
+// Accept (CLI: `clawtool autopilot accept <id>`). Returns
+// ErrDuplicateProposal when DedupeKey collides with an existing
+// non-terminal proposed/pending/in_progress item — callers can
+// ignore for idempotency.
+func (q *Queue) Propose(in ProposeInput) (Item, error) {
+	prompt := strings.TrimSpace(in.Prompt)
+	if prompt == "" {
+		return Item{}, errors.New("autopilot: prompt is empty")
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	items, err := q.load()
+	if err != nil {
+		return Item{}, err
+	}
+	if k := strings.TrimSpace(in.DedupeKey); k != "" {
+		for _, ex := range items {
+			if ex.DedupeKey != k {
+				continue
+			}
+			// Re-proposing on top of an item still in the active
+			// pipeline is a no-op; once the original lands as done
+			// or skipped the operator can ideate again.
+			if ex.Status == StatusProposed || ex.Status == StatusPending ||
+				ex.Status == StatusInProgress {
+				return ex, ErrDuplicateProposal
+			}
+		}
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	id := generateID(items, now)
+	it := Item{
+		ID:        id,
+		Prompt:    prompt,
+		Priority:  in.Priority,
+		Status:    StatusProposed,
+		CreatedAt: now,
+		Note:      strings.TrimSpace(in.Note),
+		Source:    strings.TrimSpace(in.Source),
+		Evidence:  strings.TrimSpace(in.Evidence),
+		DedupeKey: strings.TrimSpace(in.DedupeKey),
+	}
+	items = append(items, it)
+	if err := q.save(items); err != nil {
+		return Item{}, err
+	}
+	return it, nil
+}
+
+// Accept flips a proposed item to pending so AutopilotNext can claim
+// it. This is the operator's safety gate — without an explicit Accept
+// no Ideator output ever reaches the agent's working queue.
+//
+// Errors: ErrNotFound (unknown id); ErrAlreadyTerminal (item is
+// already done/skipped); ErrAlreadyAccepted (item is already pending,
+// in_progress, or terminal — Accept is idempotent only on proposed).
+func (q *Queue) Accept(id, note string) (Item, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	items, err := q.load()
+	if err != nil {
+		return Item{}, err
+	}
+	idx := -1
+	for i := range items {
+		if items[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return Item{}, ErrNotFound
+	}
+	switch items[idx].Status {
+	case StatusProposed:
+		// happy path
+	case StatusDone, StatusSkipped:
+		return items[idx], ErrAlreadyTerminal
+	default:
+		return items[idx], ErrAlreadyAccepted
+	}
+	items[idx].Status = StatusPending
+	items[idx].AcceptedAt = time.Now().UTC().Truncate(time.Second)
+	if note = strings.TrimSpace(note); note != "" {
+		items[idx].Note = note
+	}
+	if err := q.save(items); err != nil {
+		return Item{}, err
+	}
+	return items[idx], nil
+}
+
 // Claim returns the highest-priority pending item, marks it
 // in_progress, and persists. ok=false (zero Item, nil err) when
 // the queue has no pending items — the agent's signal to stop the
@@ -258,6 +375,7 @@ func (q *Queue) List(filter Status) ([]Item, error) {
 
 // Counts represents the queue's status histogram. Returned by Status.
 type Counts struct {
+	Proposed   int `json:"proposed"`
 	Pending    int `json:"pending"`
 	InProgress int `json:"in_progress"`
 	Done       int `json:"done"`
@@ -277,6 +395,8 @@ func (q *Queue) Status() (Counts, error) {
 	for _, it := range items {
 		c.Total++
 		switch it.Status {
+		case StatusProposed:
+			c.Proposed++
 		case StatusPending:
 			c.Pending++
 		case StatusInProgress:
@@ -290,13 +410,24 @@ func (q *Queue) Status() (Counts, error) {
 	return c, nil
 }
 
-// ErrNotFound is returned by Complete / Skip when no item matches
-// the given id.
+// ErrNotFound is returned by Complete / Skip / Accept when no item
+// matches the given id.
 var ErrNotFound = errors.New("autopilot: item not found")
 
-// ErrAlreadyTerminal is returned by Complete / Skip when the item
-// is already done or skipped. Callers can ignore for idempotency.
+// ErrAlreadyTerminal is returned by Complete / Skip / Accept when
+// the item is already done or skipped. Callers can ignore for
+// idempotency.
 var ErrAlreadyTerminal = errors.New("autopilot: item already in terminal state")
+
+// ErrAlreadyAccepted is returned by Accept when the item is already
+// pending or in_progress — i.e. has already passed the operator
+// gate. Callers ignore for idempotency.
+var ErrAlreadyAccepted = errors.New("autopilot: item already accepted")
+
+// ErrDuplicateProposal is returned by Propose when an existing
+// non-terminal item shares the supplied DedupeKey. The Ideator
+// passes through this as a "deduped" tally rather than a real error.
+var ErrDuplicateProposal = errors.New("autopilot: duplicate proposal")
 
 // pickPending returns the index of the next item to claim, or -1
 // when no pending item exists. Highest priority wins, ties broken
@@ -328,22 +459,28 @@ func pickPending(items []Item) int {
 	return best
 }
 
-// sortItems orders for List. Active states first (pending, then
-// in_progress) by priority desc + created asc. Terminal states
-// (done, skipped) last by done_at desc.
+// sortItems orders for List. Active states first (proposed, then
+// pending, then in_progress) by priority desc + created asc.
+// Terminal states (done, skipped) last by done_at desc.
+//
+// Proposed sits ABOVE pending so an operator skimming `autopilot
+// list` sees Ideator output first — it's the row that needs human
+// action (Accept / Skip), unlike pending which is already cleared.
 func sortItems(items []Item) {
 	rank := func(s Status) int {
 		switch s {
-		case StatusPending:
+		case StatusProposed:
 			return 0
-		case StatusInProgress:
+		case StatusPending:
 			return 1
-		case StatusDone:
+		case StatusInProgress:
 			return 2
-		case StatusSkipped:
+		case StatusDone:
 			return 3
+		case StatusSkipped:
+			return 4
 		}
-		return 4
+		return 5
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i], items[j]
@@ -351,7 +488,7 @@ func sortItems(items []Item) {
 		if ra != rb {
 			return ra < rb
 		}
-		if ra <= 1 { // active
+		if ra <= 2 { // active (proposed / pending / in_progress)
 			if a.Priority != b.Priority {
 				return a.Priority > b.Priority
 			}
