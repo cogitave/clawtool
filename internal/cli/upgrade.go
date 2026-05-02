@@ -128,6 +128,16 @@ func (a *App) runUpgrade(argv []string) int {
 	if latest.AssetByteSize > 0 {
 		detail = humanBytes(int64(latest.AssetByteSize))
 	}
+	// PATH-shadow sync: when the operator has multiple clawtool
+	// binaries on $PATH (the canonical case is `~/go/bin` + `~/.local/bin`
+	// after both `go install` and `install.sh` have run), `os.Executable()`
+	// only swaps the one we were spawned from. The other copy stays
+	// on the old version, and any consumer that resolves clawtool via
+	// $PATH ordering — most importantly Claude Code's MCP plugin —
+	// keeps spawning the stale binary. Mirror the just-installed
+	// binary into every other clawtool on $PATH so the upgrade is
+	// atomic across the whole tree, not just the one inode we ran from.
+	syncPathShadowsTo(ux, exe)
 	if latest.AssetName != "" && detail != "" {
 		detail = fmt.Sprintf("%s · %s", latest.AssetName, detail)
 	} else if latest.AssetName != "" {
