@@ -759,6 +759,64 @@ func BuildManifest() *registry.Manifest {
 			setuptools.RegisterSpawn(s)
 		},
 	})
+	// ─── Autopilot — self-direction backlog ────────────────────
+	// Six tools that mirror the `clawtool autopilot` CLI verbs.
+	// Same TOML store; CLI and MCP are interchangeable surfaces.
+	// Register fn on the FIRST spec wires every sibling — the
+	// other five are documentation-only manifest rows so the
+	// search index, tools/list, and surface tests pick them up.
+	m.Append(registry.ToolSpec{
+		Name:        "AutopilotAdd",
+		Description: "Append a new pending item to the agent's self-direction backlog (~/.config/clawtool/autopilot/queue.toml). Pair with AutopilotNext for a non-stalling agent loop.",
+		Keywords:    []string{"autopilot", "backlog", "queue", "add", "self-direction", "todo", "next-action", "continuation", "non-stalling", "self-paced", "self-loop"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use AutopilotAdd when the operator gives the agent multiple tasks at once, or when finishing one task surfaces follow-ups the same agent should pick up later. Distinct from SendMessage: AutopilotAdd queues SELF-work; SendMessage dispatches to a peer agent (codex / gemini / opencode). Don't use it as a general TODO list — items should be agent-actionable prompts.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterAutopilotTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "AutopilotNext",
+		Description: "Atomically claim the highest-priority pending item from the self-direction backlog. Returns the item or empty=true when drained — the agent's signal to end the loop.",
+		Keywords:    []string{"autopilot", "next", "claim", "dequeue", "backlog", "queue", "self-direction", "non-stalling", "continuation", "loop", "self-paced"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use AutopilotNext when you've finished a task and want to know what to do next without re-prompting the operator. Call this in a loop after each task: AutopilotNext → do the work → AutopilotDone → AutopilotNext again. When the response carries empty=true, the queue is drained and the agent should stop the loop. Concurrency-safe: two parallel calls don't return the same item.",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "AutopilotDone",
+		Description: "Mark a backlog item done after the agent completed the work. Pair with AutopilotNext on the same id; AutopilotSkip is the sibling for abandoned (not finished) work.",
+		Keywords:    []string{"autopilot", "done", "complete", "finish", "backlog", "queue", "self-direction"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Always call AutopilotDone with the id you got from AutopilotNext after the work lands. If the agent decided not to do the work (out-of-scope, blocked, superseded) call AutopilotSkip instead — Done is for completed work, Skip is for abandoned work.",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "AutopilotSkip",
+		Description: "Drop a backlog item without finishing it. The item is marked skipped and AutopilotNext will not re-claim it. Use for abandoned work; use AutopilotDone for completed work.",
+		Keywords:    []string{"autopilot", "skip", "drop", "abandon", "backlog", "queue", "self-direction"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use AutopilotSkip when the operator told the agent to abandon the item, or when the agent discovers the work is no longer needed (already done, superseded, out-of-scope). For completed work use AutopilotDone.",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "AutopilotList",
+		Description: "Read-only snapshot of every backlog item, optionally filtered by status (pending|in_progress|done|skipped). Non-destructive — does not claim items.",
+		Keywords:    []string{"autopilot", "list", "backlog", "queue", "self-direction", "snapshot", "read-only"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use AutopilotList to inspect the backlog without claiming anything — AutopilotNext is destructive (it marks in_progress), AutopilotList is not. Pair with AutopilotStatus when you only need histogram counts.",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "AutopilotStatus",
+		Description: "Histogram of the autopilot backlog: pending / in_progress / done / skipped / total + queue file path. Read-only.",
+		Keywords:    []string{"autopilot", "status", "histogram", "counts", "backlog", "queue", "self-direction", "read-only"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use AutopilotStatus when you only need the counts — it's cheaper than AutopilotList and the histogram is enough to decide whether to keep dispatching AutopilotNext, or to surface backlog health to the operator.",
+	})
+
 	m.Append(registry.ToolSpec{
 		Name:        "AutonomousRun",
 		Description: "Drive clawtool's autonomous self-paced dev loop from chat: dispatch a goal to a BIAM peer, iterate until done or max-iterations, return the final summary. Loop runs inside clawtool's binary — host-agnostic.",

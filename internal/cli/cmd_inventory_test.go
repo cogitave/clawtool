@@ -35,6 +35,7 @@ var inventoryFallbackVerbs = []string{
 	"agent",
 	"bridge",
 	"send",
+	"autopilot",
 	"worktree",
 	"task",
 	"star",

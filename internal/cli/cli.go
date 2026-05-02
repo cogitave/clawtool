@@ -274,6 +274,8 @@ func (a *App) dispatch(argv []string) int {
 		return a.runSend(argv[1:])
 	case "autonomous":
 		return a.runAutonomous(argv[1:])
+	case "autopilot":
+		return a.runAutopilot(argv[1:])
 	case "fanout":
 		return a.runFanout(argv[1:])
 	case "worktree":
@@ -574,6 +576,18 @@ Usage:
                             --max-iterations is hit, or Ctrl-C. Hint: pair
                             with OnboardStatus + InitApply for "one
                             message, full pipeline".
+  clawtool autopilot add|next|done|skip|list|status
+                            Self-direction backlog the agent itself
+                            dequeues to keep working without operator
+                            re-prompting. 'add' appends a pending item;
+                            'next' atomically claims the highest-priority
+                            one; 'done'/'skip' close it; 'list'/'status'
+                            inspect. Storage:
+                            ~/.config/clawtool/autopilot/queue.toml.
+                            Pair with the matching MCP tools
+                            (AutopilotAdd / AutopilotNext / AutopilotDone
+                            / AutopilotSkip / AutopilotList /
+                            AutopilotStatus).
   clawtool fanout "<sub-1> ;; <sub-2> ;; ..." [--agent <i>] [--max-concurrent N]
                             [--cooldown <d>] [--max-iterations-per-sub N] [--dry-run]
   clawtool fanout --plan <plan.json> [flags]
