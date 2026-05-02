@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/cogitave/clawtool/internal/agents"
@@ -12,6 +13,43 @@ import (
 	"github.com/cogitave/clawtool/internal/agents/worktree"
 	"github.com/cogitave/clawtool/internal/unattended"
 )
+
+// ExitIsolatedPortalConflict is the exit code emitted when
+// `clawtool send --isolated` detects a portal call in the resolved
+// tool plan. Post-ADR-018 the obscura serve pool lives on the
+// daemon side of the isolation boundary, so an isolated subprocess
+// cannot see portal sessions and would silently fail. Fail-closed
+// here with a distinct code so CI / wrappers can pattern-match the
+// gate instead of conflating it with a generic dispatch error.
+const ExitIsolatedPortalConflict = 4
+
+// portalCallSignals enumerates the literal strings we treat as a
+// "portal call" in the prompt body. Conservative on purpose: we
+// match exact tool aliases the agent layer would emit, not natural
+// language. Adding a new signal here is a deliberate, reviewed
+// change — false positives are loud (a power user can override via
+// --allow-portal-in-isolated), false negatives let the dispatch
+// reach the daemon-less subprocess and silently fail.
+var portalCallSignals = []string{
+	"mcp__clawtool__PortalAsk",
+	"clawtool portal ask",
+}
+
+// promptReferencesPortalCall reports whether the rendered prompt
+// (or the explicit --portal flag) names a portal-driven tool call.
+// Pure string match — no parsing, no heuristics. See
+// portalCallSignals for the allow-list.
+func promptReferencesPortalCall(prompt, portalFlag string) bool {
+	if strings.TrimSpace(portalFlag) != "" {
+		return true
+	}
+	for _, sig := range portalCallSignals {
+		if strings.Contains(prompt, sig) {
+			return true
+		}
+	}
+	return false
+}
 
 const sendUsage = `Usage:
   clawtool send [--agent <instance>] [--tag <label>] [--session <sid>] [--model <m>] [--format <f>] [--mode <m>] [--no-auto-close] [--isolated [--keep-on-error]] [--unattended | --yolo] "<prompt>"
@@ -66,6 +104,15 @@ Isolation:
                        the worktree when the dispatch fails so the
                        operator can inspect it via 'clawtool
                        worktree show <taskID>'.
+  --allow-portal-in-isolated
+                     — opt-out for the fail-closed gate that
+                       refuses --isolated dispatches whose prompt
+                       references a portal call (PortalAsk /
+                       'clawtool portal ask') OR pass --portal.
+                       Default off: portals require the daemon-side
+                       obscura pool, which the isolated subprocess
+                       cannot see, so the gate prevents a silent
+                       no-op. Exit code on refusal: 4.
 `
 
 // runSend is the dispatcher hooked into Run().
@@ -85,6 +132,21 @@ func (a *App) runSend(argv []string) int {
 	if args.prompt == "" {
 		fmt.Fprint(a.Stderr, "clawtool send: missing prompt\n\n"+sendUsage)
 		return 2
+	}
+	// ADR-018 fail-closed gate. The obscura serve pool that backs
+	// every portal sits on the daemon side of the isolation
+	// boundary; an isolated subprocess can't see those sessions
+	// and would silently no-op the portal call. Refuse the
+	// dispatch up front so CI / wrappers see a distinct exit code
+	// (ExitIsolatedPortalConflict) and a directive error message
+	// instead of an opaque empty result. --allow-portal-in-isolated
+	// is the documented opt-out.
+	if args.isolated && !args.allowPortalInIsolated &&
+		promptReferencesPortalCall(args.prompt, args.portal) {
+		fmt.Fprintln(a.Stderr,
+			"error: --isolated forbids portal calls; portals require the daemon-side obscura pool. "+
+				"Drop --isolated, OR remove the portal call from your prompt.")
+		return ExitIsolatedPortalConflict
 	}
 	if err := a.Send(args); err != nil {
 		fmt.Fprintf(a.Stderr, "clawtool send: %v\n", err)
@@ -116,6 +178,22 @@ type sendArgs struct {
 	// finds no row when the task hits terminal status. Default
 	// false (current behaviour: pane is reaped).
 	noAutoClose bool
+	// portal is the reserved field for the future explicit
+	// --portal <name> selector. Today it only feeds the
+	// --isolated × portal-call gate (ADR-018): when non-empty
+	// alongside --isolated, the dispatch fails with
+	// ExitIsolatedPortalConflict because the obscura serve pool
+	// lives daemon-side and is invisible to the isolated
+	// subprocess. The flag is accepted but otherwise unwired —
+	// the routing layer that consumes it lands in the portal
+	// driver milestone.
+	portal string
+	// allowPortalInIsolated is the opt-out for the ADR-018 gate.
+	// Power users who have wired their own daemon-side bridge
+	// (or are deliberately exercising the silent-failure path
+	// for testing) can set this to bypass the conflict check.
+	// Default off; the gate is fail-closed.
+	allowPortalInIsolated bool
 }
 
 func parseSendArgs(argv []string) (sendArgs, error) {
@@ -173,6 +251,21 @@ func parseSendArgs(argv []string) (sendArgs, error) {
 			out.isolated = true
 		case "--keep-on-error":
 			out.keepOnError = true
+		case "--portal":
+			// Reserved for the future explicit-portal selector
+			// — today the only consumer is the ADR-018
+			// --isolated × portal-call gate, which treats a
+			// non-empty value as a portal-call signal.
+			if i+1 >= len(argv) {
+				return out, fmt.Errorf("--portal requires a value")
+			}
+			out.portal = argv[i+1]
+			i++
+		case "--allow-portal-in-isolated":
+			// ADR-018 opt-out. Power users who have wired
+			// their own daemon-side bridge bypass the
+			// fail-closed gate with this flag. Default off.
+			out.allowPortalInIsolated = true
 		case "--async":
 			out.async = true
 		case "--wait":
