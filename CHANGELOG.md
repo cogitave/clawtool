@@ -4,7 +4,21 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.144] - 2026-05-02
+## [0.22.146] - 2026-05-02
+
+### Documentation
+
+- **ideator:** Docs/ideator.md + README "Self-direction stack" section (2c32672)
+### Tests
+
+- **version:** Wait for poller goroutine to exit in TelemetryFiresOnEveryTick (8c25dc6)## [0.22.145] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.144 [skip ci] (ff189e8)
+### Performance
+
+- **ideator:** Cache govulncheck output keyed on go.sum hash (12h TTL) (792cf30)## [0.22.144] - 2026-05-02
 
 ### Fixes
 
