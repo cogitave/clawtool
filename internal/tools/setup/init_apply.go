@@ -13,15 +13,17 @@ import (
 )
 
 // initApplyResult is the chat-driven mirror of `clawtool init`'s
-// summary panel. The field names track the parallel
-// autodev/init-context-summary branch's InitSummary so the future
-// merge can drop this struct in place of the canonical type.
+// summary panel.
 //
-// TODO(autodev/init-context-summary merge): swap the local
-// initApplyResult for setup.InitSummary once the parallel branch
-// lands. Field names + JSON tags below intentionally match
-// (Applied / Skipped / Pending / NextSteps) so tests stay green
-// across the merge.
+// The parallel init-context-summary branch landed cli.InitSummary
+// in internal/cli, not internal/setup, with a different shape:
+// AppliedRecipes/SkippedRecipes (typed status enum + Generated map)
+// vs the four flat Applied/Skipped/Pending/Failed slices this tool
+// returns. Swapping wholesale would break the JSON contract agents
+// consume from InitApply, and importing internal/cli from here
+// would form a cycle (see needsRequiredOptions below). So the two
+// shapes stay separate by design — this struct is the agent-facing
+// JSON, cli.InitSummary is the operator-facing renderer.
 type initApplyResult struct {
 	Repo      string         `json:"repo"`
 	CoreOnly  bool           `json:"core_only"`
