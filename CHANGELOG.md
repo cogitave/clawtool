@@ -4,7 +4,17 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.141] - 2026-05-02
+## [0.22.142] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.141 [skip ci] (01f5134)
+### Features
+
+- **ideator:** Vuln_advisories + stale_files sources end Ideator dryness (1c48697)
+### Fixes
+
+- **ci:** Bump Go toolchain 1.26.0 → 1.26.2 to clear 12 stdlib vuln advisories (04b0fcf)## [0.22.141] - 2026-05-02
 
 ### Fixes
 
