@@ -668,7 +668,15 @@ func BuildManifest() *registry.Manifest {
 		UsageHint:   "Use McpInstall to register a local MCP server project as a clawtool source — it reads the project's `.clawtool/mcp.toml` to auto-discover the launch command, builds the project, and writes the [sources.<instance>] stanza. Equivalent to `clawtool source add` for a local checkout; for a published npm/pypi/binary use that surface instead.",
 	})
 
-	// ─── Sandbox* bundle (RegisterSandboxTools registers 3) ────
+	// ─── Sandbox* bundle (RegisterSandboxTools registers 4) ────
+	m.Append(registry.ToolSpec{
+		Name:        "SandboxRun",
+		Description: "Run a one-shot command inside a named sandbox profile (bwrap / sandbox-exec / docker / custom). Returns structured stdout/stderr/exit_code/duration_ms. Use for untrusted code, restricted FS/network execution, or recipe isolation; NOT for ambient long-running processes.",
+		Keywords:    []string{"sandbox", "run", "execute", "isolation", "bwrap", "sandbox-exec", "docker", "untrusted"},
+		Category:    registry.CategorySetup,
+		Gate:        "",
+		UsageHint:   "Use SandboxRun to execute a one-shot command inside a named sandbox profile without dropping the operator to a shell. Pair with SandboxList (enumerate profiles) and SandboxShow (preview constraints). For ambient long-running processes use Bash background=true; for unrestricted execution use Bash directly.",
+	})
 	m.Append(registry.ToolSpec{
 		Name:        "SandboxList",
 		Description: "List configured sandbox profiles. Each profile constrains a `clawtool send` dispatch — paths, network, env, resource limits. Engines: bwrap (Linux), sandbox-exec (macOS), docker (anywhere fallback).",
