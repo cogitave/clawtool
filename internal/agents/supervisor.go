@@ -368,6 +368,13 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 	)
 	defer end()
 
+	// Snapshot config once per dispatch so per-instance unattended
+	// mode resolution (ADR-023) reads from the same view across the
+	// failover chain. Errors here are non-fatal: a missing config
+	// hands back zero-value, and the resolver falls through to the
+	// built-in default.
+	dispatchCfg, _ := s.loadConfig()
+
 	// Peer-prefer preflight (operator directive: route to a live
 	// BIAM peer over spawning a fresh subprocess). Tries the
 	// primary's family first; failover chain entries fall through
@@ -449,6 +456,11 @@ func (s *supervisor) dispatch(ctx context.Context, primary Agent, fallback []Age
 			} else {
 				args["unattended"] = "false"
 			}
+			// ADR-023 §Resolved (2026-05-02): per-instance unattended
+			// mode override resolved here so rules.toml conditions can
+			// gate on `unattended_mode == "yolo"` etc. Resolution is
+			// per-instance override → global → built-in default.
+			args["unattended_mode"] = dispatchCfg.ResolveUnattendedMode(a.Instance)
 			if sid, ok := opts["session_id"].(string); ok && sid != "" {
 				args["session_id"] = sid
 			}

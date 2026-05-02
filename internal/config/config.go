@@ -49,6 +49,79 @@ type Config struct {
 	SandboxWorker SandboxWorkerConfig      `toml:"sandbox_worker,omitempty"`
 	Peer          PeerConfig               `toml:"peer,omitempty"`
 	Checkpoint    CheckpointConfig         `toml:"checkpoint,omitempty"`
+	Unattended    UnattendedConfig         `toml:"unattended,omitempty"`
+}
+
+// UnattendedConfig configures `clawtool send --unattended` policy
+// (ADR-023 §Resolved 2026-05-02). Mode is the global default
+// applied to every instance ("yolo" | "strict" | "prompt"); empty
+// = built-in default ("prompt"). Overrides keyed by instance name
+// override the global on a per-instance basis — e.g. claude can
+// run yolo while codex stays strict in the same dispatch session.
+//
+// Resolution order (ResolveUnattendedMode):
+//
+//  1. Overrides[<instance>].Mode (per-instance override wins)
+//  2. Mode (global default)
+//  3. Built-in default: "prompt"
+type UnattendedConfig struct {
+	Mode      string                      `toml:"mode,omitempty"`
+	Overrides map[string]InstanceOverride `toml:"overrides,omitempty"`
+}
+
+// InstanceOverride is one [unattended.overrides.<instance>] block.
+// Today only Mode is wired; future per-instance unattended toggles
+// (timeout, audit-path override, …) land here additively.
+type InstanceOverride struct {
+	Mode string `toml:"mode,omitempty"`
+}
+
+// ValidUnattendedModes lists the recognised values for
+// [unattended] mode and [unattended.overrides.<x>] mode. Empty
+// string is treated as "use the next layer's default" by the
+// resolver and is therefore allowed at the config-load gate.
+var ValidUnattendedModes = []string{"yolo", "strict", "prompt"}
+
+// DefaultUnattendedMode is the built-in fallback when neither a
+// per-instance override nor a global mode is set.
+const DefaultUnattendedMode = "prompt"
+
+// ResolveUnattendedMode returns the resolved unattended mode for
+// the given instance per the ADR-023 precedence chain.
+func (c Config) ResolveUnattendedMode(instance string) string {
+	if ov, ok := c.Unattended.Overrides[instance]; ok && ov.Mode != "" {
+		return ov.Mode
+	}
+	if c.Unattended.Mode != "" {
+		return c.Unattended.Mode
+	}
+	return DefaultUnattendedMode
+}
+
+// validateUnattended returns an error when [unattended] mode or any
+// [unattended.overrides.<x>] mode carries a value outside
+// ValidUnattendedModes. Empty values are permitted (resolver falls
+// through). Called from Load so a typo'd mode fails at config load
+// rather than surprising the operator mid-dispatch.
+func validateUnattended(u UnattendedConfig) error {
+	if u.Mode != "" && !isValidUnattendedMode(u.Mode) {
+		return fmt.Errorf("unattended.mode = %q: must be one of %v", u.Mode, ValidUnattendedModes)
+	}
+	for inst, ov := range u.Overrides {
+		if ov.Mode != "" && !isValidUnattendedMode(ov.Mode) {
+			return fmt.Errorf("unattended.overrides.%s.mode = %q: must be one of %v", inst, ov.Mode, ValidUnattendedModes)
+		}
+	}
+	return nil
+}
+
+func isValidUnattendedMode(m string) bool {
+	for _, v := range ValidUnattendedModes {
+		if m == v {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckpointConfig carries checkpoint-subsystem toggles. Per ADR-022
@@ -487,6 +560,9 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("parse %s: %w", path, err)
 	}
 	mergeDefaults(&cfg, b)
+	if err := validateUnattended(cfg.Unattended); err != nil {
+		return Config{}, fmt.Errorf("parse %s: %w", path, err)
+	}
 	return cfg, nil
 }
 

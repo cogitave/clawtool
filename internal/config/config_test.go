@@ -223,6 +223,71 @@ func TestHasTelemetryEnabledKey_Direct(t *testing.T) {
 	}
 }
 
+// TestUnattendedOverrides_PerInstanceWins covers ADR-023 §Resolved
+// (2026-05-02): a [unattended.overrides.<instance>] mode overrides
+// the global [unattended] mode for that instance only — siblings
+// keep falling through to the global default.
+func TestUnattendedOverrides_PerInstanceWins(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	raw := "" +
+		"[unattended]\n" +
+		"mode = \"strict\"\n" +
+		"[unattended.overrides.claude]\n" +
+		"mode = \"yolo\"\n"
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.ResolveUnattendedMode("claude"); got != "yolo" {
+		t.Errorf("ResolveUnattendedMode(claude) = %q, want yolo", got)
+	}
+	if got := cfg.ResolveUnattendedMode("codex"); got != "strict" {
+		t.Errorf("ResolveUnattendedMode(codex) = %q, want strict", got)
+	}
+}
+
+// TestUnattendedOverrides_FallsBackToGlobal covers the second tier of
+// the resolution chain: when no [unattended.overrides.<instance>]
+// matches, the resolver returns the global [unattended] mode.
+func TestUnattendedOverrides_FallsBackToGlobal(t *testing.T) {
+	cfg := Config{Unattended: UnattendedConfig{Mode: "strict"}}
+	if got := cfg.ResolveUnattendedMode("anything"); got != "strict" {
+		t.Errorf("ResolveUnattendedMode(anything) with global=strict = %q, want strict", got)
+	}
+	// No global, no per-instance → built-in default.
+	empty := Config{}
+	if got := empty.ResolveUnattendedMode("anything"); got != DefaultUnattendedMode {
+		t.Errorf("ResolveUnattendedMode on empty Config = %q, want %q", got, DefaultUnattendedMode)
+	}
+}
+
+// TestUnattendedOverrides_ValidatesMode covers the config-load gate:
+// an unknown mode value (typo, deprecated alias, etc.) MUST fail at
+// Load() rather than silently coercing to a built-in default.
+func TestUnattendedOverrides_ValidatesMode(t *testing.T) {
+	cases := []struct {
+		name string
+		toml string
+	}{
+		{"global mode bogus", "[unattended]\nmode = \"reckless\"\n"},
+		{"override mode bogus", "[unattended]\nmode = \"strict\"\n[unattended.overrides.claude]\nmode = \"reckless\"\n"},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.toml")
+		if err := os.WriteFile(path, []byte(c.toml), 0o644); err != nil {
+			t.Fatalf("%s: write: %v", c.name, err)
+		}
+		if _, err := Load(path); err == nil {
+			t.Errorf("%s: Load returned no error; want validation failure", c.name)
+		}
+	}
+}
+
 func TestListCoreTools_StableOrder(t *testing.T) {
 	c := Default()
 	entries := c.ListCoreTools()
