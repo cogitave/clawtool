@@ -44,7 +44,7 @@ const Name = "clawtool"
 // `-ldflags='-X github.com/cogitave/clawtool/internal/version.Version=…'`
 // at link time. `-X` cannot patch constants; that's why this is a
 // var even though it's effectively immutable at runtime.
-var Version = "0.21.7" // x-release-please-version
+var Version = "0.22.119" // x-release-please-version
 
 // x-release-please-end
 
