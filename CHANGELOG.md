@@ -4,7 +4,15 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.135] - 2026-05-02
+## [0.22.136] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.135 [skip ci] (f99426e)
+### Features
+
+- **send:** Tools=[] in-band MCP tool subset forwarding ( Phase 4) (4ebfefa)
+- **unattended:** Per-instance overrides via [unattended.overrides.<name>] mode (24f7896)## [0.22.135] - 2026-05-02
 
 ### Chores
 
