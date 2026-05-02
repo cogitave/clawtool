@@ -281,6 +281,10 @@ func Run(ctx context.Context, opts CommitOptions) (CommitResult, error) {
 		}
 		res.Pushed = true
 	}
+	// Successful commit lands → reset Guard's edit counter. A real
+	// Conventional commit is a checkpoint just as much as a `wip!:`
+	// autocommit is. No-op when Guard is disabled.
+	Guard().OnCheckpoint()
 	return res, nil
 }
 

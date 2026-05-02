@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/checkpoint"
 	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/lint"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -165,6 +166,18 @@ func runWrite(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult
 
 	// ADR-021 Read-before-Write guardrail.
 	if guardErr := guardReadBeforeWrite(ctx, resolved, mode, mustNotExist, unsafeOverwrite); guardErr != nil {
+		return resultOf(WriteResult{
+			BaseResult: BaseResult{Operation: "Write", ErrorReason: guardErr.Error()},
+			Path:       resolved,
+		}), nil
+	}
+
+	// Checkpoint Guard middleware (defense-in-depth atop ADR-021).
+	// Same contract as Edit: OnEdit increments the per-process
+	// counter, Check refuses when the threshold is reached. No-op
+	// when [checkpoint.guard] enabled = false (the default).
+	_ = checkpoint.Guard().OnEdit(resolved)
+	if guardErr := checkpoint.Guard().Check(); guardErr != nil {
 		return resultOf(WriteResult{
 			BaseResult: BaseResult{Operation: "Write", ErrorReason: guardErr.Error()},
 			Path:       resolved,

@@ -48,6 +48,56 @@ type Config struct {
 	Sandboxes     map[string]SandboxConfig `toml:"sandboxes,omitempty"`
 	SandboxWorker SandboxWorkerConfig      `toml:"sandbox_worker,omitempty"`
 	Peer          PeerConfig               `toml:"peer,omitempty"`
+	Checkpoint    CheckpointConfig         `toml:"checkpoint,omitempty"`
+}
+
+// CheckpointConfig carries checkpoint-subsystem toggles. Per ADR-022
+// §Resolved the checkpoint umbrella is one TOML section so future
+// pieces (snapshot/restore, dirty-tree guard, autocommit cadence)
+// land here without churning the schema. Today only [checkpoint.guard]
+// is wired.
+type CheckpointConfig struct {
+	Guard GuardConfig `toml:"guard,omitempty"`
+}
+
+// GuardConfig configures the defense-in-depth checkpoint Guard
+// middleware (internal/checkpoint.Guard) layered atop ADR-021's
+// Read-before-Write invariant. The contract:
+//
+//   - Enabled = false (default) → middleware is a strict no-op.
+//     The hook still fires from Edit/Write but Check() always
+//     returns nil. Zero overhead beyond a mutex acquire.
+//   - Enabled = true → Guard tracks the number of edits since the
+//     last `wip!:` autocommit (or a real Conventional commit) and
+//     refuses the next pre-edit when the counter reaches
+//     MaxEditsWithoutCheckpoint. Operator unblocks by calling
+//     `clawtool checkpoint save` (autocommit) or by landing a
+//     real commit.
+//
+// MaxEditsWithoutCheckpoint defaults to 5 when zero or negative,
+// matching the wizard's prompt copy. The constant lives in guard.go
+// (DefaultMaxEditsWithoutCheckpoint) so callers and tests reference
+// one canonical value.
+//
+// Why opt-in: defense-in-depth atop Read-before-Write means most
+// operators won't need it — RbW already catches the common
+// "agent stomped my unread file" failure. Guard is for the small
+// set of agent runs that explicitly bypass RbW with
+// unsafe_overwrite_without_read=true (e.g. autodev sessions on
+// fresh worktrees) where the operator wants a hard cap on
+// uncheckpointed mutation depth.
+type GuardConfig struct {
+	// Enabled gates the entire middleware. Default false; opt-in
+	// via wizard or hand-edited config.toml.
+	Enabled bool `toml:"enabled,omitempty"`
+	// MaxEditsWithoutCheckpoint is the threshold N: once N edits
+	// have landed since the last checkpoint, the next pre-edit
+	// hook returns ErrCheckpointRequired. Zero or negative → use
+	// the package default (5). The hard ceiling is enforced in
+	// guard.Check, not here, so config round-trips a literal 0 as
+	// "use default" rather than "disable" (Enabled is the disable
+	// switch).
+	MaxEditsWithoutCheckpoint int `toml:"max_edits_without_checkpoint,omitempty"`
 }
 
 // PeerConfig holds per-feature toggles for the peer registry / a2a

@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/checkpoint"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/hooks"
 	"github.com/cogitave/clawtool/internal/lint"
@@ -117,6 +118,18 @@ func runEdit(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	// existing-file-requires-prior-Read branch in
 	// guardReadBeforeWrite.
 	if guardErr := guardReadBeforeWrite(ctx, resolved, "", false, unsafeOverwrite); guardErr != nil {
+		return resultOf(EditResult{
+			BaseResult: BaseResult{Operation: "Edit", ErrorReason: guardErr.Error()},
+			Path:       resolved,
+		}), nil
+	}
+	// Checkpoint Guard middleware (defense-in-depth atop ADR-021).
+	// OnEdit increments the per-process counter; Check refuses the
+	// edit when the counter has reached
+	// [checkpoint.guard].max_edits_without_checkpoint. No-op when
+	// Guard is disabled (the default).
+	_ = checkpoint.Guard().OnEdit(resolved)
+	if guardErr := checkpoint.Guard().Check(); guardErr != nil {
 		return resultOf(EditResult{
 			BaseResult: BaseResult{Operation: "Edit", ErrorReason: guardErr.Error()},
 			Path:       resolved,

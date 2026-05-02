@@ -28,6 +28,7 @@ import (
 	"github.com/cogitave/clawtool/internal/a2a"
 	"github.com/cogitave/clawtool/internal/agents"
 	"github.com/cogitave/clawtool/internal/agents/biam"
+	"github.com/cogitave/clawtool/internal/checkpoint"
 	"github.com/cogitave/clawtool/internal/config"
 	"github.com/cogitave/clawtool/internal/daemon"
 	"github.com/cogitave/clawtool/internal/hooks"
@@ -127,6 +128,17 @@ func buildMCPServer(ctx context.Context, transport string) (*server.MCPServer, *
 	if cfg.AutoLint.Enabled != nil {
 		core.SetAutoLintEnabled(*cfg.AutoLint.Enabled)
 	}
+
+	// Checkpoint Guard middleware (defense-in-depth atop ADR-021
+	// Read-before-Write). Default off — opt-in via the wizard or
+	// hand-edited [checkpoint.guard] enabled = true. The hook
+	// fires from Edit/Write regardless; when disabled it's a
+	// strict no-op (one mutex acquire). See internal/checkpoint/
+	// guard.go for the contract.
+	checkpoint.Guard().SetConfig(
+		cfg.Checkpoint.Guard.Enabled,
+		cfg.Checkpoint.Guard.MaxEditsWithoutCheckpoint,
+	)
 
 	// A2A peer registry (Phase 1 of ADR-024). Process-wide
 	// registry, persisted at ~/.config/clawtool/peers.json. Hosts

@@ -87,8 +87,14 @@ func Autocommit(ctx context.Context, files []string, msg string) error {
 	if err := ValidateMessage(opts.Message, opts); err != nil {
 		return err
 	}
-	_, err := Run(ctx, opts)
-	return err
+	if _, err := Run(ctx, opts); err != nil {
+		return err
+	}
+	// Reset the Guard counter — the operator just landed a
+	// checkpoint, so the "uncheckpointed edits" budget resets.
+	// Safe to call when Guard is disabled (no-op).
+	Guard().OnCheckpoint()
+	return nil
 }
 
 // PrependWipPrefix returns msg with `wip!: ` prepended unless msg
