@@ -512,14 +512,16 @@ got_w=$(cat "$WFILE")
 [[ "$got_w" == $'hello\nworld' ]] || fail "Write: file content unexpected: $(printf '%q' "$got_w")"
 pass "Write: file content matches request"
 
-# Edit must Read first (ADR-021 Read-before-Write guard, v0.22.125+). We
-# pipe Read followed by Edit in the same `clawtool serve` invocation so
-# the session registry has the prior-Read record before Edit fires.
-edit_resp=$(printf '%s\n%s\n%s\n%s\n' \
+# Edit triggers ADR-021 Read-before-Write guard (v0.22.125+). The guard
+# has dedicated unit tests; this e2e verifies Edit's mechanical
+# substitution path. mcp-go's stdio handler dispatches concurrently, so
+# a Read+Edit chain in the same printf pipeline races (Edit's guard can
+# fire before Read's RecordRead lands). Use unsafe_overwrite_without_read
+# to bypass the guard explicitly.
+edit_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
-  "$(printf '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$WFILE")" \
-  "$(printf '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"hello","new_string":"HOWDY"}}}' "$WFILE")" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"hello","new_string":"HOWDY","unsafe_overwrite_without_read":true}}}' "$WFILE")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 grep -qF '"replaced":true' <<<"$edit_resp" \
@@ -533,11 +535,10 @@ pass "Edit: substitution applied to file content"
 # Ambiguous match must refuse without --replace_all-equivalent flag.
 echo "dup line" >> "$WFILE"
 echo "dup line" >> "$WFILE"
-ambig_resp=$(printf '%s\n%s\n%s\n%s\n' \
+ambig_resp=$(printf '%s\n%s\n%s\n' \
   "$initialize_msg" \
   "$initialized_notification" \
-  "$(printf '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"Read","arguments":{"path":"%s"}}}' "$WFILE")" \
-  "$(printf '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"dup line","new_string":"X"}}}' "$WFILE")" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Edit","arguments":{"path":"%s","old_string":"dup line","new_string":"X","unsafe_overwrite_without_read":true}}}' "$WFILE")" \
   | XDG_CONFIG_HOME="$TMPCFG" $TIMEOUT_BIN 10 "$BIN" serve 2>/dev/null)
 
 grep -qF 'appears 2 times' <<<"$ambig_resp" \
