@@ -2,7 +2,6 @@ package sandbox
 
 import (
 	"context"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -14,13 +13,13 @@ import (
 // to an unsandboxed run. The runner surfaces that as an err
 // return (setup failure, before exec).
 func TestRunOneShot_NoopEngineRefuses(t *testing.T) {
-	if runtime.GOOS == "linux" {
-		// On Linux the bwrap engine may be available; this test
-		// asserts the noop-only contract. Skip when a real
-		// engine could short-circuit the path.
-		if SelectEngine().Name() != "noop" {
-			t.Skip("real sandbox engine present; noop-refusal contract not exercised")
-		}
+	// Skip whenever a real engine is detected on this host: bwrap (Linux)
+	// or sandbox-exec (macOS, even when the .sb compiler is pending) both
+	// short-circuit the noop path. The contract under test is "no engine
+	// → refuse"; a real engine produces a different (engine-specific)
+	// error, not the noop refusal text.
+	if SelectEngine().Name() != "noop" {
+		t.Skip("real sandbox engine present; noop-refusal contract not exercised")
 	}
 	res, err := RunOneShot(context.Background(), RunRequest{
 		Profile: &Profile{Name: "p"},
