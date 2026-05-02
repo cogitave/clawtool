@@ -17,7 +17,6 @@ package telemetry
 import (
 	"context"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
@@ -248,25 +247,4 @@ func reachable(addr string, timeout time.Duration) bool {
 	}
 	_ = c.Close()
 	return true
-}
-
-// httpReachable is a slightly heavier reachability check — full
-// HTTP HEAD round-trip. Reserved for cases where TCP-reach isn't
-// enough (e.g. confirming a proxy is healthy). Not used in the
-// fingerprint hot path; kept in the package so future expansions
-// can reach for it without re-implementing.
-//
-//nolint:unused // public surface for future emitters
-func httpReachable(url string, timeout time.Duration) bool {
-	c := &http.Client{Timeout: timeout}
-	req, err := http.NewRequest(http.MethodHead, url, nil)
-	if err != nil {
-		return false
-	}
-	resp, err := c.Do(req)
-	if err != nil {
-		return false
-	}
-	_ = resp.Body.Close()
-	return resp.StatusCode < 500
 }

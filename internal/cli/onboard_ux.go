@@ -251,13 +251,6 @@ func (u *onboardUX) PhaseFail(reason string) {
 	u.phase = ""
 }
 
-// Note prints an informational line outside the phase protocol —
-// for "this was already configured" style observations that
-// aren't really phases.
-func (u *onboardUX) Note(text string) {
-	fmt.Fprintf(u.w, "  %s %s\n", u.style.dim.Render("·"), u.style.dim.Render(text))
-}
-
 // Summary prints the closing checklist. Each pair is (label,
 // outcome) where outcome is "ok" | "skip" | "fail". Tight,
 // scan-friendly view of "what just happened" — operator can

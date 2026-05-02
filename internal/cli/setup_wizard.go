@@ -41,9 +41,10 @@ type matrixItem struct {
 type matrixCategory string
 
 const (
-	matrixHost   matrixCategory = "host"
-	matrixDaemon matrixCategory = "daemon"
-	matrixRecipe matrixCategory = "recipe"
+	matrixHost      matrixCategory = "host"
+	matrixDaemon    matrixCategory = "daemon"
+	matrixRecipe    matrixCategory = "recipe"
+	matrixGuardrail matrixCategory = "guardrail"
 )
 
 // runSetupV2 is Phase 2 of ADR-027. Builds the matrix dynamically
@@ -152,6 +153,26 @@ func buildSetupMatrix(a *App, cwd string) []matrixItem {
 			label: "Initialise the secrets store (~/.config/clawtool/secrets.toml, mode 0600).",
 			apply: func(a *App, ctx context.Context, _ string) error {
 				return ensureSecretsStoreForSetup(a)
+			},
+		},
+		// Checkpoint Guard — opt-in defense-in-depth atop ADR-021
+		// Read-before-Write. Off by default (per the package doc
+		// in internal/setup/checkpoint.go); the operator chooses
+		// explicitly. The apply path threads the wizard step
+		// through Validate → Persist so a malformed answer surfaces
+		// before the config write rather than as a load error on
+		// the next daemon boot.
+		matrixItem{
+			key: "checkpoint-guard", category: matrixGuardrail,
+			label: setup.CheckpointGuardPromptTitle + " — " + setup.CheckpointGuardPromptDescription,
+			apply: func(a *App, ctx context.Context, _ string) error {
+				step := setup.DefaultCheckpointGuardStep()
+				step.Enabled = true
+				if err := setup.ValidateCheckpointGuardStep(step); err != nil {
+					return err
+				}
+				_, err := setup.PersistCheckpointGuard("", step)
+				return err
 			},
 		},
 	)
