@@ -13,7 +13,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -41,10 +43,27 @@ type Options struct {
 	TopK         int
 	Sources      []IdeaSource
 	Warn         io.Writer
+	// MaxConcurrency caps how many sources run at once. 0 → use
+	// DefaultMaxConcurrency. Sources fork-exec heavy CLIs (gh,
+	// govulncheck, deadcode); on slow filesystems (WSL2 /mnt/c,
+	// network shares) unbounded parallelism saturates I/O and
+	// bloats wall time 5× vs. running individually. The default
+	// is conservative — operators on fast hosts can raise it via
+	// CLAWTOOL_IDEATOR_MAX_CONCURRENCY.
+	MaxConcurrency int
 }
 
 // DefaultTopK is the cap when Options.TopK is unset.
 const DefaultTopK = 10
+
+// DefaultMaxConcurrency caps source parallelism by default. 4 is
+// the sweet spot in benchmarks: above ~4 concurrent fork-execs the
+// /mnt/c (Windows-mounted) and afs/sshfs filesystems start to thrash
+// from concurrent stat/open syscalls; below 2 the slowest source
+// (govulncheck @ 16s) dominates wall time. 4 keeps fast-host wall
+// time within ~10% of the slowest source while bounding the
+// pathological case.
+const DefaultMaxConcurrency = 4
 
 // RunResult is the wire shape returned by Run / RunAndQueue. Counts
 // surface what the orchestrator did to the operator without making
@@ -84,11 +103,15 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 		err   error
 	}
 	results := make([]batch, len(sources))
+	concurrency := resolveConcurrency(opts.MaxConcurrency, len(sources))
+	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	for i, src := range sources {
 		wg.Add(1)
 		go func(i int, src IdeaSource) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			ideas, err := src.Scan(ctx, opts.RepoRoot)
 			results[i] = batch{name: src.Name(), ideas: ideas, err: err}
 		}(i, src)
@@ -183,6 +206,30 @@ func RunAndQueue(ctx context.Context, opts Options, q *autopilot.Queue) (RunResu
 
 // filterSources returns the sources matching name (or all when
 // name is empty / "all").
+// resolveConcurrency picks the source-level parallelism cap.
+// Order: explicit Options.MaxConcurrency > env override > default.
+// Caps at numSources so the semaphore never blocks past saturation.
+func resolveConcurrency(explicit, numSources int) int {
+	n := explicit
+	if n <= 0 {
+		if env := os.Getenv("CLAWTOOL_IDEATOR_MAX_CONCURRENCY"); env != "" {
+			if parsed, err := strconv.Atoi(env); err == nil && parsed > 0 {
+				n = parsed
+			}
+		}
+	}
+	if n <= 0 {
+		n = DefaultMaxConcurrency
+	}
+	if n > numSources {
+		n = numSources
+	}
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
 func filterSources(all []IdeaSource, name string) []IdeaSource {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "all" {
