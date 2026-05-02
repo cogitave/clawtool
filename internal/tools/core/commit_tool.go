@@ -114,7 +114,7 @@ func RegisterCommit(s *server.MCPServer) {
 			mcp.WithBoolean("push",
 				mcp.Description("Run `git push` after commit. Default false.")),
 			mcp.WithBoolean("sign",
-				mcp.Description("Pass `-S` to `git commit` for GPG/SSH signing. Default false; requires the operator's git config to be set.")),
+				mcp.Description("Override `git commit -S`. Omit (default) to honour the operator's `git config commit.gpgsign` (per ADR-022 §Resolved 2026-05-02). Pass true to force-sign or false to force-unsigned regardless of git config.")),
 		),
 		runCommit,
 	)
@@ -135,7 +135,16 @@ func runCommit(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResul
 		RequireConventional: req.GetBool("require_conventional", true),
 		ForbidCoauthor:      req.GetBool("forbid_coauthor", true),
 		Push:                req.GetBool("push", false),
-		Sign:                req.GetBool("sign", false),
+	}
+	// `sign` is the per-call override (per ADR-022 §Resolved
+	// 2026-05-02). Only set the pointer when the caller actually
+	// passed the argument — leaving it nil tells checkpoint.Run
+	// to consult `git config --get commit.gpgsign` and propagate
+	// the operator's configured preference.
+	if rawSign, ok := req.GetArguments()["sign"]; ok {
+		if v, ok := rawSign.(bool); ok {
+			opts.Sign = checkpoint.BoolPtr(v)
+		}
 	}
 	// Files is the only array argument; mcp-go decodes []any.
 	if raw, ok := req.GetArguments()["files"].([]any); ok {

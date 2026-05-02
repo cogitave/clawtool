@@ -1,6 +1,7 @@
 package checkpoint
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -108,5 +109,126 @@ func TestConventionalRegexAnchoring(t *testing.T) {
 	}
 	if !strings.Contains(bad, "feat:") {
 		t.Fatal("test setup: expected 'feat:' marker in body")
+	}
+}
+
+// TestCheckpointCommit_RespectsGitConfigGpgsign locks in ADR-022
+// §Resolved (2026-05-02): the checkpoint commit path propagates
+// the operator's `git config commit.gpgsign` / `tag.gpgsign`
+// preference when CommitOptions.Sign is left as nil. We do NOT
+// shell out to a real git here — the gitConfigGetter package var
+// is the seam tests stub, mirroring how the production code only
+// invokes `git config --get <key>` from the resolver.
+//
+// Each row asserts the boolean the resolver returns; that boolean
+// is wired directly into the `if … { args = append(args, "-S") }`
+// branch in Run, so a true return is a one-to-one proof that `-S`
+// would be passed to `git commit` (or `-s` to `git tag` for the
+// tag.gpgsign key).
+func TestCheckpointCommit_RespectsGitConfigGpgsign(t *testing.T) {
+	type configRow struct {
+		key   string
+		value string // value `git config --get <key>` would print; "" means unset
+		err   error  // simulated error from the git invocation
+	}
+	cases := []struct {
+		name     string
+		override *bool
+		row      configRow
+		key      string
+		want     bool
+	}{
+		{
+			name: "commit.gpgsign=true, no override → sign",
+			row:  configRow{key: "commit.gpgsign", value: "true"},
+			key:  "commit.gpgsign",
+			want: true,
+		},
+		{
+			name: "commit.gpgsign=false, no override → unsigned",
+			row:  configRow{key: "commit.gpgsign", value: "false"},
+			key:  "commit.gpgsign",
+			want: false,
+		},
+		{
+			name: "commit.gpgsign unset, no override → unsigned",
+			row:  configRow{key: "commit.gpgsign", value: ""},
+			key:  "commit.gpgsign",
+			want: false,
+		},
+		{
+			name: "commit.gpgsign=TRUE (case-insensitive) → sign",
+			row:  configRow{key: "commit.gpgsign", value: "TRUE"},
+			key:  "commit.gpgsign",
+			want: true,
+		},
+		{
+			name: "tag.gpgsign=true, no override → -s on tag",
+			row:  configRow{key: "tag.gpgsign", value: "true"},
+			key:  "tag.gpgsign",
+			want: true,
+		},
+		{
+			name:     "explicit override true beats config=false",
+			override: BoolPtr(true),
+			row:      configRow{key: "commit.gpgsign", value: "false"},
+			key:      "commit.gpgsign",
+			want:     true,
+		},
+		{
+			name:     "explicit override false beats config=true",
+			override: BoolPtr(false),
+			row:      configRow{key: "commit.gpgsign", value: "true"},
+			key:      "commit.gpgsign",
+			want:     false,
+		},
+		{
+			name: "git config errors out → unsigned, no panic",
+			row:  configRow{key: "commit.gpgsign", err: fmt.Errorf("simulated boom")},
+			key:  "commit.gpgsign",
+			want: false,
+		},
+	}
+
+	saved := gitConfigGetter
+	t.Cleanup(func() { gitConfigGetter = saved })
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var sawCwd, sawKey string
+			gitConfigGetter = func(cwd, key string) (string, error) {
+				sawCwd, sawKey = cwd, key
+				if tc.row.err != nil {
+					return "", tc.row.err
+				}
+				if key != tc.row.key {
+					// Resolver asked for a key we didn't stub —
+					// behave like git would and report unset.
+					return "", nil
+				}
+				return tc.row.value, nil
+			}
+			got := resolveSignFromGitConfig("/fake/repo", tc.override, tc.key)
+			if got != tc.want {
+				t.Fatalf("resolveSignFromGitConfig(%q, %v, %q) = %v, want %v",
+					"/fake/repo", tc.override, tc.key, got, tc.want)
+			}
+			// When the override was used, the getter should NOT
+			// have been called — overrides short-circuit git.
+			if tc.override != nil && (sawCwd != "" || sawKey != "") {
+				t.Errorf("override path should bypass git config, but getter saw cwd=%q key=%q",
+					sawCwd, sawKey)
+			}
+			// When the override was NOT used, the getter should
+			// have been asked the right key for the right cwd.
+			if tc.override == nil {
+				if sawCwd != "/fake/repo" {
+					t.Errorf("getter cwd = %q, want %q", sawCwd, "/fake/repo")
+				}
+				if sawKey != tc.key {
+					t.Errorf("getter key = %q, want %q", sawKey, tc.key)
+				}
+			}
+		})
 	}
 }

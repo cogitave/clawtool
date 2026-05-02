@@ -61,11 +61,25 @@ type CommitOptions struct {
 	// Push runs `git push` after the commit. Default false —
 	// auto-push is loud and should be opt-in per call.
 	Push bool
-	// Sign maps onto `git commit -S`. When true, fails fast
-	// if `git config commit.gpgsign` isn't already configured —
-	// no silent fall-through to unsigned commits.
-	Sign bool
+	// Sign controls `git commit -S`. The pointer is three-valued
+	// per ADR-022 §Resolved (2026-05-02):
+	//
+	//   nil   → consult `git config --get commit.gpgsign` from cwd;
+	//           pass -S when it returns "true", otherwise unsigned.
+	//   &true → force-sign (per-call override, equivalent to the
+	//           old bool=true behaviour).
+	//   &false→ force-unsigned (per-call override; bypass operator
+	//           git config when the caller explicitly wants an
+	//           unsigned commit, e.g. a fixture commit in tests).
+	//
+	// The same propagation logic applies to `tag.gpgsign` for any
+	// future tag command — see resolveSignFromGitConfig.
+	Sign *bool
 }
+
+// BoolPtr is a small ergonomic helper for callers that want to
+// pass an explicit Sign override without writing `v := true; …`.
+func BoolPtr(b bool) *bool { return &b }
 
 // CommitResult is the structured return shape.
 type CommitResult struct {
@@ -235,7 +249,7 @@ func Run(ctx context.Context, opts CommitOptions) (CommitResult, error) {
 	if opts.AllowEmpty {
 		args = append(args, "--allow-empty")
 	}
-	if opts.Sign {
+	if resolveSignFromGitConfig(cwd, opts.Sign, "commit.gpgsign") {
 		args = append(args, "-S")
 	}
 	if _, err := runGitCtx(ctx, cwd, args...); err != nil {
@@ -271,6 +285,43 @@ func Run(ctx context.Context, opts CommitOptions) (CommitResult, error) {
 }
 
 // ───── helpers ───────────────────────────────────────────────────
+
+// gitConfigGetter is the indirection point tests stub. Production
+// path runs `git config --get <key>` from cwd; tests swap in a
+// table-driven fake so we can assert -S propagation without a
+// signing key, GPG agent, or real repo state.
+var gitConfigGetter = func(cwd, key string) (string, error) {
+	out, err := runGit(cwd, "config", "--get", key)
+	if err != nil {
+		// `git config --get` exits 1 when the key is unset.
+		// Treat that as "no value" rather than an error so the
+		// caller can fall through to its default.
+		return "", nil
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// resolveSignFromGitConfig is the three-valued Sign resolver
+// shared by the commit path and any future tag path:
+//
+//   - override != nil  → honour the per-call override verbatim.
+//   - override == nil  → consult `git config --get <key>` from
+//     cwd; treat "true" (case-insensitive) as true, anything
+//     else (including missing) as false.
+//
+// Per ADR-022 §Resolved (2026-05-02): no `[checkpoint] sign`
+// knob — propagate the operator's already-configured git
+// preference, do not introduce a parallel toggle.
+func resolveSignFromGitConfig(cwd string, override *bool, key string) bool {
+	if override != nil {
+		return *override
+	}
+	val, err := gitConfigGetter(cwd, key)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(val), "true")
+}
 
 func runGit(cwd string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
