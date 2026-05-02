@@ -15,6 +15,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/cogitave/clawtool/internal/catalog"
 	"github.com/cogitave/clawtool/internal/mcpgen"
 )
 
@@ -104,12 +105,14 @@ func RegisterMcpTools(s *server.MCPServer) {
 					"TypeScript via @modelcontextprotocol/sdk. Result lives at "+
 					"<output>/<name>/. .claude-plugin/ is opt-in via the plugin "+
 					"flag. Tool definitions ship a single starter — the agent "+
-					"edits the generated source to add more.",
+					"edits the generated source to add more. Use --from-source "+
+					"<name> to fork an existing catalog entry as the starting "+
+					"point.",
 			),
 			mcp.WithString("name", mcp.Required(),
 				mcp.Description("Project name. kebab-case [a-z0-9][a-z0-9-]{1,63}.")),
-			mcp.WithString("description", mcp.Required(),
-				mcp.Description("One-sentence server self-description.")),
+			mcp.WithString("description",
+				mcp.Description("One-sentence server self-description. Required unless `from_source` is set, in which case the catalog entry's description seeds the default.")),
 			mcp.WithString("language", mcp.Required(),
 				mcp.Description("go | python | typescript")),
 			mcp.WithString("transport",
@@ -119,11 +122,13 @@ func RegisterMcpTools(s *server.MCPServer) {
 			mcp.WithString("tool_name",
 				mcp.Description("Snake_case name of the first tool. Defaults to echo_back.")),
 			mcp.WithString("tool_description",
-				mcp.Description("First tool's description. Defaults to a placeholder.")),
+				mcp.Description("First tool's description. Defaults to a placeholder, or to the catalog entry's description when `from_source` is set.")),
 			mcp.WithString("output",
 				mcp.Description("Parent directory for the project folder. Defaults to the server's cwd.")),
 			mcp.WithBoolean("plugin",
 				mcp.Description("Generate .claude-plugin/ manifest files (default true).")),
+			mcp.WithString("from_source",
+				mcp.Description("Fork the wizard's defaults from a built-in catalog entry (e.g. \"github\"). Pre-fills `description` + `tool_description` from the entry; explicit args still override.")),
 		),
 		runMcpNew,
 	)
@@ -183,10 +188,6 @@ func runMcpNew(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	if err != nil {
 		return mcp.NewToolResultError("missing required argument: name"), nil
 	}
-	description, err := req.RequireString("description")
-	if err != nil {
-		return mcp.NewToolResultError("missing required argument: description"), nil
-	}
 	language, err := req.RequireString("language")
 	if err != nil {
 		return mcp.NewToolResultError("missing required argument: language"), nil
@@ -195,6 +196,35 @@ func runMcpNew(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 		BaseResult: BaseResult{Operation: "McpNew", Engine: "mcpgen"},
 		Project:    name,
 	}
+
+	// from_source: pre-fill description / first-tool description from
+	// the named built-in catalog entry. Explicit `description` and
+	// `tool_description` args still override.
+	fromSource := strings.TrimSpace(req.GetString("from_source", ""))
+	var sourceEntry *catalog.Entry
+	if fromSource != "" {
+		cat, cerr := catalog.Builtin()
+		if cerr != nil {
+			out.ErrorReason = fmt.Sprintf("from_source: catalog: %v", cerr)
+			return resultOf(out), nil
+		}
+		entry, ok := cat.Lookup(fromSource)
+		if !ok {
+			out.ErrorReason = fmt.Sprintf("from_source: %q is not in the built-in catalog (run `clawtool source list --catalog` to see available entries)", fromSource)
+			return resultOf(out), nil
+		}
+		sourceEntry = &entry
+	}
+
+	description := strings.TrimSpace(req.GetString("description", ""))
+	if description == "" {
+		if sourceEntry != nil {
+			description = sourceEntry.Description
+		} else {
+			return mcp.NewToolResultError("missing required argument: description"), nil
+		}
+	}
+
 	output := strings.TrimSpace(req.GetString("output", ""))
 	if output == "" {
 		cwd, _ := os.Getwd()
@@ -204,9 +234,13 @@ func runMcpNew(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	if toolName == "" {
 		toolName = "echo_back"
 	}
-	toolDescription := strings.TrimSpace(req.GetString("tool_description", "Return the input string verbatim. Replace with your real tool."))
+	defaultToolDesc := "Return the input string verbatim. Replace with your real tool."
+	if sourceEntry != nil {
+		defaultToolDesc = sourceEntry.Description
+	}
+	toolDescription := strings.TrimSpace(req.GetString("tool_description", defaultToolDesc))
 	if toolDescription == "" {
-		toolDescription = "Return the input string verbatim. Replace with your real tool."
+		toolDescription = defaultToolDesc
 	}
 	spec := mcpgen.Spec{
 		Name:        name,

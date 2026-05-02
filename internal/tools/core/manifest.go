@@ -637,11 +637,11 @@ func BuildManifest() *registry.Manifest {
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "McpNew",
-		Description: "Scaffold a new MCP server project (Go via mcp-go, Python via FastMCP, TypeScript via @modelcontextprotocol/sdk). Wizard asks for description / language / transport / packaging / tools.",
-		Keywords:    []string{"mcp", "scaffold", "new", "create", "generate", "author", "go", "python", "typescript"},
+		Description: "Scaffold a new MCP server project (Go via mcp-go, Python via FastMCP, TypeScript via @modelcontextprotocol/sdk). Wizard asks for description / language / transport / packaging / tools. Use --from-source <name> to fork an existing catalog entry as the starting point.",
+		Keywords:    []string{"mcp", "scaffold", "new", "create", "generate", "author", "go", "python", "typescript", "fork", "from-source", "catalog"},
 		Category:    registry.CategoryAuthoring,
 		Gate:        "",
-		UsageHint:   "Use McpNew to scaffold a brand-new MCP server project — the wizard asks for description / language (Go via mcp-go, Python via FastMCP, TypeScript via @modelcontextprotocol/sdk) / transport / packaging / tools. Use McpList afterwards to confirm it's discoverable. For an existing project hand-rolled without the marker, copy `.clawtool/mcp.toml` from a fresh scaffold.",
+		UsageHint:   "Use McpNew to scaffold a brand-new MCP server project — the wizard asks for description / language (Go via mcp-go, Python via FastMCP, TypeScript via @modelcontextprotocol/sdk) / transport / packaging / tools. Pass `from_source` (or `--from-source <name>` on the CLI) to pre-fill defaults from a built-in catalog entry such as `github` or `slack`. Use McpList afterwards to confirm it's discoverable. For an existing project hand-rolled without the marker, copy `.clawtool/mcp.toml` from a fresh scaffold.",
 	})
 	m.Append(registry.ToolSpec{
 		Name:        "McpRun",

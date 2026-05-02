@@ -15,22 +15,25 @@ import (
 
 	"github.com/charmbracelet/huh"
 
+	"github.com/cogitave/clawtool/internal/catalog"
 	"github.com/cogitave/clawtool/internal/mcpgen"
 )
 
 // mcpgenDeps lets tests stub the side effects.
 type mcpgenDeps struct {
-	runForm  func(*huh.Form) error
-	generate func(outputDir string, spec mcpgen.Spec) (string, error)
-	stdoutLn func(string)
-	stderrLn func(string)
+	runForm     func(*huh.Form) error
+	generate    func(outputDir string, spec mcpgen.Spec) (string, error)
+	stdoutLn    func(string)
+	stderrLn    func(string)
+	lookupEntry func(name string) (catalog.Entry, bool, error) // nil → use catalog.Builtin()
 }
 
 func (a *App) runMcpNewWizard(argv []string) error {
 	var (
-		yes       bool
-		outputDir string
-		name      string
+		yes        bool
+		outputDir  string
+		name       string
+		fromSource string
 	)
 	for i := 0; i < len(argv); i++ {
 		v := argv[i]
@@ -43,6 +46,12 @@ func (a *App) runMcpNewWizard(argv []string) error {
 			}
 			outputDir = argv[i+1]
 			i++
+		case "--from-source":
+			if i+1 >= len(argv) {
+				return errors.New("--from-source requires a catalog entry name")
+			}
+			fromSource = argv[i+1]
+			i++
 		default:
 			if name != "" {
 				return fmt.Errorf("unexpected arg %q", v)
@@ -51,7 +60,7 @@ func (a *App) runMcpNewWizard(argv []string) error {
 		}
 	}
 	if name == "" {
-		return errors.New("usage: clawtool mcp new <project-name> [--output <dir>] [--yes]")
+		return errors.New("usage: clawtool mcp new <project-name> [--output <dir>] [--from-source <name>] [--yes]")
 	}
 	if outputDir == "" {
 		cwd, err := os.Getwd()
@@ -66,10 +75,35 @@ func (a *App) runMcpNewWizard(argv []string) error {
 		stdoutLn: func(s string) { fmt.Fprintln(a.Stdout, s) },
 		stderrLn: func(s string) { fmt.Fprintln(a.Stderr, s) },
 	}
-	return runMcpNewWizardWithDeps(context.Background(), name, outputDir, yes, d)
+	return runMcpNewWizardWithDeps(context.Background(), name, outputDir, fromSource, yes, d)
 }
 
-func runMcpNewWizardWithDeps(_ context.Context, name, outputDir string, yes bool, d mcpgenDeps) error {
+// resolveCatalogEntry looks up `name` via the deps stub or the embedded
+// built-in catalog. Returns a friendly error when the entry is missing
+// so the operator knows to consult `clawtool source list --catalog`.
+func resolveCatalogEntry(name string, d mcpgenDeps) (catalog.Entry, error) {
+	lookup := d.lookupEntry
+	if lookup == nil {
+		lookup = func(n string) (catalog.Entry, bool, error) {
+			cat, err := catalog.Builtin()
+			if err != nil {
+				return catalog.Entry{}, false, err
+			}
+			e, ok := cat.Lookup(n)
+			return e, ok, nil
+		}
+	}
+	entry, ok, err := lookup(name)
+	if err != nil {
+		return catalog.Entry{}, fmt.Errorf("--from-source: catalog: %w", err)
+	}
+	if !ok {
+		return catalog.Entry{}, fmt.Errorf("--from-source: %q is not in the built-in catalog (run `clawtool source list --catalog` to see available entries)", name)
+	}
+	return entry, nil
+}
+
+func runMcpNewWizardWithDeps(_ context.Context, name, outputDir, fromSource string, yes bool, d mcpgenDeps) error {
 	spec := mcpgen.Spec{
 		Name:      name,
 		Language:  "go",
@@ -78,11 +112,37 @@ func runMcpNewWizardWithDeps(_ context.Context, name, outputDir string, yes bool
 		Plugin:    true,
 	}
 
+	// --from-source: pre-fill the wizard's editable defaults from a
+	// canonical catalog entry. The operator still walks the form and
+	// can change every value; we just seed sensible starting points
+	// (description, first-tool description, env-var hints).
+	var sourceEntry *catalog.Entry
+	if fromSource != "" {
+		entry, err := resolveCatalogEntry(fromSource, d)
+		if err != nil {
+			return err
+		}
+		sourceEntry = &entry
+		spec.Description = entry.Description
+	}
+
 	if !yes {
+		// Surface the catalog fork up front so the operator sees the
+		// pre-fill source before walking the fields.
+		if sourceEntry != nil {
+			d.stdoutLn(fmt.Sprintf("forking %q from the built-in catalog — defaults pre-filled, every field still editable.", fromSource))
+			if len(sourceEntry.RequiredEnv) > 0 {
+				d.stdoutLn(fmt.Sprintf("  upstream needs: %s", strings.Join(sourceEntry.RequiredEnv, ", ")))
+			}
+			if sourceEntry.AuthHint != "" {
+				d.stdoutLn(fmt.Sprintf("  auth hint:      %s", sourceEntry.AuthHint))
+			}
+			d.stdoutLn("")
+		}
 		intro := huh.NewForm(huh.NewGroup(
 			huh.NewNote().
 				Title("clawtool mcp new — MCP server scaffolder").
-				Description("Generates a fresh MCP server project. The scaffold wraps\nthe canonical SDK in your chosen language — mcp-go for Go,\nfastmcp for Python, @modelcontextprotocol/sdk for TypeScript.\nWe never re-implement the wire protocol.\n\nThe wizard asks for description, language, transport,\npackaging, and your first tool. You can register the\nresult with `clawtool mcp install . --as <name>` once it builds."),
+				Description("Generates a fresh MCP server project. The scaffold wraps\nthe canonical SDK in your chosen language — mcp-go for Go,\nfastmcp for Python, @modelcontextprotocol/sdk for TypeScript.\nWe never re-implement the wire protocol.\n\nThe wizard asks for description, language, transport,\npackaging, and your first tool. You can register the\nresult with `clawtool mcp install . --as <name>` once it builds.\n\nUse --from-source <name> to fork an existing catalog entry as the starting point."),
 			huh.NewInput().
 				Title("Description").
 				Description("One sentence — becomes the server's self-description.").
@@ -124,8 +184,13 @@ func runMcpNewWizardWithDeps(_ context.Context, name, outputDir string, yes bool
 			return err
 		}
 
-		// First tool capture.
+		// First tool capture. When forking from a catalog entry, seed
+		// the first-tool description from the upstream so the operator
+		// has a sensible default to edit.
 		var first mcpgen.ToolSpec
+		if sourceEntry != nil {
+			first.Description = sourceEntry.Description
+		}
 		toolForm := huh.NewForm(huh.NewGroup(
 			huh.NewInput().
 				Title("First tool name (snake_case)").
@@ -152,13 +217,19 @@ func runMcpNewWizardWithDeps(_ context.Context, name, outputDir string, yes bool
 		first.Schema = `{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}`
 		spec.Tools = []mcpgen.ToolSpec{first}
 	} else {
-		// --yes path: minimal viable defaults.
+		// --yes path: minimal viable defaults. When --from-source set,
+		// spec.Description is already pre-filled above; otherwise fall
+		// back to the generic boilerplate.
 		if spec.Description == "" {
 			spec.Description = fmt.Sprintf("MCP server scaffolded by clawtool mcp new (project %q).", name)
 		}
+		toolDesc := "Return the input string verbatim. Replace with your real tool."
+		if sourceEntry != nil {
+			toolDesc = sourceEntry.Description
+		}
 		spec.Tools = []mcpgen.ToolSpec{{
 			Name:        "echo_back",
-			Description: "Return the input string verbatim. Replace with your real tool.",
+			Description: toolDesc,
 			Schema:      `{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}`,
 		}}
 	}

@@ -17,11 +17,13 @@ import (
 )
 
 const mcpUsage = `Usage:
-  clawtool mcp new <project-name> [--output <dir>] [--yes]
+  clawtool mcp new <project-name> [--output <dir>] [--from-source <name>] [--yes]
                                    Generate a new MCP server (Go / Python /
                                    TypeScript) in <project-name>/. Wizard
                                    asks for description, language, transport,
-                                   packaging, first tool.
+                                   packaging, first tool. Use --from-source
+                                   <name> to fork an existing catalog entry
+                                   as the starting point.
   clawtool mcp list [--root <dir>] List MCP server projects under <dir>
                                    (default cwd). Detects via the
                                    .clawtool/mcp.toml marker.
