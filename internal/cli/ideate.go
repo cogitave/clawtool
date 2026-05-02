@@ -69,7 +69,8 @@ Flags:
   --top N                         Cap on returned ideas (default 10).
   --source <name>                 Restrict to one source (adr_questions,
                                   adr_drafting, todos, ci_failures,
-                                  manifest_drift, bench_regression).
+                                  manifest_drift, bench_regression,
+                                  deadcode_hits, deps_outdated).
   --format text|json              Print format (default text).
   --apply                         Push selected ideas to the autopilot
                                   backlog at status=proposed.
@@ -84,6 +85,7 @@ Sources:
   ci_failures       Recent failed GitHub Actions runs (gh run list).
   manifest_drift    MCP tool description vs registered description.
   bench_regression  ToolSearch BM25 rank-1 hit-rate baseline diff.
+  deps_outdated     Outdated Go module dependencies (go list -m -u).
 
 Stack:
   ideate → autopilot accept → autopilot next → autonomous
@@ -202,7 +204,7 @@ func (a *App) printIdeasText(res ideator.RunResult, applied bool) {
 // orderedSourceNames returns the keys of m in a stable order (the
 // canonical default-source order, then any extras alphabetised).
 func orderedSourceNames(m map[string]int) []string {
-	canonical := []string{"adr_questions", "todos", "ci_failures", "manifest_drift", "bench_regression"}
+	canonical := []string{"adr_questions", "todos", "ci_failures", "manifest_drift", "bench_regression", "deps_outdated"}
 	out := make([]string, 0, len(m))
 	seen := map[string]struct{}{}
 	for _, name := range canonical {
@@ -242,5 +244,6 @@ func defaultIdeatorSources() []ideator.IdeaSource {
 		sources.NewManifestDrift(),
 		sources.NewBenchRegression(),
 		sources.NewDeadcodeHits(),
+		sources.NewDepsOutdated(),
 	}
 }

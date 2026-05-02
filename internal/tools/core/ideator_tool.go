@@ -78,7 +78,8 @@ func (r ideateResult) Render() string {
 	if len(r.PerSource) > 0 {
 		b.WriteString("  per-source: ")
 		first := true
-		for _, name := range []string{"adr_questions", "adr_drafting", "todos", "ci_failures", "manifest_drift", "bench_regression", "deadcode_hits"} {			n, ok := r.PerSource[name]
+		for _, name := range []string{"adr_questions", "adr_drafting", "todos", "ci_failures", "manifest_drift", "bench_regression", "deadcode_hits", "deps_outdated"} {
+			n, ok := r.PerSource[name]
 			if !ok {
 				continue
 			}
@@ -122,7 +123,7 @@ func registerIdeateRun(s *server.MCPServer) {
 		mcp.WithNumber("top",
 			mcp.Description("Cap on returned ideas (default 10). Higher means more breadth, lower means tighter focus.")),
 		mcp.WithString("source",
-			mcp.Description("Restrict to one source: adr_questions | adr_drafting | todos | ci_failures | manifest_drift | bench_regression. Empty = all.")),
+			mcp.Description("Restrict to one source: adr_questions | adr_drafting | todos | ci_failures | manifest_drift | bench_regression | deadcode_hits | deps_outdated. Empty = all.")),
 		mcp.WithString("repo",
 			mcp.Description("Repo root to scan. Default: process cwd.")),
 	)
@@ -150,7 +151,7 @@ func registerIdeateApply(s *server.MCPServer) {
 		mcp.WithNumber("top",
 			mcp.Description("Cap on queued ideas (default 10).")),
 		mcp.WithString("source",
-			mcp.Description("Restrict to one source: adr_questions | adr_drafting | todos | ci_failures | manifest_drift | bench_regression. Empty = all.")),
+			mcp.Description("Restrict to one source: adr_questions | adr_drafting | todos | ci_failures | manifest_drift | bench_regression | deadcode_hits | deps_outdated. Empty = all.")),
 		mcp.WithString("repo",
 			mcp.Description("Repo root to scan. Default: process cwd.")),
 	)
@@ -220,5 +221,6 @@ func defaultIdeatorSources() []ideator.IdeaSource {
 		sources.NewManifestDrift(),
 		sources.NewBenchRegression(),
 		sources.NewDeadcodeHits(),
+		sources.NewDepsOutdated(),
 	}
 }

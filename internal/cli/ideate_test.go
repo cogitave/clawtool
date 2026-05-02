@@ -15,7 +15,7 @@ func TestIdeate_HelpExits0(t *testing.T) {
 		t.Fatalf("rc=%d want 0", rc)
 	}
 	out := app.Stdout.(*bytes.Buffer).String()
-	for _, want := range []string{"clawtool ideate", "--apply", "--source", "adr_questions", "todos", "ci_failures", "manifest_drift", "bench_regression"} {
+	for _, want := range []string{"clawtool ideate", "--apply", "--source", "adr_questions", "todos", "ci_failures", "manifest_drift", "bench_regression", "deps_outdated"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("usage missing %q in:\n%s", want, out)
 		}
