@@ -14,9 +14,11 @@ package core
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/cogitave/clawtool/internal/checkpoint"
 	"github.com/cogitave/clawtool/internal/rules"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -173,6 +175,18 @@ func runRulesCheck(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRes
 				}
 			}
 		}
+	}
+
+	// Pre-compute docsync violations for the pre_commit phase so
+	// the `docsync_violation()` predicate has data to read. Per
+	// ADR-022 §Resolved (2026-05-02), the docsync rule type
+	// reuses rules.Severity verbatim — the FS work happens here
+	// (caller side), eval.go stays pure. Resolved against the
+	// daemon's cwd; tests inject paths via changed_paths so the
+	// lookup hits a temp tree.
+	if ctx.Event == rules.EventPreCommit && len(ctx.ChangedPaths) > 0 {
+		cwd, _ := os.Getwd()
+		ctx.DocsyncViolations = checkpoint.CheckDocsync(cwd, ctx.ChangedPaths)
 	}
 
 	verdict := rules.Evaluate(loaded, ctx)

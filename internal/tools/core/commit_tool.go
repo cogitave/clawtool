@@ -196,11 +196,17 @@ func runCommit(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResul
 	// operator's rules are opt-in.
 	if loaded, _, _, lerr := rules.LoadDefault(); lerr == nil && len(loaded) > 0 {
 		stagedPaths, _ := checkpoint.StagedFiles(opts.Cwd)
+		// Pre-compute docsync violations so the
+		// `docsync_violation()` predicate has data. Per
+		// ADR-022 §Resolved (2026-05-02), the docsync rule
+		// type reuses rules.Severity verbatim — FS work
+		// happens here, eval.go stays pure.
 		ctxRules := rules.Context{
-			Event:         rules.EventPreCommit,
-			CommitMessage: message,
-			ChangedPaths:  stagedPaths,
-			Now:           time.Now(),
+			Event:             rules.EventPreCommit,
+			CommitMessage:     message,
+			ChangedPaths:      stagedPaths,
+			DocsyncViolations: checkpoint.CheckDocsync(opts.Cwd, stagedPaths),
+			Now:               time.Now(),
 		}
 		v := rules.Evaluate(loaded, ctxRules)
 		out.RuleViolations = append(out.RuleViolations, v.Blocked...)

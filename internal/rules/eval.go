@@ -7,6 +7,7 @@
 //                 | commit_message_contains(s)
 //                 | tool_call_count(name) > N
 //                 | arg(key) == value
+//                 | docsync_violation(unused)   // true iff ctx.DocsyncViolations non-empty (caller-precomputed)
 //                 | guardians_check(plan_arg)   // phase-1 stub, always true
 //                 | true | false
 //   expression   := primitive | NOT expression | expression AND expression | expression OR expression
@@ -214,6 +215,21 @@ func (c callExpr) eval(ctx Context) (bool, string, error) {
 		default:
 			return false, "", fmt.Errorf("arg() needs == or != comparison")
 		}
+
+	case "docsync_violation":
+		// Pre-computed by the caller (runCommit / runRulesCheck)
+		// via internal/checkpoint.CheckDocsync. The arg is
+		// ignored — kept in the AST shape so the parser's
+		// `ident "(" arg ")"` rule still matches; a 0-arg
+		// spelling (`docsync_violation()`) would require a
+		// second parser branch and isn't worth the complexity.
+		// Passing `"go"` (any string) is the recommended
+		// canonical form.
+		_ = c.arg
+		if len(ctx.DocsyncViolations) > 0 {
+			return true, "", nil
+		}
+		return false, "no docsync violations (every changed *.go has its sibling *.md updated, or no sibling exists)", nil
 
 	case "guardians_check":
 		// Phase-1 STUB for metareflection/guardians (MIT,

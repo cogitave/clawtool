@@ -154,6 +154,19 @@ type Context struct {
 	// (e.g. SendMessage's target instance for EventPreSend).
 	// Backs `arg(key) == value`.
 	Args map[string]string
+
+	// DocsyncViolations lists the Go source paths that changed
+	// in this Context but whose sibling `.md` doc was not also
+	// updated (per checkpoint.CheckDocsync). The caller
+	// pre-computes this with internal/checkpoint.CheckDocsync
+	// BEFORE calling Evaluate — eval.go must stay pure (no
+	// stat, no I/O), so the FS work happens in the caller.
+	// Backs `docsync_violation()` (no-arg predicate; true when
+	// this slice is non-empty). Per ADR-022 §Resolved
+	// (2026-05-02), the rule type ships as a 3-mode severity
+	// gradient that reuses Severity verbatim — no parallel
+	// enum.
+	DocsyncViolations []string
 }
 
 // Result is one rule's verdict against one Context.

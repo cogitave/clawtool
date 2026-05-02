@@ -59,6 +59,14 @@ severity  = "warn"
 hint      = "internal/version.Version is the single source of truth for the release tag. Run: make sync-versions (or `go generate ./internal/version/...`) — that rewrites .claude-plugin/plugin.json + .claude-plugin/marketplace.json from the const and only touches the version line(s). CI runs `make sync-versions-check` which fails if drift exists, and TestReleasePipeline_VersionsAreCodegenSynced asserts byte-identical manifests on every test run."
 
 [[rule]]
+name      = "docsync-pair"
+description = "Doc-sync invariant: when a *.go file changes AND its sibling *.md doc exists on disk, the .md must land in the same commit. Reuses rules.Severity verbatim per ADR-022 §Resolved (off / warn / block); flip severity to 'warn' or 'block' to enable. The docsync_violation() predicate is pre-computed by internal/checkpoint.CheckDocsync (test/codegen-aware filter) before rules.Evaluate runs."
+when      = "pre_commit"
+condition = "not docsync_violation(\"go\")"
+severity  = "off"
+hint      = "A staged *.go file has a sibling *.md on disk that wasn't restaged. Either edit the doc to reflect the code change, or `git add` the existing doc to confirm the pairing. Convention: <dir>/foo.go ↔ <dir>/foo.md. _test.go and well-known codegen suffixes (*.pb.go, *_gen.go, zz_generated_*) are exempt."
+
+[[rule]]
 name      = "no-version-version-outside-version-pkg"
 description = "Hardcoded clawtool version strings (literal semvers like 0.22.x) outside internal/version/ are an anti-pattern."
 when      = "post_edit"
