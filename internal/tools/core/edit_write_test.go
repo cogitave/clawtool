@@ -1,10 +1,14 @@
 package core
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // ── Edit ─────────────────────────────────────────────────────────────────
@@ -274,5 +278,165 @@ func TestDetectBOM(t *testing.T) {
 	}
 	if string(body2) != "noBOM" {
 		t.Errorf("body changed = %q", body2)
+	}
+}
+
+// ── Edit Read-before-Write guard (ADR-021) ───────────────────────────────
+//
+// These tests exercise runEdit through the MCP request shape so the
+// parity guarantee with Write is verified end-to-end. Mirrors the
+// TestGuardReadBeforeWrite_* matrix in session_state_test.go.
+
+// mkEditReq fabricates an MCP CallToolRequest for the Edit tool.
+func mkEditReq(path, oldStr, newStr string, unsafe bool) mcp.CallToolRequest {
+	args := map[string]any{
+		"path":       path,
+		"old_string": oldStr,
+		"new_string": newStr,
+	}
+	if unsafe {
+		args["unsafe_overwrite_without_read"] = true
+	}
+	return mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "Edit",
+			Arguments: args,
+		},
+	}
+}
+
+// editResultOf extracts the EditResult out of an mcp.CallToolResult
+// without poking at the JSON envelope shape.
+func editResultOf(t *testing.T, res *mcp.CallToolResult) EditResult {
+	t.Helper()
+	if res == nil {
+		t.Fatal("nil CallToolResult")
+	}
+	got, ok := res.StructuredContent.(EditResult)
+	if !ok {
+		t.Fatalf("StructuredContent is %T, want EditResult", res.StructuredContent)
+	}
+	return got
+}
+
+func TestEdit_GuardReadBeforeWrite_RejectsUnreadFile(t *testing.T) {
+	ResetSessionsForTest()
+	t.Cleanup(ResetSessionsForTest)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("hello world\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := runEdit(context.Background(), mkEditReq(path, "hello", "HI", false))
+	if err != nil {
+		t.Fatalf("runEdit returned err: %v", err)
+	}
+	got := editResultOf(t, res)
+	if got.ErrorReason == "" {
+		t.Fatal("expected guard rejection, got success")
+	}
+	if !strings.Contains(got.ErrorReason, "has not Read") {
+		t.Errorf("expected Read-before-Write guard error, got: %q", got.ErrorReason)
+	}
+	// File must remain untouched.
+	body, _ := os.ReadFile(path)
+	if string(body) != "hello world\n" {
+		t.Errorf("guarded edit still mutated file: %q", body)
+	}
+}
+
+func TestEdit_GuardReadBeforeWrite_AllowsAfterRead(t *testing.T) {
+	ResetSessionsForTest()
+	t.Cleanup(ResetSessionsForTest)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("hello world\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := HashFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	Sessions.RecordRead(sessionAnonymous, ReadRecord{
+		Path:     path,
+		FileHash: hash,
+		ReadAt:   time.Now(),
+	})
+
+	res, err := runEdit(context.Background(), mkEditReq(path, "hello", "HI", false))
+	if err != nil {
+		t.Fatalf("runEdit returned err: %v", err)
+	}
+	got := editResultOf(t, res)
+	if got.ErrorReason != "" {
+		t.Fatalf("unexpected guard rejection after Read: %q", got.ErrorReason)
+	}
+	if !got.Replaced {
+		t.Error("expected Replaced=true after recorded Read")
+	}
+	body, _ := os.ReadFile(path)
+	if string(body) != "HI world\n" {
+		t.Errorf("post-edit content = %q, want HI world\\n", body)
+	}
+}
+
+func TestEdit_GuardReadBeforeWrite_UnsafeBypass(t *testing.T) {
+	ResetSessionsForTest()
+	t.Cleanup(ResetSessionsForTest)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("hello world\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// No prior Read recorded — but unsafe=true should allow the
+	// edit to proceed.
+	res, err := runEdit(context.Background(), mkEditReq(path, "hello", "HI", true))
+	if err != nil {
+		t.Fatalf("runEdit returned err: %v", err)
+	}
+	got := editResultOf(t, res)
+	if got.ErrorReason != "" {
+		t.Fatalf("unsafe_overwrite_without_read should bypass, got: %q", got.ErrorReason)
+	}
+	if !got.Replaced {
+		t.Error("expected Replaced=true with unsafe bypass")
+	}
+	body, _ := os.ReadFile(path)
+	if string(body) != "HI world\n" {
+		t.Errorf("post-edit content = %q, want HI world\\n", body)
+	}
+}
+
+func TestEdit_GuardReadBeforeWrite_RejectsStaleRead(t *testing.T) {
+	ResetSessionsForTest()
+	t.Cleanup(ResetSessionsForTest)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("hello world\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Record a Read with a hash that doesn't match the current file.
+	Sessions.RecordRead(sessionAnonymous, ReadRecord{
+		Path:     path,
+		FileHash: "stale-hash-not-matching",
+		ReadAt:   time.Now(),
+	})
+
+	res, err := runEdit(context.Background(), mkEditReq(path, "hello", "HI", false))
+	if err != nil {
+		t.Fatalf("runEdit returned err: %v", err)
+	}
+	got := editResultOf(t, res)
+	if got.ErrorReason == "" {
+		t.Fatal("expected stale-hash rejection, got success")
+	}
+	if !strings.Contains(got.ErrorReason, "changed since this session") {
+		t.Errorf("expected stale-hash guard error, got: %q", got.ErrorReason)
 	}
 }

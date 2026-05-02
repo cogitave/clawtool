@@ -76,6 +76,8 @@ func RegisterEdit(s *server.MCPServer) {
 			mcp.Description("Replace every occurrence instead of refusing on duplicates. Default false.")),
 		mcp.WithString("cwd",
 			mcp.Description("Working directory for relative paths. Defaults to $HOME.")),
+		mcp.WithBoolean("unsafe_overwrite_without_read",
+			mcp.Description("Bypass the Read-before-Write check. Loud, opt-in. Use only when the operator has confirmed they intend to mutate a file the agent has not Read this session.")),
 	)
 	s.AddTool(tool, runEdit)
 }
@@ -92,6 +94,7 @@ func runEdit(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 	newStr := req.GetString("new_string", "")
 	replaceAll := req.GetBool("replace_all", false)
 	cwd := req.GetString("cwd", "")
+	unsafeOverwrite := req.GetBool("unsafe_overwrite_without_read", false)
 
 	resolved := resolvePath(path, cwd)
 	if mgr := hooks.Get(); mgr != nil {
@@ -106,6 +109,18 @@ func runEdit(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult,
 				Path:       resolved,
 			}), nil
 		}
+	}
+
+	// ADR-021 Read-before-Write guardrail (symmetric with Write).
+	// Edit always operates on an existing file, so the empty
+	// mode + must_not_exist=false flow takes the
+	// existing-file-requires-prior-Read branch in
+	// guardReadBeforeWrite.
+	if guardErr := guardReadBeforeWrite(ctx, resolved, "", false, unsafeOverwrite); guardErr != nil {
+		return resultOf(EditResult{
+			BaseResult: BaseResult{Operation: "Edit", ErrorReason: guardErr.Error()},
+			Path:       resolved,
+		}), nil
 	}
 	res := executeEdit(resolved, oldStr, newStr, replaceAll)
 	if !res.IsError() && lintEnabled() {
