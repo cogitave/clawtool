@@ -25,3 +25,27 @@ when      = "pre_commit"
 condition = "changed(\"**/*.go\")"
 severity  = "warn"
 hint      = "Run: go test -race -count=1 -timeout=120s ./... — fix any DATA RACE warnings (usually shared variables across test goroutines; reorder so the writer settles before the reader spawns, or use a channel)."
+
+[[rule]]
+name      = "no-autodev-private-files"
+description = "Prevent committing private autodev artifacts (cron tick logs, operator prompts, conversation dumps). The .autodev-notes.md leak on 2026-05-02 shipped operator prompts to GitHub via 138 tags before history rewrite."
+when      = "pre_commit"
+condition = "staged(\".autodev-notes.md\") OR staged(\".autodev/**\") OR staged(\"autodev-notes.md\") OR staged(\"**/operator-prompts.md\") OR staged(\"**/.claude/agents/*-private.md\") OR staged(\"**/conversation-log-*.md\") OR staged(\"**/chat-history.md\") OR staged(\".clawtool/private/**\")"
+severity  = "block"
+hint      = "Path matches an autodev-internal pattern. These files contain operator prompts, tick logs, or chat history and MUST NOT enter git. Add the path to .gitignore or move to ~/.config/clawtool/private-backups/. Reference incident: 2026-05-02 .autodev-notes.md history rewrite."
+
+[[rule]]
+name      = "no-credentials-in-staged"
+description = "Block commit when staged files contain anything that smells like a secret (API keys, tokens, JWT, private keys, env files with values)."
+when      = "pre_commit"
+condition = "staged(\"**/*.env\") OR staged(\"**/.env.*\") OR staged(\"**/*.pem\") OR staged(\"**/*.key\") OR staged(\"**/secrets.toml\") OR staged(\"**/credentials.json\") OR staged(\"**/.aws/credentials\") OR staged(\"**/id_rsa\") OR staged(\"**/id_ed25519\")"
+severity  = "block"
+hint      = "Staged file matches a known-credential filename pattern. Even if the content is safe today, the path schema is risky. Move to ~/.config/clawtool/secrets.toml (already gitignored) or use environment variables. If this is a sample/template, name it `*.example` or `*.template` instead."
+
+[[rule]]
+name      = "gitignore-internal-paths"
+description = "Verify .gitignore covers known-private path patterns. Catches the case where a fresh patterns slips in without ignore coverage."
+when      = "post_edit"
+condition = "changed(\".clawtool/rules.toml\") OR changed(\".gitignore\")"
+severity  = "warn"
+hint      = "After updating private-pattern rules, ensure .gitignore has matching entries. Currently covered: .autodev-notes.md, autodev-notes.md, .autodev/, /wiki/, /playbooks/_personal/*, /BODY.md, /.obsidian/, .obsidian/workspace.json. If you added a new pattern to no-autodev-private-files or no-credentials-in-staged rules, mirror it in .gitignore so the file never even reaches the index."
