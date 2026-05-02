@@ -4,7 +4,21 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.150] - 2026-05-02
+## [0.22.152] - 2026-05-02
+
+### Refactor
+
+- **ideator:** Single canonical default-source list (CLI + MCP parity) (b3157a6)## [0.22.151] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.150 [skip ci] (fd8b2cd)
+### Fixes
+
+- **upgrade:** Mirror new binary into every clawtool on $PATH (2f9a949)
+### Tests
+
+- **flake:** MacOS tempdir resolve + slow_down slack widening (9873290)## [0.22.150] - 2026-05-02
 
 ### Documentation
 
