@@ -870,6 +870,34 @@ func BuildManifest() *registry.Manifest {
 	})
 
 	m.Append(registry.ToolSpec{
+		Name:        "AutodevStart",
+		Description: "Arm clawtool's self-trigger Stop-hook loop. When armed, every Claude Code Stop event in this session returns {decision:block, reason:...} so the conversation refuses to end and continues with a fresh autodev prompt as the next user input.",
+		Keywords:    []string{"autodev", "self-trigger", "stop-hook", "loop", "continue", "arm", "keep-going"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use when the operator says 'keep going', 'work continuously', 'don't stop until I say'. Paired with AutodevStop. NOT the same as AutonomousRun — AutonomousRun dispatches a goal to a BIAM peer; AutodevStart keeps THIS Claude session going across turns.",
+		Register: func(s *server.MCPServer, _ registry.Runtime) {
+			RegisterAutodevTools(s)
+		},
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "AutodevStop",
+		Description: "Disarm clawtool's self-trigger Stop-hook loop. The next Claude Code Stop event lets the turn end normally and the operator regains control. Idempotent.",
+		Keywords:    []string{"autodev", "stop", "disarm", "self-trigger", "loop", "end", "halt"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use when the operator says 'stop', 'enough', 'kes', or asks for control back. Paired with AutodevStart.",
+	})
+	m.Append(registry.ToolSpec{
+		Name:        "AutodevStatus",
+		Description: "Inspect clawtool's self-trigger Stop-hook loop: armed/disarmed state, current self-trigger counter, and 200-trigger cap. Read-only.",
+		Keywords:    []string{"autodev", "status", "self-trigger", "loop", "counter", "armed"},
+		Category:    registry.CategoryDispatch,
+		Gate:        "",
+		UsageHint:   "Use to check whether autodev is keeping the session alive across turns OR whether the cap is about to fire.",
+	})
+
+	m.Append(registry.ToolSpec{
 		Name:        "AutonomousRun",
 		Description: "Drive clawtool's autonomous self-paced dev loop from chat: dispatch a goal to a BIAM peer, iterate until done or max-iterations, return the final summary. Loop runs inside clawtool's binary — host-agnostic.",
 		Keywords:    []string{"autonomous", "loop", "biam", "dispatch", "goal", "self-paced", "chat", "ai-driven", "iterate"},
