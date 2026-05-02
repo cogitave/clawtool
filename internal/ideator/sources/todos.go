@@ -2,9 +2,10 @@
 //
 // Walks repoRoot for *.go files (using a Go-native walker — no
 // shell-out, no rg dependency) and emits one Idea per TODO / FIXME /
-// XXX comment. DedupeKey is sha1(path + line + comment text) so the
-// same comment surfaces the same id across runs even when other
-// comments above it shift line numbers.
+// XXX comment.  (ideator-skip)
+// DedupeKey is sha1(path + line + comment text) so the same comment
+// surfaces the same id across runs even when other comments above
+// it shift line numbers.
 package sources
 
 import (
@@ -69,10 +70,41 @@ func NewTODOs() *TODOs {
 // Name returns the canonical source name.
 func (TODOs) Name() string { return "todos" }
 
-// todoLine matches `// TODO: ...`, `// FIXME(arda): ...`,
-// `// XXX ...` etc. Captures the marker (TODO/FIXME/XXX) and the
-// trailing comment body.
+// todoLine matches `// TODO: ...`, `// FIXME(arda): ...`,  (ideator-skip)
+// `// XXX ...` etc. Captures the marker (TODO/FIXME/XXX)  (ideator-skip)
+// and the trailing comment body.
 var todoLine = regexp.MustCompile(`(?i)//\s*(TODO|FIXME|XXX)\b\s*(?:\([^)]*\))?\s*:?\s*(.*)`)
+
+// skipMarkers are inline tokens that mark a TODO line as
+// intentionally-not-actionable so ideator stops re-surfacing it on
+// every run. The match is case-insensitive to keep authors free of
+// shift-key tax.
+//
+//   - `(ideator-skip)` — explicit "I looked at this, leave it"
+//     marker, preferred for one-off intentional TODOs.
+//   - `TODO[skip]:` — bracket-syntax variant for editors / linters
+//     that already use `[…]` tags.
+//   - `TODO(template):` — for placeholder TODOs inside scaffold
+//     generators (mcpgen/*_adapter.go) where the comment is part of
+//     the emitted user code, not a live action item.
+var skipMarkers = []string{
+	"(ideator-skip)",
+	"TODO[skip]:",
+	"TODO(template):",
+}
+
+// hasSkipMarker reports whether line carries any of the
+// intentional-skip tokens above. Case-insensitive so `TODO(Template):`
+// or `(IDEATOR-SKIP)` both match.
+func hasSkipMarker(line string) bool {
+	low := strings.ToLower(line)
+	for _, m := range skipMarkers {
+		if strings.Contains(low, strings.ToLower(m)) {
+			return true
+		}
+	}
+	return false
+}
 
 // Scan walks repoRoot in-process. Cheap-on-fail: read errors on
 // individual files become silent skips so one weird file doesn't
@@ -113,6 +145,16 @@ func (t TODOs) Scan(ctx context.Context, repoRoot string) ([]ideator.Idea, error
 		if !strings.HasSuffix(d.Name(), ".go") {
 			return nil
 		}
+		// Test files almost always carry literal TODO/FIXME tokens
+		// as fixture data for the scanner under test. Surfacing
+		// those would drown the queue in non-actionable noise, so
+		// `_test.go` is dropped before the line-by-line scan. Real
+		// test-only TODOs that need the operator's eye should live
+		// in the production source they're testing, not in the
+		// fixtures.
+		if strings.HasSuffix(d.Name(), "_test.go") {
+			return nil
+		}
 		// Skip generated and test fixture files: marker comment
 		// `Code generated ... DO NOT EDIT.` lives at the top.
 		if isGoGenerated(path) {
@@ -148,8 +190,18 @@ func scanTODOLines(relPath string, f *os.File) []ideator.Idea {
 	lineNumber := 0
 	for scan.Scan() {
 		lineNumber++
-		m := todoLine.FindStringSubmatch(scan.Text())
+		text := scan.Text()
+		m := todoLine.FindStringSubmatch(text)
 		if m == nil {
+			continue
+		}
+		// Intentional-skip filter: a TODO carrying any of the
+		// recognised skip tokens — `(ideator-skip)`, `TODO[skip]:`,
+		// `TODO(template):` — is treated as already-investigated
+		// and not re-surfaced. Match against the raw line so the
+		// `(template)` segment is visible even after the regex'
+		// optional `\(...\)` group consumes it.
+		if hasSkipMarker(text) {
 			continue
 		}
 		marker := strings.ToUpper(m[1])
@@ -161,7 +213,7 @@ func scanTODOLines(relPath string, f *os.File) []ideator.Idea {
 		hash := sha1.Sum([]byte(relPath + "|" + body))
 		priority := 3
 		if marker == "FIXME" {
-			priority = 5 // fixme implies a known bug, not a wishlist
+			priority = 5 // fixme implies a known bug, not a wishlist  (ideator-skip)
 		}
 		out = append(out, ideator.Idea{
 			Title:             marker + ": " + truncate(body, 60),
@@ -199,10 +251,21 @@ func matchesAnyFragment(fwd string, fragments []string) bool {
 	return false
 }
 
+// goGeneratedMarker matches the line shape the Go toolchain agrees
+// on for generated files: `// Code generated <whatever> DO NOT EDIT.`
+// anchored to a line — see https://golang.org/s/generatedcode.
+//
+// Earlier this was a naive `strings.Contains(buf, "Code generated")
+// && Contains(buf, "DO NOT EDIT")` check, which false-positived on
+// any source file that quoted the marker in a doc-comment paragraph
+// — including this one. Switching to a line-anchored regex stops
+// that self-match and keeps the generator-owned skip intact.
+var goGeneratedMarker = regexp.MustCompile(`(?m)^//\s*Code generated.*DO NOT EDIT\.?\s*$`)
+
 // isGoGenerated reads the first 4 KiB of path looking for the
-// `Code generated ... DO NOT EDIT.` marker the Go toolchain agrees
-// on. Generated files are skipped because their TODOs are owned by
-// the generator, not human-actionable.
+// `// Code generated ... DO NOT EDIT.` line the Go toolchain
+// produces. Generated files are skipped because their TODOs are
+// owned by the generator, not human-actionable.
 func isGoGenerated(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {
@@ -211,5 +274,5 @@ func isGoGenerated(path string) bool {
 	defer f.Close()
 	buf := make([]byte, 4096)
 	n, _ := f.Read(buf)
-	return strings.Contains(string(buf[:n]), "Code generated") && strings.Contains(string(buf[:n]), "DO NOT EDIT")
+	return goGeneratedMarker.Match(buf[:n])
 }

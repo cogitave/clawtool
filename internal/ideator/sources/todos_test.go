@@ -147,6 +147,105 @@ func TestTodos_SkipsVendoredAndCachePaths(t *testing.T) {
 	}
 }
 
+// TestTodos_SkipsIdeatorSkipMarker verifies that a TODO carrying
+// the explicit `(ideator-skip)` marker is treated as intentional and
+// not surfaced. This is the operator-facing escape hatch for one-off
+// "I looked at this, leave it" cases.
+func TestTodos_SkipsIdeatorSkipMarker(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Join([]string{
+		"package fake",
+		"",
+		"// TODO(ideator-skip): investigated, leave the comment as-is",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, "fake.go"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	ideas, err := NewTODOs().Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(ideas) != 0 {
+		t.Fatalf("Scan returned %d ideas, want 0: %v", len(ideas), ideaTitles(ideas))
+	}
+}
+
+// TestTodos_SkipsTodoSkipBracket verifies the bracket-syntax variant
+// `TODO[skip]:` skips. Some editors / linters already treat `[…]`
+// as a tag namespace, so this form keeps ideator from re-surfacing
+// what those tools already classify.
+func TestTodos_SkipsTodoSkipBracket(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Join([]string{
+		"package fake",
+		"",
+		"// TODO[skip]: marked intentional via bracket syntax",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, "fake.go"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	ideas, err := NewTODOs().Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(ideas) != 0 {
+		t.Fatalf("Scan returned %d ideas, want 0: %v", len(ideas), ideaTitles(ideas))
+	}
+}
+
+// TestTodos_SkipsTodoTemplateMarker verifies that placeholder TODOs
+// inside scaffold generators (mcpgen/*_adapter.go) — tagged with
+// `TODO(template):` — are not surfaced. Without this the ideator
+// would re-suggest "address the TODO at typescript_adapter.go:172"
+// every run despite the comment being part of the emitted user code.
+func TestTodos_SkipsTodoTemplateMarker(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Join([]string{
+		"package fake",
+		"",
+		"// TODO(template): replace with real implementation.",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, "fake.go"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	ideas, err := NewTODOs().Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(ideas) != 0 {
+		t.Fatalf("Scan returned %d ideas, want 0: %v", len(ideas), ideaTitles(ideas))
+	}
+}
+
+// TestTodos_NormalTodoStillSurfaces guards against the skip filter
+// over-matching: a plain `// TODO: real work` must still produce one
+// idea. Belt-and-suspenders alongside TestTODOs_FindsCommentMarkers.
+func TestTodos_NormalTodoStillSurfaces(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Join([]string{
+		"package fake",
+		"",
+		"// TODO: real work",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, "fake.go"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	ideas, err := NewTODOs().Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(ideas) != 1 {
+		t.Fatalf("Scan returned %d ideas, want 1: %v", len(ideas), ideaTitles(ideas))
+	}
+	if !strings.HasPrefix(ideas[0].Title, "TODO:") {
+		t.Fatalf("idea title = %q, want TODO: prefix", ideas[0].Title)
+	}
+}
+
 // itoa is a tiny helper so the test stays free of strconv.
 func itoa(n int) string {
 	if n == 0 {

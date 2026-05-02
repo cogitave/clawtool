@@ -11,7 +11,7 @@
 //     not a real subject — squash me." `git rebase -i --autosquash`
 //     doesn't recognise `wip!:` natively (it knows fixup!/squash!),
 //     so resolve.go does the recognition itself by rewriting the
-//     todo list before handing it to git.
+//     todo list before handing it to git.  (ideator-skip)
 //   - The trailing-bang form keeps the prefix structurally close to
 //     the existing `feat!:` / `fix!:` shapes the operator's eye is
 //     trained on, so `git log --oneline` reading stays uniform.

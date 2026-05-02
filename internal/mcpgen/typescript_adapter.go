@@ -169,7 +169,7 @@ export function register(server: Server): void {
       throw new Error(`+"`"+`unknown tool ${req.params.name}`+"`"+`);
     }
     const input = String(req.params.arguments?.input ?? "");
-    // TODO: replace with real implementation.
+    // TODO(template): replace with real implementation.
     return {
       content: [{ type: "text", text: `+"`"+`you said: ${input}`+"`"+` }],
     };

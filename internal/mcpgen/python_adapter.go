@@ -140,7 +140,7 @@ def register(server: FastMCP) -> None:
     @server.tool(name=%q, description=%q)
     def %s(input: str) -> str:
         """%s"""
-        # TODO: replace with real implementation.
+        # TODO(template): replace with real implementation.
         return f"you said: {input}"
 `, t.Description, t.Name, t.Description, t.Name, t.Description)
 }

@@ -124,7 +124,7 @@ func Register%s(s *server.MCPServer) {
 			if err != nil {
 				return mcp.NewToolResultError("missing required argument: input"), nil
 			}
-			// TODO: replace with real implementation.
+			// TODO(template): replace with real implementation.
 			return mcp.NewToolResultText("you said: " + input), nil
 		},
 	)
