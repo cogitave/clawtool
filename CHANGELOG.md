@@ -4,7 +4,21 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.139] - 2026-05-02
+## [0.22.141] - 2026-05-02
+
+### Fixes
+
+- **ideator:** Drop ci_failures whose head sha is no longer reachable (171fc12)## [0.22.140] - 2026-05-02
+
+### Chores
+
+- **deadcode:** Wire up or delete 5 unreachable functions (75a017d)
+### Documentation
+
+- **changelog:** Regenerate for v0.22.139 [skip ci] (0c16dd2)
+### Fixes
+
+- **ideator:** Filter indirect deps from deps_outdated source (92a3977)## [0.22.139] - 2026-05-02
 
 ### Chores
 
