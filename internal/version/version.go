@@ -26,6 +26,20 @@
 // effective version. Reading `Version` directly (the constant)
 // will diverge from what the binary actually is when goreleaser
 // stamped a different value via ldflags.
+//
+// History: pre-2026-05-01 there was a literal-string sentinel
+// (`Version != "0.21.7"`) acting as the "this is the dev
+// fallback, prefer debug.BuildInfo" gate. release-please bumped
+// the const past that literal during the v0.22.x stretch and
+// the sentinel quietly stopped firing — every dev binary then
+// took the const branch even when debug.BuildInfo had a real
+// install tag. The fix: drop the sentinel entirely. The const
+// IS the canonical version (TestReleasePipeline_VersionStringsInSync
+// pins it equal to plugin.json + marketplace.json), so trust it.
+// debug.BuildInfo only matters as a probe-fallback when somehow
+// Version was zeroed (e.g. an explicit `-X .Version=""`); the
+// pseudo-version regex still filters Go's noisy
+// `v0.0.0-<ts>-<sha>` install shape.
 package version
 
 import (
@@ -63,13 +77,15 @@ var (
 // **Every external surface MUST use this** — telemetry events,
 // hook payloads, /v1/health JSON, A2A card, doctor banner,
 // orchestrator probe, MCP serverInfo. The literal `Version` var
-// holds the pre-build fallback ("0.21.7") and reads of it
-// outside this package are an anti-pattern: a goreleaser-baked
-// binary at v0.22.34 emitting the const looks like v0.21.7 to
-// every consumer (operator's PostHog filter, A2A peer, /v1/health
-// probe — all silently wrong). The bug repeated across 9 sites
-// before the operator caught it on 2026-04-29 ("12 hours, no
-// telemetry events"). Don't repeat it — call Resolved().
+// holds the release-please-tracked release tag and stays in sync
+// with .claude-plugin/plugin.json + .claude-plugin/marketplace.json
+// (cmd/version-sync regenerates both manifests from the const, and
+// TestReleasePipeline_VersionStringsInSync gates drift). Reading
+// the bare const still risks bypassing a goreleaser-stamped
+// ldflags override on a snapshot build, so route through
+// Resolved() unless you have a reason. The bug repeated across 9
+// sites before the operator caught it on 2026-04-29 ("12 hours,
+// no telemetry events"). Don't repeat it — call Resolved().
 func Resolved() string {
 	resolvedOnce.Do(func() {
 		resolvedVal = resolveVersion()
@@ -98,10 +114,23 @@ var pseudoVersionRE = regexp.MustCompile(`^v?0\.0\.0-\d{14}-[a-f0-9]{12}$`)
 func isPseudoVersion(v string) bool { return pseudoVersionRE.MatchString(v) }
 
 func resolveVersion() string {
-	// Prefer ldflags-baked Version when it's a real version (not
-	// the dev-fallback "0.21.7"). goreleaser always sets this,
-	// so production binaries report the exact release tag.
-	if Version != "" && Version != "0.21.7" {
+	// Prefer the Version variable. goreleaser ldflags-stamp it on
+	// every release tarball, and release-please bumps the const
+	// in lockstep with .claude-plugin/plugin.json +
+	// .claude-plugin/marketplace.json (cmd/version-sync regenerates
+	// the manifests from the const, so the three are always in
+	// sync at tag time). The only path that lands here with an
+	// empty Version is an explicit `-X .Version=""` ldflags zap;
+	// tolerate it by falling through to debug.BuildInfo.
+	//
+	// History: this branch used to compare against a literal
+	// "0.21.7" sentinel intended to mean "Version still holds
+	// the dev fallback, prefer debug.BuildInfo." release-please
+	// bumped past that string during the v0.22.x stretch and
+	// the gate stopped firing. Removed; no replacement sentinel
+	// — there's no useful condition under which we'd prefer
+	// debug.BuildInfo over a goreleaser-stamped Version.
+	if Version != "" {
 		return strip(Version)
 	}
 	// Module-cached `go install` binaries put the tag in

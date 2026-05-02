@@ -36,27 +36,30 @@ func TestIsPseudoVersion(t *testing.T) {
 	}
 }
 
-// TestResolveVersion_PseudoVersionFallsBackToConstant simulates
-// the `go install` path that lands a pseudo-version in
-// debug.Main.Version. The resolveVersion implementation can't
-// easily inject a fake debug.BuildInfo (it's a runtime hook),
-// but it CAN observe the Version constant. We assert the
-// regex's filtering behaviour here and rely on
-// TestIsPseudoVersion above for the wire-shape pin.
+// TestResolveVersion_PseudoVersionFiltered pins the regex's
+// filtering behaviour so a Go pseudo-version returned by
+// debug.ReadBuildInfo never bleeds into Resolved(). resolveVersion
+// can't easily inject a fake debug.BuildInfo (it's a runtime hook),
+// but the unit here observes that the regex itself rejects the
+// production-audited shape. TestIsPseudoVersion above is the
+// wire-shape pin; this one asserts the package-level branching
+// is wired to use it.
 func TestResolveVersion_PseudoVersionFiltered(t *testing.T) {
 	// Save + restore the global Version so the test doesn't
 	// leak state into siblings.
 	origVersion := Version
 	t.Cleanup(func() { Version = origVersion })
 
-	// Force the ldflags branch off so resolveVersion falls
-	// through to the debug.ReadBuildInfo branch in production —
-	// here we additionally synthesize a pseudo-version to prove
-	// the regex catches it. resolveVersion's last-resort returns
-	// strip(Version), so setting Version to a sentinel lets us
-	// observe whether the pseudo-version path was correctly
-	// rejected.
-	Version = "0.21.7" // dev-fallback sentinel
+	// Force the ldflags-stamped branch to no-op by zeroing
+	// Version, so resolveVersion is forced through the
+	// debug.ReadBuildInfo branch. The implementation can't
+	// observe a synthesized pseudo-version in test (no hook to
+	// fake debug.BuildInfo), but it CAN observe whether the
+	// pseudo-version regex correctly catches the audited shape.
+	// resolveVersion's last-resort returns strip(Version), so
+	// after zeroing it we just assert the result isn't the
+	// pseudo-version literal.
+	Version = ""
 	if got := resolveVersion(); got == "0.0.0-20260501001315-a5ac21717194" {
 		t.Errorf("resolveVersion must NOT return a pseudo-version; got %q", got)
 	}
@@ -67,5 +70,35 @@ func TestResolveVersion_PseudoVersionFiltered(t *testing.T) {
 	// value can bleed into telemetry / A2A / health probes.
 	if !isPseudoVersion("0.0.0-20260501001315-a5ac21717194") {
 		t.Fatal("regression: production pseudo-version shape no longer matches")
+	}
+}
+
+// TestResolveVersion_NonEmptyVersionWins pins the post-2026-05-01
+// behaviour: any non-empty Version short-circuits to that value,
+// regardless of what debug.BuildInfo carries. Pre-fix, a literal
+// "0.21.7" sentinel intercepted Version values that happened to
+// equal the (then-current) release-please default; release-please
+// bumped past it during v0.22.x and the gate quietly stopped
+// firing. Drift-trap: if anyone re-introduces a magic-string
+// sentinel, this test fails when Version equals it.
+func TestResolveVersion_NonEmptyVersionWins(t *testing.T) {
+	origVersion := Version
+	t.Cleanup(func() { Version = origVersion })
+
+	// A handful of values that have, at various points, served
+	// as the release-please-tracked const. None of them should
+	// trip a sentinel comparison anymore.
+	for _, in := range []string{
+		"0.21.7", // historical sentinel literal
+		"0.22.119",
+		"v0.22.119",
+		"0.0.0-dev",
+	} {
+		Version = in
+		got := resolveVersion()
+		want := strip(in)
+		if got != want {
+			t.Errorf("Version=%q: resolveVersion()=%q, want %q (sentinel regression — should pass through unchanged)", in, got, want)
+		}
 	}
 }
