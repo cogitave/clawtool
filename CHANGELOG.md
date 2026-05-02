@@ -4,7 +4,75 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.124] - 2026-05-02
+## [0.22.132] - 2026-05-02
+
+### Features
+
+- **send:** Fail-closed gate for --isolated × portal calls (f776f81)
+- **unattended:** Ed25519-sign JSONL audit log with verify walker (60dad50)
+- **mcp-new:** --from-source flag prefills wizard from catalog entry (64b8351)
+- Feat(send): propagate CLAWTOOL_UNATTENDED env to nested SendMessage Q2 resolution: when `clawtool send --unattended` runs, stamp
+CLAWTOOL_UNATTENDED=1 on the current process env so any nested
+`clawtool send` the upstream peer agent (codex / gemini / opencode /
+claude) invokes inherits unattended mode without re-acquiring per-repo
+consent.
+
+Bidirectional propagation, mirroring the CLAWTOOL_AGENT precedence
+pattern in supervisor.resolveAgent:
+
+  - Outbound (flag -> env): buildSendOpts now calls
+    propagateUnattendedToChildren, which os.Setenv's CLAWTOOL_UNATTENDED=1.
+    Spawned upstream CLIs read os.Environ() via the transport layer's
+    mergeEnv, so the env reaches the child without per-transport wiring.
+
+  - Inbound (env -> flag): resolveUnattendedFromEnv promotes
+    CLAWTOOL_UNATTENDED=1 to args.unattended before the trust gate
+    runs. A nested dispatch (parent already opted in) skips re-prompting
+    while still going through the audit session begin/close cycle.
+
+Compounding-trust clamp: this propagation is intra-operator only (same
+UID, same repo, same trust grant). The cross-operator A2A boundary
+clamp lives elsewhere and is unchanged here -- documented inline at the
+EnvUnattended const so a future reader doesn't try to re-elevate root
+or skip user-attached confirmations through this hook.
+
+Only the canonical "1" form promotes; "0" / "true" / "yes" / whitespace
+variants are rejected so a stale env from a prior session can't
+silently re-arm the flag.
+
+Tests:
+  - TestSend_UnattendedEnvPropagation: flag -> env stamp + env -> flag
+    promotion (the two halves of the round trip).
+  - TestSend_UnattendedNoEnvPropagationByDefault: vanilla send leaves
+    the env untouched (negative control).
+  - TestSend_UnattendedRejectsNonCanonicalEnv: only "1" promotes;
+    "0" / "true" / "yes" / "TRUE" / whitespace / empty all reject.
+
+CI: CLAWTOOL_CI_FAST=1 bash scripts/ci.sh -- fmt / vet / build /
+version-sync / test -race / deadcode all green. (58af031)
+### Fixes
+
+- **e2e:** Bypass Read-before-Write guard in Edit assertions via unsafe_overwrite_without_read (60944f7)
+- **e2e:** Chain Read before Edit + ambiguous-Edit calls in stdio harness (fd5b7d0)
+- **ideator:** Skip already-resolved entries in adr_questions parser (1a54c52)## [0.22.127] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.124 [skip ci] (94c1d1b)
+### Fixes
+
+- **test:** TestRunOneShot_NoopEngineRefuses skips on macOS sandbox-exec engine (de8ce1b)## [0.22.126] - 2026-05-02
+
+### Features
+
+- **version:** Single-source-of-truth codegen for plugin.json + marketplace.json (90ba49c)
+### Fixes
+
+- **version:** Drop broken "0.21.7" dev-fallback sentinel in resolveVersion (caf7e80)## [0.22.125] - 2026-05-02
+
+### Features
+
+- **edit:** Enforce Read-before-Write guard to match Write tool (7834849)## [0.22.124] - 2026-05-02
 
 ### Features
 
