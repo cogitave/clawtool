@@ -195,3 +195,8 @@ logs/
 # repo. The .gitkeep stays so a fresh clone has the directory.
 /playbooks/_personal/*
 !/playbooks/_personal/.gitkeep
+
+# autodev internals — never publish; contains operator prompts + tick logs
+.autodev-notes.md
+.autodev/
+autodev-notes.md
