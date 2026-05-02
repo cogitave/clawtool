@@ -4,14 +4,24 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.119] - 2026-05-02
+## [0.22.120] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.119 [skip ci] (47c3428)
+### Fixes
+
+- **plugin:** Rename inner mcpServers key to break "plugin:clawtool:clawtool" double-namespace + bump stale 0.21.7 manifest version (7213c3b)## [0.22.119] - 2026-05-02
+
+### Features
+
+- **ideator:** Self-feature-generation top of autonomy stack (proposed→pending operator gate) (a69659b)## [0.22.118] - 2026-05-02
 
 ### Documentation
 
 - **changelog:** Regenerate for v0.22.116 [skip ci] (bbacbca)
 ### Features
 
-- **ideator:** Self-feature-generation top of autonomy stack (proposed→pending operator gate) (a69659b)
 - **autopilot:** Self-direction backlog primitive for non-stalling agent loop (d073d2e)## [0.22.117] - 2026-05-02
 
 ### Features
