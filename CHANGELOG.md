@@ -4,7 +4,76 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.132] - 2026-05-02
+## [0.22.135] - 2026-05-02
+
+### Chores
+
+- Clean up 4 stale TODO comments in checkpoint / mcpgen / init_apply (129cfb6)
+### Documentation
+
+- **changelog:** Regenerate for v0.22.132 [skip ci] (a6ef7c8)
+### Features
+
+- **onboard:** OAuth device-code step + shared poller ( Phase 1) (31e98f4)
+- **biam:** SSE /v1/biam/subscribe handler for A2A async push ( Phase 4) (e07440e)
+- **portal:** Record verb captures session via obscura CDP subset (d5a7084)
+- Feat(sandbox): danger-full-access × --unsafe-yes confirmation gate §Resolved (2026-05-02) — the reserved `danger-full-access`
+sandbox profile bypasses every isolation primitive (paths,
+network, limits) so we now require an explicit `--unsafe-yes`
+confirmation flag before a dispatch resolving to it can run.
+
+Wiring:
+
+  - internal/agents/sandbox_danger_gate.go (new) — pure
+    checkDangerSandboxGate() helper + ErrDangerSandboxRequiresUnsafeYes
+    sentinel. Reads opts["sandbox"] (per-call) and agent.Sandbox
+    (config) case-insensitively; honours opts["unsafe_yes"] in
+    typed bool OR string ("true" / "1" / "yes" / "on") form so
+    CLI / MCP / async paths share one decoder.
+
+  - internal/agents/supervisor.go — invoked from dispatch right
+    before withSandboxResolved, so the refusal lands without ever
+    touching the transport, the limiter, the rules engine, or the
+    audit log dispatch line. Failover chain entries each evaluate
+    independently, mirroring the existing per-iteration sandbox
+    resolution shape.
+
+  - internal/cli/send.go — `--unsafe-yes` flag (default false) on
+    `clawtool send`; threaded into supervisor opts as the typed
+    bool `unsafe_yes=true`. audit log: when set, the
+    dispatch entry stamps `metadata.unsafe_yes=true` so the
+    operator's deliberate unlock is recorded.
+
+Tests cover the three task-level invariants:
+
+  - TestSandbox_DangerProfileRequiresUnsafeYes — refused with
+    directive stderr message ("--unsafe-yes confirmation. This
+    profile bypasses all sandbox restrictions.") in per-call,
+    agent-config, case-insensitive, and explicit-false shapes.
+  - TestSandbox_DangerWithUnsafeYesAllowed — allowed when the
+    flag is set in any of the accepted bool / string forms.
+  - TestSandbox_OtherProfilesUnaffected — strict / lenient /
+    no-sandbox / near-miss-name / empty-string all pass without
+    `--unsafe-yes`.
+
+Plus CLI-layer regression tests pinning the parse + opts-wiring
+contract: `--unsafe-yes` parses into sendArgs.unsafeYes,
+buildSendOpts emits opts["unsafe_yes"]=true (typed bool), and
+the absent-flag path stays key-absent so existing callers see
+the unchanged shape.
+
+CLAWTOOL_CI_FAST=1 bash scripts/ci.sh — green. (3ded4d8)
+- **checkpoint:** Guard middleware opt-in (defense-in-depth atop Read-before-Write) (ac04503)
+- **catalog:** OAuth integration recipes for Keycloak / Auth0 / Authentik ( Phase 1) (f93c0f4)
+- **sandbox:** Install hints for missing engines (no sudo driving) (5c34367)
+- **mcp-new:** Generate .github/workflows/ci.yml per language (f483945)
+- **checkpoint:** Wip! autocommit + autosquash resolve + protected-branch rule §Resolved (2026-05-02) flow lands in three pieces: (69be124)
+- **checkpoint:** Docsync rule type with severity gradient (rules.Severity reuse) (54d067b)
+- **checkpoint:** Respect git config commit.gpgsign / tag.gpgsign (a368202)
+- **browserfetch:** Raw=true arg bypasses readability post-pass (cf9278d)
+### Fixes
+
+- **checkpoint:** Resolve test stability across git versions and CI envs (34ec2fe)## [0.22.132] - 2026-05-02
 
 ### Features
 
