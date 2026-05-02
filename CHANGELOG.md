@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.115] - 2026-05-01
+## [0.22.116] - 2026-05-01
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.115 [skip ci] (130fea2)
+### Features
+
+- **mcp:** Mcp-Method and Mcp-Name headers on Streamable HTTP per SEP-2243 (c1ef522)## [0.22.115] - 2026-05-01
 
 ### Documentation
 
