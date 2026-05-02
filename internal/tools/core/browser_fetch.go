@@ -101,6 +101,8 @@ func RegisterBrowserFetch(s *server.MCPServer) {
 			mcp.Description("Optional JavaScript expression evaluated after the page settles. When set, EvalResult holds its stdout and Content is the rendered HTML for fallback parsing.")),
 		mcp.WithBoolean("stealth",
 			mcp.Description("Enable Obscura's --stealth flag (anti-fingerprinting + tracker blocking). Off by default.")),
+		mcp.WithBoolean("raw",
+			mcp.Description("Skip the go-readability post-pass and return the raw rendered HTML body verbatim. Use for programming-doc sites where readability strips <pre>/<code> blocks (telemetry shows ~8% strip rate). Default false.")),
 		mcp.WithNumber("timeout_ms",
 			mcp.Description("Hard deadline in milliseconds. Default 30000, max 180000.")),
 	)
@@ -118,6 +120,7 @@ func runBrowserFetch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToo
 		Selector:  req.GetString("selector", ""),
 		Eval:      req.GetString("eval", ""),
 		Stealth:   req.GetBool("stealth", false),
+		Raw:       req.GetBool("raw", false),
 		TimeoutMs: int(req.GetFloat("timeout_ms", float64(browserFetchDefaultTimeoutMs))),
 	}
 	if args.TimeoutMs <= 0 {
@@ -136,6 +139,7 @@ type browserFetchArgs struct {
 	Selector  string
 	Eval      string
 	Stealth   bool
+	Raw       bool
 	TimeoutMs int
 }
 
@@ -208,6 +212,14 @@ func executeBrowserFetch(ctx context.Context, a browserFetchArgs) BrowserFetchRe
 	if a.Eval != "" {
 		res.EvalResult = string(body)
 		res.Content = res.EvalResult
+		res.DurationMs = time.Since(start).Milliseconds()
+		return res
+	}
+	if a.Raw {
+		// raw=true: skip the readability post-pass so programming-doc
+		// sites keep their <pre>/<code> blocks intact (ADR-017).
+		res.Format = "html"
+		res.Content = string(body)
 		res.DurationMs = time.Since(start).Milliseconds()
 		return res
 	}

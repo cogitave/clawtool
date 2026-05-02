@@ -143,3 +143,65 @@ func TestBrowserFetch_NonZero_SurfacesError(t *testing.T) {
 		t.Errorf("error should mention obscura: %q", res.ErrorReason)
 	}
 }
+
+// TestBrowserFetch_RawBypassesReadability proves the raw=true escape
+// hatch (ADR-017): a programming-doc-style page with a <pre><code>
+// block is silently stripped to prose by the readability post-pass
+// when raw=false, and preserved verbatim when raw=true.
+func TestBrowserFetch_RawBypassesReadability(t *testing.T) {
+	// A doc-style page: short prose around a code sample. Readability
+	// is happy to extract the prose, but commonly drops the code
+	// fence — this is the 8% strip rate ADR-017 cites.
+	const codeMarker = "func Hello() string { return \"world\" }"
+	html := "<html><head><title>Doc</title></head><body>" +
+		"<nav>nav links</nav>" +
+		"<main><h1>API reference</h1>" +
+		"<p>Call this helper to greet the world.</p>" +
+		"<pre><code class=\"language-go\">" + codeMarker + "</code></pre>" +
+		"<p>That is all you need.</p></main>" +
+		"<footer>foot</footer></body></html>"
+
+	bin := fakeObscuraScript(t, html, 0)
+	prev := obscuraBin
+	obscuraBin = func() string { return bin }
+	defer func() { obscuraBin = prev }()
+
+	// raw=true: full HTML including the <pre><code> block survives.
+	rawRes := executeBrowserFetch(context.Background(), browserFetchArgs{
+		URL:       "https://example.com/docs",
+		WaitUntil: "load",
+		Raw:       true,
+		TimeoutMs: 10000,
+	})
+	if rawRes.ErrorReason != "" {
+		t.Fatalf("raw=true unexpected error: %s", rawRes.ErrorReason)
+	}
+	if rawRes.Format != "html" {
+		t.Errorf("raw=true Format = %q, want html", rawRes.Format)
+	}
+	if !strings.Contains(rawRes.Content, codeMarker) {
+		t.Errorf("raw=true Content should preserve code block %q; got: %q", codeMarker, rawRes.Content)
+	}
+	if !strings.Contains(rawRes.Content, "<pre>") {
+		t.Errorf("raw=true Content should preserve <pre> tag; got: %q", rawRes.Content)
+	}
+	if rawRes.Title != "" || rawRes.Byline != "" {
+		t.Errorf("raw=true should not populate readability metadata; Title=%q Byline=%q", rawRes.Title, rawRes.Byline)
+	}
+
+	// raw=false: readability runs and emits TextContent (no HTML tags),
+	// so the literal <pre> markup disappears. We assert the structural
+	// difference rather than chasing readability's exact output.
+	cookedRes := executeBrowserFetch(context.Background(), browserFetchArgs{
+		URL:       "https://example.com/docs",
+		WaitUntil: "load",
+		Raw:       false,
+		TimeoutMs: 10000,
+	})
+	if cookedRes.ErrorReason != "" {
+		t.Fatalf("raw=false unexpected error: %s", cookedRes.ErrorReason)
+	}
+	if strings.Contains(cookedRes.Content, "<pre>") {
+		t.Errorf("raw=false should strip <pre> markup via readability; got: %q", cookedRes.Content)
+	}
+}
