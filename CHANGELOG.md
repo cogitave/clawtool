@@ -4,7 +4,14 @@ All notable changes to clawtool are documented here. Format adheres to
 [Conventional Commits](https://www.conventionalcommits.org/) and this
 project follows [Semantic Versioning](https://semver.org/).
 
-## [0.22.136] - 2026-05-02
+## [0.22.137] - 2026-05-02
+
+### Documentation
+
+- **changelog:** Regenerate for v0.22.136 [skip ci] (4366802)
+### Fixes
+
+- **ideator:** Add (ideator-skip) marker support + retag template TODOs (52e4bf0)## [0.22.136] - 2026-05-02
 
 ### Documentation
 
