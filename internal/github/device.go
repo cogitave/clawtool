@@ -25,6 +25,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/cogitave/clawtool/internal/auth/devicecode"
 )
 
 // ClientID is the GitHub OAuth App client_id used by clawtool's
@@ -148,80 +150,48 @@ func (c *Client) RequestDeviceCode(ctx context.Context, scopes string) (*DeviceC
 // (returns ErrDeviceCodeExpired), or the user denies it
 // (returns ErrAuthorizationDenied). ctx cancellation aborts
 // the poll cleanly so a Ctrl-C in the CLI doesn't hang.
+//
+// ADR-036 Phase 1: this delegates to the issuer-agnostic
+// internal/auth/devicecode poller so the wizard's DeviceCodeStep
+// and clawtool star share one RFC 8628 §3.5 state machine.
+// Errors are translated back to this package's sentinels so
+// existing callers (star.go) keep their `errors.Is` shape.
 func (c *Client) PollAccessToken(ctx context.Context, dc *DeviceCode) (string, error) {
 	cid := c.clientID()
 	if cid == "" {
 		return "", ErrNoClientID
 	}
-	form := url.Values{
-		"client_id":   {cid},
-		"device_code": {dc.DeviceCodeStr},
-		"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
+	if dc == nil {
+		return "", fmt.Errorf("github: nil device code")
 	}
-	interval := dc.PollEvery
-	for {
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(interval):
-		}
-		if time.Now().After(dc.Expires) {
+	cfg := devicecode.Config{
+		HTTP:          c.HTTP,
+		TokenEndpoint: c.BaseURL + "/login/oauth/access_token",
+		ClientID:      cid,
+		UserAgent:     c.UserAgent,
+	}
+	shared := &devicecode.DeviceCode{
+		DeviceCode: dc.DeviceCodeStr,
+		Expires:    dc.Expires,
+		PollEvery:  dc.PollEvery,
+	}
+	tok, err := devicecode.Poll(ctx, cfg, shared)
+	if err != nil {
+		switch {
+		case errors.Is(err, devicecode.ErrAuthorizationDenied):
+			return "", ErrAuthorizationDenied
+		case errors.Is(err, devicecode.ErrDeviceCodeExpired):
 			return "", ErrDeviceCodeExpired
-		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			c.BaseURL+"/login/oauth/access_token",
-			strings.NewReader(form.Encode()))
-		if err != nil {
-			return "", err
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("User-Agent", c.UserAgent)
-		resp, err := c.HTTP.Do(req)
-		if err != nil {
+		case errors.Is(err, devicecode.ErrNoClientID):
+			return "", ErrNoClientID
+		default:
+			// Re-wrap with the github: prefix the existing
+			// error-message tests look for, while preserving
+			// the underlying cause via %w.
 			return "", fmt.Errorf("github: poll token endpoint: %w", err)
 		}
-		var body struct {
-			AccessToken string `json:"access_token"`
-			TokenType   string `json:"token_type"`
-			Scope       string `json:"scope"`
-			Error       string `json:"error"`
-			ErrorDesc   string `json:"error_description"`
-			Interval    int    `json:"interval"` // server may bump us
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-			resp.Body.Close()
-			return "", fmt.Errorf("github: decode token response: %w", err)
-		}
-		resp.Body.Close()
-		if body.AccessToken != "" {
-			return body.AccessToken, nil
-		}
-		switch body.Error {
-		case "authorization_pending":
-			// User hasn't finished yet; keep polling at the
-			// existing interval.
-		case "slow_down":
-			// Server-imposed back-off: extend by the new
-			// interval per GitHub's documented contract.
-			if body.Interval > 0 {
-				interval = time.Duration(body.Interval) * time.Second
-			} else {
-				interval += 5 * time.Second
-			}
-		case "expired_token":
-			return "", ErrDeviceCodeExpired
-		case "access_denied":
-			return "", ErrAuthorizationDenied
-		case "":
-			// Empty error AND empty token — protocol violation;
-			// surface a clear failure instead of looping
-			// forever.
-			return "", fmt.Errorf("github: token endpoint returned neither token nor error (status %s)", resp.Status)
-		default:
-			return "", fmt.Errorf("github: token endpoint error %q: %s", body.Error, body.ErrorDesc)
-		}
 	}
+	return tok.AccessToken, nil
 }
 
 // ErrDeviceCodeExpired is returned by PollAccessToken when the
