@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -76,18 +77,22 @@ func (r ideateResult) Render() string {
 		}
 	}
 	if len(r.PerSource) > 0 {
+		// Iterate the live source map in sorted order rather than
+		// a hardcoded name list — when sources/defaults.go grows,
+		// the rendered output picks up the new entry without a
+		// second edit-site (this used to silently truncate the
+		// 4 newest sources from the chat-visible summary).
+		names := make([]string, 0, len(r.PerSource))
+		for name := range r.PerSource {
+			names = append(names, name)
+		}
+		sort.Strings(names)
 		b.WriteString("  per-source: ")
-		first := true
-		for _, name := range []string{"adr_questions", "adr_drafting", "todos", "ci_failures", "manifest_drift", "bench_regression", "deadcode_hits", "deps_outdated"} {
-			n, ok := r.PerSource[name]
-			if !ok {
-				continue
-			}
-			if !first {
+		for i, name := range names {
+			if i > 0 {
 				b.WriteString(" · ")
 			}
-			first = false
-			fmt.Fprintf(&b, "%s=%d", name, n)
+			fmt.Fprintf(&b, "%s=%d", name, r.PerSource[name])
 		}
 		b.WriteByte('\n')
 	}
@@ -210,17 +215,11 @@ func doIdeate(ctx context.Context, req mcp.CallToolRequest, apply bool) (*mcp.Ca
 	return resultOf(out), nil
 }
 
-// defaultIdeatorSources is the canonical bundle assembled at the
-// MCP edge — same five sources the CLI wires.
+// defaultIdeatorSources delegates to `sources.DefaultSources` so
+// the MCP `IdeateRun` edge stays in sync with the CLI `clawtool
+// ideate` edge. The two used to maintain parallel slices and drift
+// silently — most recently the CLI grew to 12 sources while MCP
+// stayed at 8, breaking parity for chat-driven ideate calls.
 func defaultIdeatorSources() []ideator.IdeaSource {
-	return []ideator.IdeaSource{
-		sources.NewADRQuestions(),
-		sources.NewADRDrafting(),
-		sources.NewTODOs(),
-		sources.NewCIFailures(),
-		sources.NewManifestDrift(),
-		sources.NewBenchRegression(),
-		sources.NewDeadcodeHits(),
-		sources.NewDepsOutdated(),
-	}
+	return sources.DefaultSources()
 }

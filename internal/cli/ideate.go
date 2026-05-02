@@ -241,23 +241,11 @@ func orderedSourceNames(m map[string]int) []string {
 }
 
 // defaultIdeatorSources returns the canonical bundle of sources
-// every `clawtool ideate` invocation considers. Wired here at the
-// CLI edge rather than inside the ideator package to avoid an
-// import cycle (sources/ already imports ideator/ for the Idea
-// type).
+// every `clawtool ideate` invocation considers. Delegates to
+// `sources.DefaultSources` so the CLI edge and the MCP `IdeateRun`
+// edge share the same list — drift between the two used to silently
+// break parity (operator hit this when MCP IdeateRun showed 8
+// sources while the CLI showed 12).
 func defaultIdeatorSources() []ideator.IdeaSource {
-	return []ideator.IdeaSource{
-		sources.NewADRQuestions(),
-		sources.NewADRDrafting(),
-		sources.NewTODOs(),
-		sources.NewCIFailures(),
-		sources.NewManifestDrift(),
-		sources.NewBenchRegression(),
-		sources.NewDeadcodeHits(),
-		sources.NewDepsOutdated(),
-		sources.NewVulnAdvisories(),
-		sources.NewStaleFiles(),
-		sources.NewPRReviewPending(),
-		sources.NewStaleBranches(),
-	}
+	return sources.DefaultSources()
 }
