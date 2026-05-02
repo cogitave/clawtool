@@ -3,8 +3,11 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/cogitave/clawtool/internal/sandbox"
 )
 
 // TestSandboxDoctor_HumanOutput preserves the existing
@@ -183,5 +186,70 @@ func TestSandboxList_EmptyTable(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "docs/sandbox.md") {
 		t.Errorf("expected docs pointer in human banner; got %q", out.String())
+	}
+}
+
+// TestSandboxDoctor_AppendsHintOnMissing verifies the ADR-020
+// §Resolved (2026-05-02) gate: when an engine is reported as
+// MISSING, doctor's human output appends the operator-facing
+// install hint (NOT a sudo-driven auto-install). We invoke the
+// real doctor flow and cross-check against sandbox.AvailableEngines
+// + sandbox.InstallHint — whatever engines this host happens to
+// be missing, the matching hints must show up. Test is host-aware
+// so it works on every CI runner without ad-hoc skips.
+func TestSandboxDoctor_AppendsHintOnMissing(t *testing.T) {
+	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
+	app := &App{Stdout: out, Stderr: errb}
+
+	if rc := app.Run([]string{"sandbox", "doctor"}); rc != 0 {
+		t.Fatalf("doctor rc=%d, stderr=%s", rc, errb.String())
+	}
+	body := out.String()
+
+	// Build the set of engines this host reports MISSING and
+	// for which an install hint is defined. If at least one
+	// such engine exists, the doctor output MUST include the
+	// "<engine> missing — install hint:" header for it AND a
+	// distinctive substring from the hint body.
+	statuses := sandbox.AvailableEngines()
+	checkedAny := false
+	for _, st := range statuses {
+		if st.Available {
+			continue
+		}
+		hint := sandbox.InstallHint(runtime.GOOS, st.Name)
+		if hint == "" {
+			continue
+		}
+		checkedAny = true
+		header := st.Name + " missing — install hint:"
+		if !strings.Contains(body, header) {
+			t.Errorf("doctor output missing hint header %q for unavailable engine\n--- body ---\n%s",
+				header, body)
+		}
+		// Pick the first non-empty hint line as a unique
+		// fingerprint and require it to appear in the output.
+		for _, line := range strings.Split(hint, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if !strings.Contains(body, line) {
+				t.Errorf("doctor output missing hint line %q for engine %s\n--- body ---\n%s",
+					line, st.Name, body)
+			}
+			break
+		}
+	}
+
+	// Sanity: on every supported CI host (linux without docker
+	// daemon, darwin without docker, windows-with-just-noop)
+	// at least one engine is unavailable + has a hint. If this
+	// branch never fired, the test would silently pass on a
+	// host that's somehow installed every engine — that's fine
+	// in production but we want a clear signal in CI. Skip
+	// rather than fail so the test stays portable.
+	if !checkedAny {
+		t.Skip("no missing engines with defined hints on this host — nothing to verify (test is host-aware)")
 	}
 }

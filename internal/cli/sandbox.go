@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -208,6 +209,26 @@ func (a *App) SandboxDoctor(asJSON bool) error {
 	fmt.Fprintf(a.Stdout, "\nselected: %s\n", chosen)
 	if chosen == "noop" {
 		fmt.Fprintln(a.Stdout, "  install bubblewrap (Linux) / sandbox-exec (macOS, built-in) / Docker for real enforcement")
+	}
+	// Per ADR-020 §Resolved (2026-05-02): for each MISSING engine,
+	// surface a multi-line install hint instead of a bare "no".
+	// Auto-install would require sudo + silently widen trust —
+	// the operator runs the command themselves. sandbox.InstallHint
+	// returns "" for engines that have no install path on this OS
+	// (noop, irrelevant cross-OS combos), so the loop is a no-op
+	// for those. NO sudo driving — instructions only.
+	for _, st := range statuses {
+		if st.Available {
+			continue
+		}
+		hint := sandbox.InstallHint(runtime.GOOS, st.Name)
+		if hint == "" {
+			continue
+		}
+		fmt.Fprintf(a.Stdout, "\n%s missing — install hint:\n", st.Name)
+		for _, line := range strings.Split(hint, "\n") {
+			fmt.Fprintf(a.Stdout, "  %s\n", line)
+		}
 	}
 	return nil
 }
