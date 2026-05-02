@@ -209,6 +209,79 @@ func TestValidateSpec_RejectsUnknownLanguage(t *testing.T) {
 	}
 }
 
+// TestMcpNew_GeneratesCIWorkflowPerLang asserts that every scaffold
+// — Go / Python / TypeScript — drops a `.github/workflows/ci.yml`
+// containing the language-appropriate step names. ADR-019
+// §Resolved 2026-05-02 mandates a minimal CI template per language
+// generated unconditionally.
+func TestMcpNew_GeneratesCIWorkflowPerLang(t *testing.T) {
+	cases := []struct {
+		language  string
+		stepNames []string // substrings every workflow must contain
+	}{
+		{
+			language: "go",
+			stepNames: []string{
+				"actions/setup-go@v6",
+				"go-version-file: go.mod",
+				"go mod download",
+				"gofmt -l .",
+				"go vet ./...",
+				"go test -race ./...",
+			},
+		},
+		{
+			language: "python",
+			stepNames: []string{
+				"actions/setup-python@v6",
+				"python-version-file: pyproject.toml",
+				"pip install -e .[dev]",
+				"ruff check .",
+				"pytest",
+			},
+		},
+		{
+			language: "typescript",
+			stepNames: []string{
+				"actions/setup-node@v6",
+				"pnpm install --frozen-lockfile",
+				"pnpm test",
+				"pnpm lint",
+			},
+		},
+	}
+	// Bits every workflow must share regardless of language.
+	universal := []string{
+		"name: CI",
+		"on:",
+		"branches: [main]",
+		"pull_request:",
+		"concurrency:",
+		"cancel-in-progress: true",
+	}
+	for _, tc := range cases {
+		t.Run(tc.language, func(t *testing.T) {
+			root := t.TempDir()
+			out, err := Generate(root, sampleSpec(tc.language))
+			if err != nil {
+				t.Fatalf("Generate(%s): %v", tc.language, err)
+			}
+			mustExist(t, out, ".github/workflows/ci.yml")
+			body := mustRead(t, out, ".github/workflows/ci.yml")
+			for _, want := range universal {
+				if !strings.Contains(body, want) {
+					t.Errorf("[%s] ci.yml missing %q\n---\n%s", tc.language, want, body)
+				}
+			}
+			for _, want := range tc.stepNames {
+				if !strings.Contains(body, want) {
+					t.Errorf("[%s] ci.yml missing %q\n---\n%s", tc.language, want, body)
+				}
+			}
+		})
+	}
+}
+
 // ── helpers ─────────────────────────────────────────────────────
 
 func mustExist(t *testing.T, root, rel string) {
