@@ -56,7 +56,7 @@ jobs:
       # Manually cache ~/.npm so npx download-on-demand isn't wholly cold
       # across runs. Hashing on go.sum is a stable-enough key — it changes
       # roughly when the integration set turns over too.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('go.sum') }}
