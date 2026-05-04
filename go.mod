@@ -16,7 +16,7 @@ require (
 	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
 	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
-	github.com/mark3labs/mcp-go v0.50.0
+	github.com/mark3labs/mcp-go v0.51.0
 	github.com/pelletier/go-toml/v2 v2.3.1
 	github.com/philippgille/chromem-go v0.7.0
 	github.com/posthog/posthog-go v1.12.4
